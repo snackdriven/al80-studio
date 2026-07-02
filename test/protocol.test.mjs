@@ -42,10 +42,11 @@ ok('image announce is byte-identical to the captured one', () => {
   assert.equal(hex(a).startsWith('40 00 00 08 cf 02 00 a5 5a 10 00 01 c5 b1 01'), true, hex(a));
 });
 
-ok('still-image transfer = announce + 548 data + finish, offsets 0..30632, all len 0x38', () => {
+ok('still-image transfer = announce + setup + 548 data + finish; setup matches capture', () => {
   const pkts = buildImageTransfer(new Uint8Array(FRAME_BYTES));
-  assert.equal(pkts.length, 1 + BLOCK_COUNT + 1); // 550
-  const data = pkts.slice(1, -1);
+  assert.equal(pkts.length, 1 + 1 + BLOCK_COUNT + 1); // 551 (announce, setup, 548, finish)
+  assert.equal(hex(pkts[1]).startsWith('41 00 00 07 21 03 00 a5 5a 0c 78 00 c3 93'), true, hex(pkts[1]));
+  const data = pkts.slice(2, -1);
   assert.equal(data.length, 548);
   data.forEach((p, k) => {
     assert.equal(p[0], 0x41);
@@ -97,7 +98,7 @@ if (existsSync(cap)) {
       .map((r) => r.hex.split(' ').map((x) => parseInt(x, 16)))
       .filter((b) => b[0] === 0x41 && (b[3] === 0x38 || b[3] === 0x10) && !(b[7] === 0xa5 && b[8] === 0x5a));
     const capOffsets = [...new Set(recs.map((b) => b[1] | (b[2] << 8)))].sort((a, b) => a - b);
-    const mine = buildImageTransfer(new Uint8Array(FRAME_BYTES)).slice(1, -1).map((p) => p[1] | (p[2] << 8));
+    const mine = buildImageTransfer(new Uint8Array(FRAME_BYTES)).slice(2, -1).map((p) => p[1] | (p[2] << 8));
     assert.deepEqual(mine, capOffsets);
   });
 } else {

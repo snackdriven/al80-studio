@@ -91,10 +91,21 @@ export function rgb565BE(rgba) {
 
 // ---- still image (capture-verified: announce + 548 data + finish; NO 0x0C length packet) ----
 
-/** Build the full still-image transfer from a 30,688-byte RGB565-BE frame. Returns logical packets. */
+/**
+ * The 0x41 setup/length descriptor the device needs BETWEEN the announce and the pixel data.
+ * Captured verbatim for the 112x137 panel: A5 5A 0C 78 00 <crc>. The 0x78 is a fixed panel
+ * param (recurs in still + GIF setup), so this is a constant for our resolution.
+ * (Omitting it uploads pixels that never render — the bug that made images not display.)
+ */
+export function buildImageSetup() {
+  const crc = ga([0x0c, 0x78, 0x00]);
+  return build(0x41, [0xa5, 0x5a, 0x0c, 0x78, 0x00, crc[0], crc[1]], [0, 0], 14);
+}
+
+/** Build the full still-image transfer: announce -> setup -> 548 data -> finish. */
 export function buildImageTransfer(frame) {
   if (frame.length !== FRAME_BYTES) throw new Error(`frame must be ${FRAME_BYTES} bytes, got ${frame.length}`);
-  const packets = [announce(0x10, 0, 0x01, [0x01])];
+  const packets = [announce(0x10, 0, 0x01, [0x01]), buildImageSetup()];
   for (let k = 0; k < BLOCK_COUNT; k++) {
     const off = k * BLOCK;
     packets.push(build(0x41, Array.from(frame.subarray(off, off + BLOCK)), le16(off), 63));
