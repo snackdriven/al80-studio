@@ -261,9 +261,12 @@ function buildModeGif(frames, fps, mode, frameBytes, maxFrames) {
     ctrl(0x40, 0x12, 0, 2, [mode, 0], 16), // announce
     ctrl(0x41, 0x13, 0, 2, [mode, 0], 16), // setup
   ];
-  for (const frame of frames) {
+  frames.forEach((frame, fi) => {
     if (frame.length !== frameBytes) throw new Error(`mode-${mode} frame must be ${frameBytes} bytes, got ${frame.length}`);
-    packets.push(ctrl(0x41, 0x10, 0, 3, [0x02, mode], 17)); // per-frame header = [0x02, mode] (capture-verified)
+    // per-frame header = [0x02, mode, FRAME INDEX] — the frame index is the 10th payload byte
+    // (header length byte is 0x0a=10). Dropping it made every frame index 0, so frames overwrote
+    // each other and GIFs rendered white. Capture-verified: frame N's header checksum = base + N.
+    packets.push(ctrl(0x41, 0x10, 0, 3, [0x02, mode, fi & 0xff], 17));
     packets.push(build(0x41, [0xa5, 0x5a, 0x11, lenHi, lenLo, lenCrc[0], lenCrc[1]], [0, 0], 14)); // per-frame length
     for (let base = 0; base < frameBytes; base += MP_BANK) {
       const remain = frameBytes - base;
@@ -276,7 +279,7 @@ function buildModeGif(frames, fps, mode, frameBytes, maxFrames) {
       const tail = Math.min(16, remain - off16);
       if (tail > 0) packets.push(build(0x41, Array.from(frame.subarray(base + off16, base + off16 + tail)), [off16 & 0xff, (off16 >> 8) & 0xff], 7 + tail));
     }
-  }
+  });
   packets.push(ctrl(0x41, 0x12, 0, 2, [mode, frames.length & 0xff], 16)); // finish: FRAME COUNT
   packets.push(ctrl(0x41, 0x13, 0, 2, [mode, fps & 0xff], 16)); // finish: FPS
   packets.push(finish());

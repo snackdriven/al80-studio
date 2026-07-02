@@ -139,6 +139,15 @@ ok('per-frame header is [0x02, mode]: main=02,02  gif-page=02,01  startup=02,00'
   assert.equal(buildStartupAnimation([new Uint8Array(SA_FRAME_BYTES)], 30)[2][15], 0);
 });
 
+ok('per-frame header carries the FRAME INDEX (byte 16) — frame N header checksum = base + N', () => {
+  const p = buildMainPageGif([new Uint8Array(MP_FRAME_BYTES), new Uint8Array(MP_FRAME_BYTES)], 10);
+  const hdrs = p.filter((x) => x[0] === 0x41 && x[7] === 0xa5 && x[8] === 0x5a && x[9] === 0x10 && x[11] === 3);
+  assert.equal(hdrs[0][16], 0); // frame 0 index
+  assert.equal(hdrs[1][16], 1); // frame 1 index
+  assert.equal(hdrs[0][4], 0x95); // capture checksums
+  assert.equal(hdrs[1][4], 0x96);
+});
+
 // Optional: cross-check block structure against the real sibling capture, if present.
 const cap = '../al80-lcd/research/image_capture/testpattern_capture_raw.json';
 if (existsSync(cap)) {
