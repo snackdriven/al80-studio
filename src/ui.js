@@ -178,7 +178,18 @@ function init() {
   setupGifTab();
   setupClearActions();
   setupKeymap();
+  setupEasterEgg();
   reflectConnection();
+}
+
+// Easter egg: press "?" (outside a text field) to open the GitHub repo.
+function setupEasterEgg() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    window.open('https://github.com/snackdriven/al80-studio', '_blank', 'noopener');
+  });
 }
 
 function renderUnsupported() {
