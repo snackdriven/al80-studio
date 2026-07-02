@@ -119,10 +119,16 @@
           </div>
 
           <div class="image-preview">
-            <p class="muted small">Preview (96&times;64 main page, 3&times;)</p>
+            <p class="muted small" id="imagePreviewLabel">Preview (96&times;64 main page)</p>
             <div class="preview-frame">
               <img id="imagePreview" width="288" height="192" alt="Image preview" />
             </div>
+            <div class="dest-toggle" role="radiogroup" aria-label="Picture destination">
+              <span class="dest-label">Send to</span>
+              <label class="inline"><input type="radio" name="picDest" value="main" checked /> Main page</label>
+              <label class="inline"><input type="radio" name="picDest" value="page" /> Picture page</label>
+            </div>
+            <p id="picDestNote" class="muted small"></p>
             <button id="imageSend" type="button" class="btn primary block device-action" disabled>Send &amp; show</button>
             <div class="progress" id="imageProgressWrap" hidden>
               <div class="progress-bar" id="imageProgress"></div>
@@ -141,7 +147,6 @@
       <!-- GIF -->
       <section class="panel" data-panel="gif" hidden>
         <h2>GIF</h2>
-        <p class="muted small">Saves to the main page (96&times;64, up to 42 frames) &mdash; the display path this firmware actually renders.</p>
         <div class="row">
           <label class="btn">Choose GIF
             <input id="gifFile" type="file" accept="image/gif" hidden />
@@ -156,6 +161,12 @@
         <label>FPS <output id="gifFpsOut">30</output>
           <input id="gifFps" type="range" min="1" max="60" value="30" />
         </label>
+        <div class="dest-toggle" role="radiogroup" aria-label="GIF destination">
+          <span class="dest-label">Send to</span>
+          <label class="inline"><input type="radio" name="gifDest" value="main" checked /> Main page</label>
+          <label class="inline"><input type="radio" name="gifDest" value="page" /> GIF page</label>
+        </div>
+        <p id="gifDestNote" class="muted small"></p>
         <div class="row">
           <button id="gifSend" type="button" class="btn primary device-action" disabled>Send &amp; show</button>
         </div>

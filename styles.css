@@ -318,6 +318,20 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   border-radius: 6px;
 }
 
+/* Destination toggle (main page vs separate view) */
+.dest-toggle {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 12px 0 2px;
+}
+.dest-toggle .dest-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+.dest-toggle .inline { margin: 0; }
+
 /* Progress */
 .progress {
   margin: 14px 0 0;

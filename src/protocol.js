@@ -180,6 +180,9 @@ export function buildClearGif() {
  * Verify on-device before trusting; the still-image path is the proven one.
  */
 export function buildGifTransfer(frames, fps, mode = 0) {
+  if (!frames.length) throw new Error('buildGifTransfer: no frames');
+  if (frames.length > 255) frames = frames.slice(0, 255); // count byte is 8-bit; never wrap
+  fps = Math.max(1, Math.min(60, Math.round(fps) || 30));
   const packets = [announce(0x12, 0, 0x02, [mode, 0]), announce(0x13, 0, 0x02, [mode, 0])];
   frames.forEach((frame, i) => {
     if (frame.length !== FRAME_BYTES) throw new Error(`GIF frame ${i} must be ${FRAME_BYTES} bytes`);

@@ -400,11 +400,31 @@ function setupImageTab() {
     };
   }
 
+  const previewLabel = $('#imagePreviewLabel');
+  const destNote = $('#picDestNote');
+  const readDest = () => document.querySelector('input[name="picDest"]:checked')?.value || 'main';
+
+  // Reflect the chosen destination in the preview size/label/note, then re-render.
+  function applyDest() {
+    if (readDest() === 'main') {
+      previewLabel.innerHTML = 'Preview (96&times;64 main page)';
+      previewImg.style.width = '288px'; previewImg.style.height = '192px'; // inline beats the #imagePreview CSS rule
+      destNote.textContent = 'Shows on the home screen — the display path this firmware renders.';
+    } else {
+      previewLabel.innerHTML = 'Preview (112&times;137 picture page)';
+      previewImg.style.width = '224px'; previewImg.style.height = '274px';
+      destNote.textContent = 'Separate picture view — may not display on your firmware (page-switch is unsupported on the ripple build).';
+    }
+    refreshPreview();
+  }
+
   let previewTimer = null;
   async function refreshPreview() {
     if (!currentFile) return;
     try {
-      const url = await image.previewMainPageDataURL(currentFile, readOpts());
+      const url = readDest() === 'main'
+        ? await image.previewMainPageDataURL(currentFile, readOpts())
+        : await image.previewDataURL(currentFile, readOpts());
       previewImg.src = url;
     } catch (err) {
       setStatus(statusEl, 'Preview failed: ' + ((err && err.message) || err), 'err');
@@ -414,6 +434,8 @@ function setupImageTab() {
     clearTimeout(previewTimer);
     previewTimer = setTimeout(refreshPreview, 120);
   }
+  $$('input[name="picDest"]').forEach((r) => r.addEventListener('change', applyDest));
+  applyDest(); // set the initial label/note
 
   function loadFile(file) {
     if (!file) return;
@@ -450,19 +472,21 @@ function setupImageTab() {
   const bar = $('#imageProgress');
   $('#imageSend').addEventListener('click', async () => {
     if (!currentFile) { setStatus(statusEl, 'Pick an image first.', 'err'); return; }
+    const dest = readDest();
     setStatus(statusEl, 'Rendering frame…');
     let frame;
     try {
-      frame = await image.imageToMainPageFrame(currentFile, readOpts());
+      // main page = 96x64 mode-2 (the surface that displays); picture page = 112x137 slot.
+      frame = dest === 'main'
+        ? await image.imageToMainPageFrame(currentFile, readOpts())
+        : await image.imageToFrame(currentFile, readOpts());
     } catch (err) {
       setStatus(statusEl, 'Render failed: ' + ((err && err.message) || err), 'err');
       return;
     }
     let packets;
     try {
-      // The main page (96x64 mode-2 GIF) is the only surface that actually displays on
-      // this firmware. A still image is a 1-frame main-page GIF.
-      packets = proto.buildMainPageImage(frame);
+      packets = dest === 'main' ? proto.buildMainPageImage(frame) : proto.buildImageTransfer(frame);
     } catch (err) {
       setStatus(statusEl, 'Build failed: ' + ((err && err.message) || err), 'err');
       return;
@@ -470,12 +494,19 @@ function setupImageTab() {
     wrap.hidden = false;
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets…`);
-    const ok = await sendWithProgress('Picture → main page', statusEl, packets, (f) => {
+    const ok = await sendWithProgress(dest === 'main' ? 'Picture → main page' : 'Picture → picture page', statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
     }, { gap: 0 });
     if (ok) {
-      setNowShowing('clock'); // main page = clock + your image
-      setStatus(statusEl, 'Saved to the main page — it should be showing now.', 'ok');
+      if (dest === 'main') {
+        setNowShowing('clock'); // main page = clock + your image
+        setStatus(statusEl, 'Saved to the main page — it should be showing now.', 'ok');
+      } else {
+        setStatus(statusEl, 'Switching to picture page…');
+        const shown = await guardedSend('View → Picture', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+        if (shown) setNowShowing('picture');
+        setStatus(statusEl, 'Sent to the picture page (may not display on your firmware).', 'ok');
+      }
     }
     setTimeout(() => { wrap.hidden = true; }, 800);
   });
@@ -491,12 +522,19 @@ function setupGifTab() {
   const fpsOut = $('#gifFpsOut');
   const previewCanvas = $('#gifPreview');
   const pctx = previewCanvas.getContext('2d');
+  const destNote = $('#gifDestNote');
   let currentFile = null;
-  let currentFrames = null;   // cached 96x64 RGB565 frames (reused by preview + send)
+  let currentFrames = null;   // cached RGB565 frames at the current destination's resolution
   let previewImages = null;   // ImageData[] for the preview canvas
   let playTimer = null;
   let playIdx = 0;
-  let loadToken = 0;          // guards against out-of-order decodes on rapid re-selection
+  let loadToken = 0;          // guards against out-of-order decodes on rapid re-select / dest change
+
+  const readDest = () => document.querySelector('input[name="gifDest"]:checked')?.value || 'main';
+  // Destination drives decode resolution, frame cap, and preview box size.
+  const dims = () => readDest() === 'main'
+    ? { w: proto.MP_W, h: proto.MP_H, max: proto.MP_MAX_FRAMES, disp: [288, 192] }
+    : { w: proto.WIDTH, h: proto.HEIGHT, max: 60, disp: [224, 274] };
 
   function stopPreview() {
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
@@ -518,45 +556,65 @@ function setupGifTab() {
   gifPreviewCtl.start = () => startPreview(false);
   gifPreviewCtl.stop = stopPreview;
 
-  fps.addEventListener('input', () => {
-    fpsOut.textContent = fps.value;
-    if (previewImages && previewImages.length > 1) startPreview(false); // re-time, keep position
-  });
-
-  fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // Decode the current file at the current destination's resolution and (re)build the preview.
+  async function decodeAndPreview() {
+    if (!currentFile) return;
     const token = ++loadToken;
-    currentFile = file;
-    nameEl.textContent = file.name;
+    const d = dims();
     countEl.textContent = 'Decoding…';
     stopPreview();
     currentFrames = null;
     previewImages = null;
     try {
-      const frames = await gif.gifToFrames(file, { maxFrames: proto.MP_MAX_FRAMES, width: proto.MP_W, height: proto.MP_H });
-      if (token !== loadToken) return; // a newer file was picked mid-decode; drop this stale result
+      const frames = await gif.gifToFrames(currentFile, { maxFrames: d.max, width: d.w, height: d.h });
+      if (token !== loadToken) return; // superseded by a newer decode
       currentFrames = frames;
-      previewImages = frames.map((f) => new ImageData(image.frameToRGBA(f), proto.MP_W, proto.MP_H));
+      previewImages = frames.map((f) => new ImageData(image.frameToRGBA(f), d.w, d.h));
+      previewCanvas.width = d.w; previewCanvas.height = d.h;
+      previewCanvas.style.width = d.disp[0] + 'px'; previewCanvas.style.height = d.disp[1] + 'px';
       const total = frames.frameCount ?? frames.length;
-      const cap = total > proto.MP_MAX_FRAMES ? ` (keeping the first ${proto.MP_MAX_FRAMES})` : '';
+      const cap = total > d.max ? ` (keeping the first ${d.max})` : '';
       countEl.textContent = `${total} frame${total === 1 ? '' : 's'}${cap}`;
       startPreview(true);
     } catch (err) {
       if (token !== loadToken) return;
       countEl.textContent = 'Could not read frames: ' + ((err && err.message) || err);
     }
+  }
+
+  function applyDest() {
+    destNote.textContent = readDest() === 'main'
+      ? 'Plays on the home screen — the display path this firmware renders (96×64, up to 42 frames).'
+      : 'Separate GIF view (112×137) — may not display on your firmware (the page-switch is unsupported on the ripple build).';
+    if (currentFile) decodeAndPreview(); // re-decode at the new resolution
+  }
+  $$('input[name="gifDest"]').forEach((r) => r.addEventListener('change', applyDest));
+  applyDest(); // initial note
+
+  fps.addEventListener('input', () => {
+    fpsOut.textContent = fps.value;
+    if (previewImages && previewImages.length > 1) startPreview(false); // re-time, keep position
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    currentFile = file;
+    nameEl.textContent = file.name;
+    decodeAndPreview();
   });
 
   const wrap = $('#gifProgressWrap');
   const bar = $('#gifProgress');
   $('#gifSend').addEventListener('click', async () => {
     if (!currentFile) { setStatus(statusEl, 'Pick a GIF first.', 'err'); return; }
+    const dest = readDest();
+    const d = dims();
     let frames = currentFrames;
     if (!frames) {
       setStatus(statusEl, 'Decoding GIF…');
       try {
-        frames = await gif.gifToFrames(currentFile, { maxFrames: proto.MP_MAX_FRAMES, width: proto.MP_W, height: proto.MP_H });
+        frames = await gif.gifToFrames(currentFile, { maxFrames: d.max, width: d.w, height: d.h });
       } catch (err) {
         setStatus(statusEl, 'Decode failed: ' + ((err && err.message) || err), 'err');
         return;
@@ -564,7 +622,7 @@ function setupGifTab() {
     }
     let packets;
     try {
-      packets = proto.buildMainPageGif(frames, +fps.value);
+      packets = dest === 'main' ? proto.buildMainPageGif(frames, +fps.value) : proto.buildGifTransfer(frames, +fps.value);
     } catch (err) {
       setStatus(statusEl, 'Build failed: ' + ((err && err.message) || err), 'err');
       return;
@@ -574,13 +632,20 @@ function setupGifTab() {
     wrap.hidden = false;
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets (${kept} frame${kept === 1 ? '' : 's'} @ ${fps.value} fps)…`);
-    const ok = await sendWithProgress('GIF → main page', statusEl, packets, (f) => {
+    const ok = await sendWithProgress(dest === 'main' ? 'GIF → main page' : 'GIF → gif page', statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
     }, { gap: 0 });
     if (ok) {
-      setNowShowing('clock'); // main page = clock + your GIF
       const capNote = total > kept ? ` (kept the first ${kept} of ${total})` : '';
-      setStatus(statusEl, `Saved GIF to the main page${capNote} — it should be playing now.`, 'ok');
+      if (dest === 'main') {
+        setNowShowing('clock'); // main page = clock + your GIF
+        setStatus(statusEl, `Saved GIF to the main page${capNote} — it should be playing now.`, 'ok');
+      } else {
+        setStatus(statusEl, 'Switching to GIF page…');
+        const shown = await guardedSend('View → GIF', statusEl, proto.buildView(proto.VIEW.GIF), { gap: 1 });
+        if (shown) setNowShowing('gif');
+        setStatus(statusEl, `Sent GIF to the gif page${capNote} (may not display on your firmware).`, 'ok');
+      }
     }
     setTimeout(() => { wrap.hidden = true; }, 800);
   });
