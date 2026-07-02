@@ -40,6 +40,63 @@ function normalizeStatus(s) {
   };
 }
 
+// ---- device log -------------------------------------------------------------
+// Every command this app sends gets a timestamped line. The device is write-only
+// (hid.send returns {sent, ms} — no reply is exposed), so we log what we sent and
+// the outcome. window.__al80log mirrors the entries for live debugging in DevTools.
+window.__al80log = window.__al80log || [];
+
+function devLog(label, info = {}) {
+  const now = new Date();
+  const entry = {
+    t: now.toISOString(),
+    time: now.toLocaleTimeString(),
+    label,
+    ...info, // { packets, ok, ms, error, reply? }
+  };
+  window.__al80log.push(entry);
+  renderLogEntry(entry);
+  return entry;
+}
+
+function renderLogEntry(entry) {
+  const list = $('#logList');
+  const countEl = $('#logCount');
+  if (!list) return;
+  const li = document.createElement('li');
+  li.className = entry.error ? 'err' : entry.ok ? 'ok' : '';
+
+  const time = document.createElement('span');
+  time.className = 'log-time';
+  time.textContent = entry.time;
+
+  const msg = document.createElement('span');
+  msg.className = 'log-msg';
+  const parts = [entry.label];
+  if (typeof entry.packets === 'number') parts.push(`${entry.packets} pkt${entry.packets === 1 ? '' : 's'}`);
+  if (entry.error) parts.push('FAILED: ' + entry.error);
+  else if (typeof entry.ms === 'number') parts.push(`ok in ${Math.round(entry.ms)}ms`);
+  else if (entry.ok) parts.push('ok');
+  if (entry.reply != null) parts.push('reply: ' + entry.reply);
+  msg.textContent = parts.join(' · ');
+  msg.title = msg.textContent;
+
+  li.append(time, msg);
+  list.appendChild(li);
+  list.scrollTop = list.scrollHeight;
+  if (countEl) countEl.textContent = String(window.__al80log.length);
+}
+
+function setupDeviceLog() {
+  const clearBtn = $('#logClear');
+  if (!clearBtn) return;
+  clearBtn.addEventListener('click', () => {
+    window.__al80log.length = 0;
+    $('#logList').innerHTML = '';
+    $('#logCount').textContent = '0';
+  });
+}
+
 // ---- global connected state -------------------------------------------------
 let connected = false;
 
@@ -47,18 +104,22 @@ function reflectConnection() {
   $$('.device-action').forEach((el) => {
     el.disabled = !connected;
   });
+  const gate = $('#lcdGate');
+  if (gate) gate.hidden = connected;
   // if we just disconnected, stop clock sync
   if (!connected) stopClockSync();
 }
 
-// Wrap a device action: catch errors (incl. the single-opener one) and surface them.
-async function guardedSend(statusEl, packets, opts = {}) {
+// Wrap a device action: catch errors (incl. the single-opener one), log, surface.
+async function guardedSend(label, statusEl, packets, opts = {}) {
   try {
-    await hid.send(packets, { gap: 0, ...opts });
+    const res = await hid.send(packets, { gap: 0, ...opts });
+    devLog(label, { packets: packets.length, ok: true, ms: res && res.ms, reply: res && res.reply });
     return true;
   } catch (err) {
     const msg = (err && err.message) || String(err);
-    setStatus(statusEl, 'Send failed: ' + msg, 'err');
+    devLog(label, { packets: packets.length, error: msg });
+    if (statusEl) setStatus(statusEl, 'Send failed: ' + msg, 'err');
     return false;
   }
 }
@@ -66,17 +127,20 @@ async function guardedSend(statusEl, packets, opts = {}) {
 // Chunked send so we can drive a progress bar without depending on an
 // undocumented progress callback in hid.send. Each chunk is an independent
 // batch of 64-byte reports; gap is applied inside hid.send per its contract.
-async function sendWithProgress(statusEl, packets, onFraction, opts = {}) {
+async function sendWithProgress(label, statusEl, packets, onFraction, opts = {}) {
   const CHUNK = 20;
+  const start = performance.now();
   try {
     for (let i = 0; i < packets.length; i += CHUNK) {
       await hid.send(packets.slice(i, i + CHUNK), { gap: 0, ...opts });
       onFraction(Math.min(packets.length, i + CHUNK) / packets.length);
     }
+    devLog(label, { packets: packets.length, ok: true, ms: performance.now() - start });
     return true;
   } catch (err) {
     const msg = (err && err.message) || String(err);
-    setStatus(statusEl, 'Send failed: ' + msg, 'err');
+    devLog(label, { packets: packets.length, error: msg });
+    if (statusEl) setStatus(statusEl, 'Send failed: ' + msg, 'err');
     return false;
   }
 }
@@ -88,12 +152,15 @@ function init() {
     return;
   }
   setupHeader();
+  setupSections();
   setupTabs();
+  setupNowShowing();
+  setupDeviceLog();
   setupClockTab();
   setupImageTab();
   setupGifTab();
-  setupViewTab();
-  setupShortcutsTab();
+  setupClearActions();
+  setupKeymap();
   reflectConnection();
 }
 
@@ -112,17 +179,9 @@ function setupHeader() {
   const dot = $('#statusDot');
   const text = $('#statusText');
   const btn = $('#connectBtn');
+  const warn = $('#connectWarn');
 
-  hid.onStatus((s) => {
-    const n = normalizeStatus(s);
-    connected = n.connected;
-    dot.dataset.state = n.connected ? 'connected' : (n.state === 'error' ? 'error' : 'disconnected');
-    text.textContent = n.text;
-    btn.textContent = n.connected ? 'Disconnect' : 'Connect';
-    reflectConnection();
-  });
-
-  btn.addEventListener('click', async () => {
+  async function toggleConnect() {
     try {
       if (connected) {
         await hid.disconnect();
@@ -135,31 +194,101 @@ function setupHeader() {
       const msg = (err && err.message) || String(err);
       dot.dataset.state = 'error';
       text.textContent = msg;
+      if (warn) warn.hidden = false;
+      devLog('Connect', { error: msg });
     }
+  }
+
+  hid.onStatus((s) => {
+    const n = normalizeStatus(s);
+    const was = connected;
+    connected = n.connected;
+    dot.dataset.state = n.connected ? 'connected' : (n.state === 'error' ? 'error' : 'disconnected');
+    text.textContent = n.text;
+    btn.textContent = n.connected ? 'Disconnect' : 'Connect';
+    if (warn) warn.hidden = n.connected; // contextual: only shown while disconnected
+    if (n.connected && !was) {
+      devLog('Connected', { ok: true });
+      setNowShowing('unknown'); // fresh connect — app can't read device state back
+    }
+    if (!n.connected && was) devLog('Disconnected', {});
+    if (!n.connected) setNowShowing('unknown');
+    reflectConnection();
   });
+
+  btn.addEventListener('click', toggleConnect);
+  const gateBtn = $('#gateConnect');
+  if (gateBtn) gateBtn.addEventListener('click', toggleConnect);
 
   // Reflect an already-open device (e.g. after reload with a granted device).
   try {
     if (hid.getDevice && hid.getDevice()) {
       connected = true;
+      if (warn) warn.hidden = true;
+      setNowShowing('unknown');
       reflectConnection();
     }
   } catch { /* ignore */ }
 }
 
-// ---- tabs -------------------------------------------------------------------
+// ---- top-level sections (LCD / Keymap) --------------------------------------
+function setupSections() {
+  const app = $('#app');
+  const btns = $$('.section-btn');
+  const panels = $$('[data-section-panel]');
+  btns.forEach((b) => {
+    b.addEventListener('click', () => {
+      const name = b.dataset.section;
+      app.dataset.section = name;
+      btns.forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+      panels.forEach((p) => { p.hidden = p.dataset.sectionPanel !== name; });
+    });
+  });
+}
+
+// ---- LCD content sub-tabs ----------------------------------------------------
 function setupTabs() {
   const tabs = $$('.tab');
-  const panels = $$('.panel');
+  const panels = $$('.panel[data-panel]');
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       const name = tab.dataset.tab;
       tabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
-      panels.forEach((p) => {
-        p.hidden = p.dataset.panel !== name;
-      });
+      panels.forEach((p) => { p.hidden = p.dataset.panel !== name; });
     });
   });
+}
+
+// ---- Now Showing bar --------------------------------------------------------
+// Tracks the last view THIS app set. 'unknown' on fresh connect (write-only device).
+let lastView = 'unknown';
+
+const NS_SEGMENTS = {
+  clock: { view: proto.VIEW.HOMEPAGE, label: 'Clock' },
+  picture: { view: proto.VIEW.PICTURE, label: 'Picture' },
+  gif: { view: proto.VIEW.GIF, label: 'GIF' },
+};
+
+function setNowShowing(which) {
+  lastView = which;
+  $$('.ns-seg').forEach((seg) => {
+    seg.setAttribute('aria-pressed', String(seg.dataset.view === which));
+  });
+  const stateEl = $('#nsState');
+  if (stateEl) stateEl.textContent = which === 'unknown' ? 'unknown' : NS_SEGMENTS[which].label;
+}
+
+function setupNowShowing() {
+  $$('.ns-seg').forEach((seg) => {
+    seg.addEventListener('click', async () => {
+      const key = seg.dataset.view;
+      const spec = NS_SEGMENTS[key];
+      if (!spec) return;
+      const ok = await guardedSend(`View → ${spec.label}`, null, proto.buildView(spec.view), { gap: 1 });
+      if (ok) setNowShowing(key);
+    });
+  });
+  setNowShowing('unknown');
 }
 
 // ---- clock ------------------------------------------------------------------
@@ -182,11 +311,14 @@ function stopClockSync() {
     const cb = $('#clockSync');
     if (cb) cb.checked = false;
   }
+  const badge = $('#syncBadge');
+  if (badge) badge.hidden = true;
 }
 
 function setupClockTab() {
   const statusEl = $('#clockStatus');
   const is12 = $('#clock12hr');
+  const badge = $('#syncBadge');
 
   // default to now
   const now = new Date();
@@ -197,8 +329,13 @@ function setupClockTab() {
     const date = useNow ? new Date() : readClockDate();
     const packets = proto.clockFromDate(date, is12.checked);
     setStatus(statusEl, 'Sending clock…');
-    const ok = await guardedSend(statusEl, packets, { gap: 1 });
-    if (ok) setStatus(statusEl, 'Clock set to ' + date.toLocaleTimeString(), 'ok');
+    const ok = await guardedSend('Clock set', statusEl, packets, { gap: 1 });
+    if (!ok) return false;
+    // Show it: the clock lives on the Homepage view. Switch so it's visible.
+    await guardedSend('View → Clock', statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 });
+    setNowShowing('clock');
+    setStatus(statusEl, 'Clock set to ' + date.toLocaleTimeString(), 'ok');
+    return true;
   }
 
   $('#clockSendOnce').addEventListener('click', () => sendOnce(false));
@@ -207,6 +344,7 @@ function setupClockTab() {
     if (e.target.checked) {
       sendOnce(true);
       clockSyncTimer = setInterval(() => sendOnce(true), 60000);
+      if (badge) badge.hidden = false;
       setStatus(statusEl, 'Syncing every 60s…', 'ok');
     } else {
       stopClockSync();
@@ -215,7 +353,7 @@ function setupClockTab() {
   });
 }
 
-// ---- image ------------------------------------------------------------------
+// ---- picture (was "image") --------------------------------------------------
 function setupImageTab() {
   const statusEl = $('#imageStatus');
   const previewImg = $('#imagePreview');
@@ -297,7 +435,7 @@ function setupImageTab() {
   controls.gray.addEventListener('change', schedulePreview);
   controls.dither.addEventListener('change', schedulePreview);
 
-  // send
+  // send & show
   const wrap = $('#imageProgressWrap');
   const bar = $('#imageProgress');
   $('#imageSend').addEventListener('click', async () => {
@@ -320,14 +458,15 @@ function setupImageTab() {
     wrap.hidden = false;
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets…`);
-    const ok = await sendWithProgress(statusEl, packets, (f) => {
+    const ok = await sendWithProgress('Picture upload', statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
     }, { gap: 0 });
     if (ok) {
       // The upload only lands in the picture slot — switch the LCD to the picture
       // view so it's actually shown (otherwise you keep seeing the clock).
       setStatus(statusEl, 'Showing image…');
-      await sendWithProgress(statusEl, proto.buildView(proto.VIEW.PICTURE), () => {}, { gap: 1 });
+      const shown = await guardedSend('View → Picture', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+      if (shown) setNowShowing('picture');
       setStatus(statusEl, 'Image sent and displayed.', 'ok');
     }
     setTimeout(() => { wrap.hidden = true; }, 800);
@@ -382,48 +521,39 @@ function setupGifTab() {
     wrap.hidden = false;
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets (${frames.length} frames)…`);
-    const ok = await sendWithProgress(statusEl, packets, (f) => {
+    const ok = await sendWithProgress('GIF upload', statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
     }, { gap: 0 });
     if (ok) {
       setStatus(statusEl, 'Showing GIF…');
-      await sendWithProgress(statusEl, proto.buildView(proto.VIEW.GIF), () => {}, { gap: 1 });
+      const shown = await guardedSend('View → GIF', statusEl, proto.buildView(proto.VIEW.GIF), { gap: 1 });
+      if (shown) setNowShowing('gif');
       setStatus(statusEl, 'GIF sent and displayed (experimental).', 'ok');
     }
     setTimeout(() => { wrap.hidden = true; }, 800);
   });
 }
 
-// ---- view -------------------------------------------------------------------
-function setupViewTab() {
-  const statusEl = $('#viewStatus');
-
-  async function switchView(type, label) {
-    setStatus(statusEl, `Switching to ${label}…`);
-    const ok = await guardedSend(statusEl, proto.buildView(type), { gap: 1 });
-    if (ok) setStatus(statusEl, `Now showing ${label}.`, 'ok');
-  }
-
-  $('#viewHome').addEventListener('click', () => switchView(proto.VIEW.HOMEPAGE, 'Homepage'));
-  $('#viewPicture').addEventListener('click', () => switchView(proto.VIEW.PICTURE, 'Picture'));
-  $('#viewGif').addEventListener('click', () => switchView(proto.VIEW.GIF, 'GIF'));
-
+// ---- clear actions (moved into Picture / GIF editors) -----------------------
+function setupClearActions() {
   $('#clearPicture').addEventListener('click', async () => {
     if (!confirm('Erase ALL stored pictures on the keyboard? This cannot be undone.')) return;
+    const statusEl = $('#imageStatus');
     setStatus(statusEl, 'Clearing pictures…');
-    const ok = await guardedSend(statusEl, proto.buildClearPicture(), { gap: 2 });
+    const ok = await guardedSend('Clear picture', statusEl, proto.buildClearPicture(), { gap: 2 });
     if (ok) setStatus(statusEl, 'Pictures cleared.', 'ok');
   });
 
   $('#clearGif').addEventListener('click', async () => {
     if (!confirm('Erase the stored GIF on the keyboard? This cannot be undone.')) return;
+    const statusEl = $('#gifStatus');
     setStatus(statusEl, 'Clearing GIF…');
-    const ok = await guardedSend(statusEl, proto.buildClearGif(), { gap: 2 });
+    const ok = await guardedSend('Clear GIF', statusEl, proto.buildClearGif(), { gap: 2 });
     if (ok) setStatus(statusEl, 'GIF cleared.', 'ok');
   });
 }
 
-// ---- shortcuts --------------------------------------------------------------
+// ---- keymap (was "shortcuts") — offline, no device --------------------------
 // Normalize PRESETS (grouped catalog) into [{group, items:[{label, keycode}]}].
 function normalizePresets(presets) {
   if (!presets) return [];
@@ -453,7 +583,7 @@ function normalizeItems(items) {
   });
 }
 
-function setupShortcutsTab() {
+function setupKeymap() {
   const select = $('#presetSelect');
   const keycodeEl = $('#presetKeycode');
   const catalog = $('#presetCatalog');

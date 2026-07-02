@@ -3,155 +3,186 @@
 <title>AL80 Studio</title>
 <link rel="stylesheet" href="styles.css" />
 
-<div id="app">
+<div id="app" data-section="lcd">
   <header class="app-header">
     <div class="brand">
       <h1>AL80 Studio</h1>
       <span class="subtitle">YUNZII AL80 LCD control panel</span>
     </div>
-    <div class="conn">
+    <div class="conn" data-device-chrome>
       <span id="statusDot" class="dot" data-state="disconnected" aria-hidden="true"></span>
       <span id="statusText" class="status-text">Disconnected</span>
       <button id="connectBtn" type="button" class="btn primary">Connect</button>
     </div>
   </header>
 
-  <p class="warn" role="note">
+  <p id="connectWarn" class="warn" role="note" data-device-chrome>
     Close the yunzii-game.com tab and VIA before connecting (one opener at a time).
   </p>
 
-  <nav class="tabs" role="tablist" aria-label="AL80 Studio sections">
-    <button class="tab" role="tab" data-tab="clock" aria-selected="true">Clock</button>
-    <button class="tab" role="tab" data-tab="image" aria-selected="false">Image</button>
-    <button class="tab" role="tab" data-tab="gif" aria-selected="false">GIF</button>
-    <button class="tab" role="tab" data-tab="view" aria-selected="false">View</button>
-    <button class="tab" role="tab" data-tab="shortcuts" aria-selected="false">Shortcuts</button>
+  <!-- Top-level sections: live device control vs. offline file tool -->
+  <nav class="sections" aria-label="AL80 Studio sections">
+    <button class="section-btn" data-section="lcd" aria-selected="true">LCD</button>
+    <button class="section-btn" data-section="keymap" aria-selected="false">Keymap</button>
   </nav>
 
-  <main class="panels">
-    <!-- CLOCK -->
-    <section class="panel" data-panel="clock">
-      <h2>Clock</h2>
-      <p class="muted">Push the current time to the LCD. Keep it synced to fight drift.</p>
-      <div class="row">
-        <label>Time
-          <input id="clockTime" type="time" step="1" />
-        </label>
-        <label>Date
-          <input id="clockDate" type="date" />
-        </label>
-        <label class="inline">
-          <input id="clock12hr" type="checkbox" />
-          12-hour format
-        </label>
+  <!-- ============================ LCD ============================ -->
+  <div class="section" data-section-panel="lcd">
+    <!-- Ambient state: what the LCD is showing (last set by this app) -->
+    <div class="now-showing" role="group" aria-label="Now showing on the LCD">
+      <span class="ns-label">Now showing <span class="ns-sub">(last set)</span></span>
+      <div class="ns-segments">
+        <button id="nsClock" type="button" class="ns-seg device-action" data-view="clock" aria-pressed="false" disabled>Clock</button>
+        <button id="nsPicture" type="button" class="ns-seg device-action" data-view="picture" aria-pressed="false" disabled>Picture</button>
+        <button id="nsGif" type="button" class="ns-seg device-action" data-view="gif" aria-pressed="false" disabled>GIF</button>
       </div>
-      <div class="row">
-        <button id="clockSendOnce" type="button" class="btn device-action" disabled>Send once</button>
-        <label class="inline">
-          <input id="clockSync" type="checkbox" class="device-action" disabled />
-          Keep synced (every 60s)
-        </label>
-      </div>
-      <p id="clockStatus" class="statusline" role="status"></p>
-    </section>
+      <span id="nsState" class="ns-state">unknown</span>
+      <span id="syncBadge" class="sync-badge" hidden>Syncing &middot; every 60s</span>
+    </div>
 
-    <!-- IMAGE -->
-    <section class="panel" data-panel="image" hidden>
-      <h2>Image</h2>
-      <div class="image-grid">
-        <div class="image-controls">
-          <div id="imageDrop" class="dropzone">
-            <p>Drop an image here, or</p>
-            <label class="btn">Choose file
-              <input id="imageFile" type="file" accept="image/*" hidden />
+    <!-- Content sub-nav: three sources that map 1:1 to the three device views -->
+    <nav class="tabs" role="tablist" aria-label="LCD content">
+      <button class="tab" role="tab" data-tab="clock" aria-selected="true">Clock</button>
+      <button class="tab" role="tab" data-tab="picture" aria-selected="false">Picture</button>
+      <button class="tab" role="tab" data-tab="gif" aria-selected="false">GIF</button>
+    </nav>
+
+    <!-- Gate: shown while disconnected, explains what Connect unlocks -->
+    <div id="lcdGate" class="gate" hidden>
+      <p>Connect your AL80 to edit what&rsquo;s on the LCD.</p>
+      <button id="gateConnect" type="button" class="btn primary">Connect</button>
+    </div>
+
+    <main class="panels">
+      <!-- CLOCK -->
+      <section class="panel" data-panel="clock">
+        <h2>Clock</h2>
+        <p class="muted">Push the current time to the LCD. Keep it synced to fight drift.</p>
+        <div class="row">
+          <label>Time
+            <input id="clockTime" type="time" step="1" />
+          </label>
+          <label>Date
+            <input id="clockDate" type="date" />
+          </label>
+          <label class="inline">
+            <input id="clock12hr" type="checkbox" />
+            12-hour format
+          </label>
+        </div>
+        <div class="row">
+          <button id="clockSendOnce" type="button" class="btn primary device-action" disabled>Send &amp; show</button>
+          <label class="inline">
+            <input id="clockSync" type="checkbox" class="device-action" disabled />
+            Keep synced (every 60s)
+          </label>
+        </div>
+        <p id="clockStatus" class="statusline" role="status"></p>
+      </section>
+
+      <!-- PICTURE (was "Image") -->
+      <section class="panel" data-panel="picture" hidden>
+        <h2>Picture</h2>
+        <div class="image-grid">
+          <div class="image-controls">
+            <div id="imageDrop" class="dropzone">
+              <p>Drop an image here, or</p>
+              <label class="btn">Choose file
+                <input id="imageFile" type="file" accept="image/*" hidden />
+              </label>
+              <p id="imageName" class="muted small"></p>
+            </div>
+
+            <label>Fit
+              <select id="imageFit">
+                <option value="cover" selected>Cover (fill, crop)</option>
+                <option value="contain">Contain (letterbox)</option>
+                <option value="stretch">Stretch</option>
+              </select>
             </label>
-            <p id="imageName" class="muted small"></p>
+
+            <label>Brightness <output id="imageBrightnessOut">100%</output>
+              <input id="imageBrightness" type="range" min="0" max="200" value="100" />
+            </label>
+            <label>Contrast <output id="imageContrastOut">100%</output>
+              <input id="imageContrast" type="range" min="0" max="200" value="100" />
+            </label>
+            <label>Saturation <output id="imageSaturationOut">100%</output>
+              <input id="imageSaturation" type="range" min="0" max="200" value="100" />
+            </label>
+
+            <div class="row">
+              <label class="inline"><input id="imageGray" type="checkbox" /> Grayscale</label>
+              <label class="inline"><input id="imageDither" type="checkbox" /> Dither</label>
+            </div>
           </div>
 
-          <label>Fit
-            <select id="imageFit">
-              <option value="cover" selected>Cover (fill, crop)</option>
-              <option value="contain">Contain (letterbox)</option>
-              <option value="stretch">Stretch</option>
-            </select>
-          </label>
-
-          <label>Brightness <output id="imageBrightnessOut">100%</output>
-            <input id="imageBrightness" type="range" min="0" max="200" value="100" />
-          </label>
-          <label>Contrast <output id="imageContrastOut">100%</output>
-            <input id="imageContrast" type="range" min="0" max="200" value="100" />
-          </label>
-          <label>Saturation <output id="imageSaturationOut">100%</output>
-            <input id="imageSaturation" type="range" min="0" max="200" value="100" />
-          </label>
-
-          <div class="row">
-            <label class="inline"><input id="imageGray" type="checkbox" /> Grayscale</label>
-            <label class="inline"><input id="imageDither" type="checkbox" /> Dither</label>
-          </div>
-
-          <button id="imageSend" type="button" class="btn primary device-action" disabled>Send to device</button>
-          <div class="progress" id="imageProgressWrap" hidden>
-            <div class="progress-bar" id="imageProgress"></div>
-          </div>
-          <p id="imageStatus" class="statusline" role="status"></p>
-        </div>
-
-        <div class="image-preview">
-          <p class="muted small">Preview (112&times;137, 3&times;)</p>
-          <div class="preview-frame">
-            <img id="imagePreview" width="336" height="411" alt="Image preview" />
+          <div class="image-preview">
+            <p class="muted small">Preview (112&times;137, 3&times;)</p>
+            <div class="preview-frame">
+              <img id="imagePreview" width="336" height="411" alt="Image preview" />
+            </div>
+            <button id="imageSend" type="button" class="btn primary block device-action" disabled>Send &amp; show</button>
+            <div class="progress" id="imageProgressWrap" hidden>
+              <div class="progress-bar" id="imageProgress"></div>
+            </div>
+            <p id="imageStatus" class="statusline" role="status"></p>
           </div>
         </div>
-      </div>
-    </section>
 
-    <!-- GIF -->
-    <section class="panel" data-panel="gif" hidden>
-      <h2>GIF</h2>
-      <p class="experimental">EXPERIMENTAL — the GIF wire path isn't capture-verified. Try the still-image path first.</p>
-      <div class="row">
-        <label class="btn">Choose GIF
-          <input id="gifFile" type="file" accept="image/gif" hidden />
+        <div class="danger-zone">
+          <span class="danger-label">Danger</span>
+          <button id="clearPicture" type="button" class="btn danger device-action" disabled>Clear stored picture</button>
+          <span class="muted small">erases pictures on the keyboard</span>
+        </div>
+      </section>
+
+      <!-- GIF -->
+      <section class="panel" data-panel="gif" hidden>
+        <h2>GIF</h2>
+        <p class="experimental">EXPERIMENTAL — the GIF wire path isn&rsquo;t capture-verified. Try the still-image path first.</p>
+        <div class="row">
+          <label class="btn">Choose GIF
+            <input id="gifFile" type="file" accept="image/gif" hidden />
+          </label>
+          <span id="gifName" class="muted small"></span>
+        </div>
+        <p id="gifCount" class="muted"></p>
+        <label>FPS <output id="gifFpsOut">30</output>
+          <input id="gifFps" type="range" min="1" max="60" value="30" />
         </label>
-        <span id="gifName" class="muted small"></span>
-      </div>
-      <p id="gifCount" class="muted"></p>
-      <label>FPS <output id="gifFpsOut">30</output>
-        <input id="gifFps" type="range" min="1" max="60" value="30" />
-      </label>
-      <div class="row">
-        <button id="gifSend" type="button" class="btn primary device-action" disabled>Send</button>
-      </div>
-      <div class="progress" id="gifProgressWrap" hidden>
-        <div class="progress-bar" id="gifProgress"></div>
-      </div>
-      <p id="gifStatus" class="statusline" role="status"></p>
-    </section>
+        <div class="row">
+          <button id="gifSend" type="button" class="btn primary device-action" disabled>Send &amp; show</button>
+        </div>
+        <div class="progress" id="gifProgressWrap" hidden>
+          <div class="progress-bar" id="gifProgress"></div>
+        </div>
+        <p id="gifStatus" class="statusline" role="status"></p>
 
-    <!-- VIEW -->
-    <section class="panel" data-panel="view" hidden>
-      <h2>View</h2>
-      <p class="muted">Switch what the LCD shows.</p>
-      <div class="row">
-        <button id="viewHome" type="button" class="btn device-action" disabled>Homepage</button>
-        <button id="viewPicture" type="button" class="btn device-action" disabled>Picture</button>
-        <button id="viewGif" type="button" class="btn device-action" disabled>GIF</button>
-      </div>
-      <h3>Danger zone</h3>
-      <p class="muted small">These wipe stored data on the keyboard and can't be undone.</p>
-      <div class="row">
-        <button id="clearPicture" type="button" class="btn danger device-action" disabled>Clear picture</button>
-        <button id="clearGif" type="button" class="btn danger device-action" disabled>Clear GIF</button>
-      </div>
-      <p id="viewStatus" class="statusline" role="status"></p>
-    </section>
+        <div class="danger-zone">
+          <span class="danger-label">Danger</span>
+          <button id="clearGif" type="button" class="btn danger device-action" disabled>Clear stored GIF</button>
+          <span class="muted small">erases the GIF on the keyboard</span>
+        </div>
+      </section>
+    </main>
 
-    <!-- SHORTCUTS -->
-    <section class="panel" data-panel="shortcuts" hidden>
-      <h2>Shortcuts</h2>
-      <p class="muted">Browse VIA keycodes and move keymaps in and out. No live key-grid editor yet.</p>
+    <!-- Device log — collapsed by default, logs every command sent -->
+    <details id="deviceLog" class="device-log">
+      <summary>Device log <span id="logCount" class="log-count">0</span></summary>
+      <div class="log-toolbar">
+        <span class="muted small">Every command this app sends. The device is write-only, so there are no replies to show.</span>
+        <button id="logClear" type="button" class="btn small">Clear log</button>
+      </div>
+      <ol id="logList" class="log-list" aria-live="polite"></ol>
+    </details>
+  </div>
+
+  <!-- ============================ KEYMAP ============================ -->
+  <div class="section" data-section-panel="keymap" hidden>
+    <section class="panel">
+      <h2>Keymap</h2>
+      <p class="offline-note">Offline tool — builds a VIA keymap JSON file. Doesn&rsquo;t touch your keyboard, so no connection needed.</p>
       <div class="row">
         <label class="btn">Import keymap JSON
           <input id="keymapImport" type="file" accept="application/json,.json" hidden />
@@ -171,7 +202,7 @@
         <div id="presetCatalog" class="preset-catalog"></div>
       </div>
     </section>
-  </main>
+  </div>
 </div>
 
 <script type="module" src="src/ui.js"></script>
