@@ -323,7 +323,13 @@ function setupImageTab() {
     const ok = await sendWithProgress(statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
     }, { gap: 0 });
-    if (ok) setStatus(statusEl, 'Image sent.', 'ok');
+    if (ok) {
+      // The upload only lands in the picture slot — switch the LCD to the picture
+      // view so it's actually shown (otherwise you keep seeing the clock).
+      setStatus(statusEl, 'Showing image…');
+      await sendWithProgress(statusEl, proto.buildView(proto.VIEW.PICTURE), () => {}, { gap: 1 });
+      setStatus(statusEl, 'Image sent and displayed.', 'ok');
+    }
     setTimeout(() => { wrap.hidden = true; }, 800);
   });
 }
@@ -379,7 +385,11 @@ function setupGifTab() {
     const ok = await sendWithProgress(statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
     }, { gap: 0 });
-    if (ok) setStatus(statusEl, 'GIF sent (experimental).', 'ok');
+    if (ok) {
+      setStatus(statusEl, 'Showing GIF…');
+      await sendWithProgress(statusEl, proto.buildView(proto.VIEW.GIF), () => {}, { gap: 1 });
+      setStatus(statusEl, 'GIF sent and displayed (experimental).', 'ok');
+    }
     setTimeout(() => { wrap.hidden = true; }, 800);
   });
 }
