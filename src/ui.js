@@ -145,6 +145,23 @@ async function sendWithProgress(label, statusEl, packets, onFraction, opts = {})
   }
 }
 
+// GIF/animation send with the vendor's per-bank/per-frame pacing (hid.sendGif). Chunking would
+// break that timing, so this is separate from sendWithProgress. The device needs those pauses to
+// commit each bank; without them, GIFs render as garbage bars. Slower on purpose (seconds).
+async function sendGifWithProgress(label, statusEl, packets, onFraction) {
+  const start = performance.now();
+  try {
+    await hid.sendGif(packets, onFraction);
+    devLog(label, { packets: packets.length, ok: true, ms: performance.now() - start });
+    return true;
+  } catch (err) {
+    const msg = (err && err.message) || String(err);
+    devLog(label, { packets: packets.length, error: msg });
+    if (statusEl) setStatus(statusEl, 'Send failed: ' + msg, 'err');
+    return false;
+  }
+}
+
 // ---- init -------------------------------------------------------------------
 function init() {
   if (!hid.isSupported()) {
@@ -631,10 +648,10 @@ function setupGifTab() {
     const kept = frames.length;
     wrap.hidden = false;
     bar.style.width = '0%';
-    setStatus(statusEl, `Sending ${packets.length} packets (${kept} frame${kept === 1 ? '' : 's'} @ ${fps.value} fps)…`);
-    const ok = await sendWithProgress(dest === 'main' ? 'GIF → main page' : 'GIF → gif page', statusEl, packets, (f) => {
+    setStatus(statusEl, `Sending ${packets.length} packets (${kept} frame${kept === 1 ? '' : 's'} @ ${fps.value} fps) — paced, takes a few seconds…`);
+    const ok = await sendGifWithProgress(dest === 'main' ? 'GIF → main page' : 'GIF → gif page', statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
-    }, { gap: 0 });
+    });
     if (ok) {
       const capNote = total > kept ? ` (kept the first ${kept} of ${total})` : '';
       if (dest === 'main') {

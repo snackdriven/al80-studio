@@ -222,6 +222,52 @@ export async function send(packets, { gap = 0 } = {}) {
 }
 
 /**
+ * Send a mode-GIF/animation transfer with the VENDOR'S EXACT PACING. The device needs time to
+ * commit each 1024-byte bank; sent back-to-back, banks overwrite each other and the GIF renders
+ * as garbage bars (this is why blasting the vendor's own bytes failed). Decoded from `Ur`:
+ *   - 30ms after the initial setup
+ *   - after each per-frame header (0x10 sub 3): 3000ms on frame 0 / every 16th, else 30ms
+ *   - 30ms after each bank (the 16-byte block at offset 0x3F0)
+ *   - 30ms after each finish setup (type 0x12 / 0x13)
+ * Use for buildMainPageGif / buildGifPage / buildStartupAnimation output.
+ * @param {(Uint8Array|number[])[]} packets
+ * @param {(fraction: number) => void} [onFraction]
+ */
+export async function sendGif(packets, onFraction) {
+  if (!device || !device.opened) throw new Error('Not connected. Call connect() before sendGif().');
+  const start = (typeof performance !== 'undefined' ? performance : Date).now();
+  let sent = 0;
+  let frameIdx = -1;
+  for (const packet of packets) {
+    const src = packet instanceof Uint8Array ? packet : Uint8Array.from(packet);
+    const body = new Uint8Array(SEND_LEN);
+    body.set(src.subarray(0, SEND_LEN));
+    try {
+      await device.sendReport(0, body);
+    } catch (err) {
+      throw new Error(
+        `Write failed after ${sent} packet(s): ${err && err.message ? err.message : err}. ` +
+          'Close the yunzii-game.com tab and VIA, then reconnect.',
+      );
+    }
+    sent++;
+    const magic = src[7] === 0xa5 && src[8] === 0x5a;
+    const type = src[9];
+    if (src[0] === 0x41 && magic && type === 0x10 && src[11] === 3) {
+      frameIdx++;
+      await sleep(frameIdx % 16 === 0 ? 3000 : 30); // per-frame header; big pause on frame 0 / every 16th
+    } else if (src[0] === 0x41 && !magic && (src[1] | (src[2] << 8)) === 0x3f0 && src[3] === 0x10) {
+      await sleep(30); // end of a 1024-byte bank
+    } else if (src[0] === 0x41 && magic && (type === 0x12 || type === 0x13)) {
+      await sleep(30); // initial setup + finish setups
+    }
+    if (onFraction) onFraction(sent / packets.length);
+  }
+  const ms = (typeof performance !== 'undefined' ? performance : Date).now() - start;
+  return { sent, ms };
+}
+
+/**
  * Close the open device. Safe to call when nothing is open.
  * @returns {Promise<void>}
  */
