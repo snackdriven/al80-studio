@@ -230,31 +230,60 @@ function ctrl(op, type, flag, subcmd, extra, reqLen) {
  */
 export const MP_MAX_FRAMES = 42; // vendor caps mode-2 GIFs at 42 frames
 
-export function buildMainPageGif(frames, fps = 30) {
-  if (!frames.length) throw new Error('buildMainPageGif: no frames');
-  if (frames.length > MP_MAX_FRAMES) frames = frames.slice(0, MP_MAX_FRAMES);
-  fps = Math.max(1, Math.min(60, Math.round(fps) || 30)); // clamp to the vendor's 1..60
+// Startup animation = mode 0: full-screen ANIMATED GIF (the "skull" is one). 96x160, up to 64 frames.
+export const SA_W = 96;
+export const SA_H = 160;
+export const SA_FRAME_BYTES = SA_W * SA_H * 2; // 30720
+export const SA_MAX_FRAMES = 64;
+
+/**
+ * Shared mode-based GIF/animation builder. The vendor uses one wire format with a MODE byte:
+ *   mode 0 = startup animation (96x160, cap 64) · mode 2 = main page (96x64, cap 42).
+ * Only the mode byte, per-frame dimensions, and frame count differ. Structure:
+ *   announce(0x12,mode) -> setup(0x13,mode) -> per frame [header(0x10) + length(0x11) + banks]
+ *   -> finish(0x12, mode+COUNT) + finish(0x13, mode+FPS) + 0x42.
+ * @param {Uint8Array[]} frames  each `frameBytes` long (w*h*2 RGB565 big-endian)
+ */
+function buildModeGif(frames, fps, mode, frameBytes, maxFrames) {
+  if (!frames.length) throw new Error('buildModeGif: no frames');
+  if (frames.length > maxFrames) frames = frames.slice(0, maxFrames);
+  fps = Math.max(1, Math.min(60, Math.round(fps) || 30));
+  const lenHi = (frameBytes >> 8) & 0xff, lenLo = frameBytes & 0xff; // per-frame byte length, big-endian
+  const lenCrc = ga([0x11, lenHi, lenLo]);
   const packets = [
-    ctrl(0x40, 0x12, 0, 2, [2, 0], 16), // announce (mode 2)
-    ctrl(0x41, 0x13, 0, 2, [2, 0], 16), // setup
+    ctrl(0x40, 0x12, 0, 2, [mode, 0], 16), // announce
+    ctrl(0x41, 0x13, 0, 2, [mode, 0], 16), // setup
   ];
   for (const frame of frames) {
-    if (frame.length !== MP_FRAME_BYTES) throw new Error(`main-page frame must be ${MP_FRAME_BYTES} bytes, got ${frame.length}`);
-    packets.push(ctrl(0x41, 0x10, 0, 3, [2, 2], 17)); // per-frame header
-    packets.push(ctrl(0x41, 0x11, 0x30, 0x00, [], 14)); // per-frame length (0x30 = mode-2 param)
-    for (let base = 0; base < MP_FRAME_BYTES; base += MP_BANK) {
-      for (let i = 0; i < MP_FULL_BLOCKS; i++) {
+    if (frame.length !== frameBytes) throw new Error(`mode-${mode} frame must be ${frameBytes} bytes, got ${frame.length}`);
+    packets.push(ctrl(0x41, 0x10, 0, 3, [mode, 2], 17)); // per-frame header
+    packets.push(build(0x41, [0xa5, 0x5a, 0x11, lenHi, lenLo, lenCrc[0], lenCrc[1]], [0, 0], 14)); // per-frame length
+    for (let base = 0; base < frameBytes; base += MP_BANK) {
+      const remain = frameBytes - base;
+      const full = Math.min(MP_FULL_BLOCKS, Math.floor(remain / BLOCK));
+      for (let i = 0; i < full; i++) {
         const off = i * BLOCK;
         packets.push(build(0x41, Array.from(frame.subarray(base + off, base + off + BLOCK)), [off & 0xff, (off >> 8) & 0xff], 63));
       }
-      const off16 = MP_FULL_BLOCKS * BLOCK; // 1008 = 0x3F0
-      packets.push(build(0x41, Array.from(frame.subarray(base + off16, base + off16 + 16)), [off16 & 0xff, (off16 >> 8) & 0xff], 23));
+      const off16 = full * BLOCK;
+      const tail = Math.min(16, remain - off16);
+      if (tail > 0) packets.push(build(0x41, Array.from(frame.subarray(base + off16, base + off16 + tail)), [off16 & 0xff, (off16 >> 8) & 0xff], 7 + tail));
     }
   }
-  packets.push(ctrl(0x41, 0x12, 0, 2, [2, frames.length & 0xff], 16)); // finish: FRAME COUNT
-  packets.push(ctrl(0x41, 0x13, 0, 2, [2, fps & 0xff], 16)); // finish: FPS
+  packets.push(ctrl(0x41, 0x12, 0, 2, [mode, frames.length & 0xff], 16)); // finish: FRAME COUNT
+  packets.push(ctrl(0x41, 0x13, 0, 2, [mode, fps & 0xff], 16)); // finish: FPS
   packets.push(finish());
   return packets;
+}
+
+/** Main page (mode 2): 96x64, up to 42 frames. */
+export function buildMainPageGif(frames, fps = 30) {
+  return buildModeGif(frames, fps, 2, MP_FRAME_BYTES, MP_MAX_FRAMES);
+}
+
+/** Startup animation (mode 0): full-screen animated GIF, 96x160, up to 64 frames — replaces the boot GIF. */
+export function buildStartupAnimation(frames, fps = 30) {
+  return buildModeGif(frames, fps, 0, SA_FRAME_BYTES, SA_MAX_FRAMES);
 }
 
 /** Save a single still image to the main page (a 1-frame mode-2 GIF). frame = 96x64 RGB565 BE. */
