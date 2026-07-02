@@ -6,6 +6,7 @@ import {
   yne, ga, build, announce, finish, rgb565BE, buildImageTransfer, buildClock, clockFromDate,
   buildView, VIEW, FRAME_BYTES, BLOCK_COUNT, toHex,
   buildMainPageGif, buildMainPageImage, MP_FRAME_BYTES, MP_MAX_FRAMES,
+  buildGifPage, buildStartupAnimation, GP_FRAME_BYTES, SA_FRAME_BYTES,
 } from '../src/protocol.js';
 
 let pass = 0;
@@ -43,18 +44,19 @@ ok('image announce is byte-identical to the captured one', () => {
   assert.equal(hex(a).startsWith('40 00 00 08 cf 02 00 a5 5a 10 00 01 c5 b1 01'), true, hex(a));
 });
 
-ok('still-image transfer = announce + setup + 548 data + finish; setup matches capture', () => {
+ok('still-image transfer (96x160) = announce + setup + 548x56 + 1x32 tail + finish', () => {
   const pkts = buildImageTransfer(new Uint8Array(FRAME_BYTES));
-  assert.equal(pkts.length, 1 + 1 + BLOCK_COUNT + 1); // 551 (announce, setup, 548, finish)
+  assert.equal(pkts.length, 1 + 1 + BLOCK_COUNT + 1); // 552 (announce, setup, 549 data, finish)
   assert.equal(hex(pkts[1]).startsWith('41 00 00 07 21 03 00 a5 5a 0c 78 00 c3 93'), true, hex(pkts[1]));
   const data = pkts.slice(2, -1);
-  assert.equal(data.length, 548);
+  assert.equal(data.length, BLOCK_COUNT); // 549
   data.forEach((p, k) => {
     assert.equal(p[0], 0x41);
-    assert.equal(p[3], 0x38); // 56
+    assert.equal(p[3], k < 548 ? 0x38 : 0x20); // 548 full 56-byte blocks + one 32-byte tail
     assert.equal(p[1] | (p[2] << 8), k * 56); // offset little-endian
   });
-  assert.equal((data.at(-1)[1] | (data.at(-1)[2] << 8)), 30632);
+  assert.equal((data.at(-1)[1] | (data.at(-1)[2] << 8)), 30688); // tail block offset
+  assert.equal(data.at(-1)[3], 0x20); // 32-byte tail
   assert.equal(hex(pkts.at(-1)).startsWith('42 00 00 38 7a'), true); // finish
   // every checksum recomputes
   for (const p of data) {
@@ -121,13 +123,29 @@ ok('main-page: frame count in finish-18, fps clamped 1..60, 42-frame cap', () =>
   assert.equal(many.at(-2)[15], 60); // fps clamped to 60
 });
 
+ok('GIF page (mode 1, 96x160 banked) control packets are byte-identical to the live capture', () => {
+  const p = buildGifPage([new Uint8Array(GP_FRAME_BYTES), new Uint8Array(GP_FRAME_BYTES)], 30);
+  assert.equal(hex(p[0]).startsWith('40 00 00 09 b1 01 00 a5 5a 12 00 02 04 50 01 00'), true, hex(p[0])); // announce mode 1
+  assert.equal(hex(p[1]).startsWith('41 00 00 09 24 02 00 a5 5a 13 00 02 c4 01 01 00'), true, hex(p[1])); // setup19 mode 1
+  assert.equal(hex(p[2]).startsWith('41 00 00 0a 94 01 00 a5 5a 10 00 03 04 30 02 01'), true, hex(p[2])); // header [02, mode=1]
+  assert.equal(hex(p[3]).startsWith('41 00 00 07 98 02 00 a5 5a 11 78 00 c5 03'), true, hex(p[3])); // length 0x7800 = 96x160
+  // 2 frames * (2 setup + 30 banks * 19 blocks) + 2 head + 3 tail
+  assert.equal(p.length, 2 + 2 * (2 + 30 * 19) + 3);
+});
+
+ok('per-frame header is [0x02, mode]: main=02,02  gif-page=02,01  startup=02,00', () => {
+  assert.equal(buildMainPageGif([new Uint8Array(MP_FRAME_BYTES)], 30)[2][15], 2);
+  assert.equal(buildGifPage([new Uint8Array(GP_FRAME_BYTES)], 30)[2][15], 1);
+  assert.equal(buildStartupAnimation([new Uint8Array(SA_FRAME_BYTES)], 30)[2][15], 0);
+});
+
 // Optional: cross-check block structure against the real sibling capture, if present.
 const cap = '../al80-lcd/research/image_capture/testpattern_capture_raw.json';
 if (existsSync(cap)) {
   ok('block offsets match the real testpattern capture', () => {
     const recs = JSON.parse(readFileSync(cap, 'utf8'))
       .map((r) => r.hex.split(' ').map((x) => parseInt(x, 16)))
-      .filter((b) => b[0] === 0x41 && (b[3] === 0x38 || b[3] === 0x10) && !(b[7] === 0xa5 && b[8] === 0x5a));
+      .filter((b) => b[0] === 0x41 && (b[3] === 0x38 || b[3] === 0x20) && !(b[7] === 0xa5 && b[8] === 0x5a));
     const capOffsets = [...new Set(recs.map((b) => b[1] | (b[2] << 8)))].sort((a, b) => a - b);
     const mine = buildImageTransfer(new Uint8Array(FRAME_BYTES)).slice(2, -1).map((p) => p[1] | (p[2] << 8));
     assert.deepEqual(mine, capOffsets);

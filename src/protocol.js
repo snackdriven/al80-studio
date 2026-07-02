@@ -5,18 +5,20 @@
 // Decoded and verified in the sibling al80-lcd repo (AL80_KNOWLEDGE_BASE.md sections 5-14):
 //   bytes[4,5] = yne  = 16-bit additive checksum, little-endian
 //   announce bytes[12,13] = ga = CRC16-MODBUS (init 0xFFFF, poly 0xA001), big-endian
-//   display 112x137, RGB565 big-endian, 30,688 bytes = 548 x 56-byte blocks
+//   picture page 96x160, RGB565 big-endian, 30,720 bytes = 548 x 56-byte blocks + 1 x 32-byte tail
 // Where our capture and the site source disagreed, the capture wins (this file follows it).
+// (The old "112x137/30688" was a misread: our first analysis dropped the 32-byte tail block, so
+//  the last 16 pixels were missing and still images never rendered. Live capture proved 96x160.)
 
 export const VID = 0x28e9;
 export const PID = 0x30af;
 export const USAGE_PAGE = 0xff60;
 export const USAGE = 0x61;
-export const WIDTH = 112;
-export const HEIGHT = 137;
-export const FRAME_BYTES = WIDTH * HEIGHT * 2; // 30688
+export const WIDTH = 96;
+export const HEIGHT = 160;
+export const FRAME_BYTES = WIDTH * HEIGHT * 2; // 30720
 export const BLOCK = 56;
-export const BLOCK_COUNT = FRAME_BYTES / BLOCK; // 548
+export const BLOCK_COUNT = Math.ceil(FRAME_BYTES / BLOCK); // 549 (548 full 56-byte + 1 partial 32-byte)
 const REPORT = 64;
 
 /** 16-bit additive checksum of `bytes`, returned little-endian: [low, high]. (yne) */
@@ -102,16 +104,24 @@ export function buildImageSetup() {
   return build(0x41, [0xa5, 0x5a, 0x0c, 0x78, 0x00, crc[0], crc[1]], [0, 0], 14);
 }
 
-/** Build the full still-image transfer: announce -> setup -> 548 data -> finish. */
+/**
+ * Data blocks for a frame: sequential 56-byte blocks with a final PARTIAL block.
+ * byte[3] carries each block's real length, so a 30,720-byte frame = 548x56 + 1x32 (the tail
+ * block our old code dropped, which is why still images never rendered).
+ */
+function dataBlocks(frame) {
+  const out = [];
+  for (let off = 0; off < frame.length; off += BLOCK) {
+    const chunk = frame.subarray(off, Math.min(off + BLOCK, frame.length));
+    out.push(build(0x41, Array.from(chunk), le16(off), 7 + chunk.length));
+  }
+  return out;
+}
+
+/** Build the full still-image transfer (picture page, 96x160): announce -> setup -> 548x56 + 1x32 -> finish. */
 export function buildImageTransfer(frame) {
   if (frame.length !== FRAME_BYTES) throw new Error(`frame must be ${FRAME_BYTES} bytes, got ${frame.length}`);
-  const packets = [announce(0x10, 0, 0x01, [0x01]), buildImageSetup()];
-  for (let k = 0; k < BLOCK_COUNT; k++) {
-    const off = k * BLOCK;
-    packets.push(build(0x41, Array.from(frame.subarray(off, off + BLOCK)), le16(off), 63));
-  }
-  packets.push(finish());
-  return packets;
+  return [announce(0x10, 0, 0x01, [0x01]), buildImageSetup(), ...dataBlocks(frame), finish()];
 }
 
 // ---- clock + date (sent 3x; §5b/§5c/§5f) ------------------------------------
@@ -191,10 +201,7 @@ export function buildGifTransfer(frames, fps, mode = 0) {
     const lenBE = [(FRAME_BYTES >> 8) & 0xff, FRAME_BYTES & 0xff];
     const lcrc = ga([0x11, lenBE[0], lenBE[1]]);
     packets.push(build(0x41, [0xa5, 0x5a, 0x11, lenBE[0], lenBE[1], lcrc[0], lcrc[1]], [0, 0], 14));
-    for (let k = 0; k < BLOCK_COUNT; k++) {
-      const off = k * BLOCK;
-      packets.push(build(0x41, Array.from(frame.subarray(off, off + BLOCK)), le16(off), 63));
-    }
+    for (const p of dataBlocks(frame)) packets.push(p);
   });
   packets.push(announce(0x12, 0, 0x02, [mode, frames.length & 0xff])); // FRAME COUNT in trailing byte
   packets.push(announce(0x13, 0, 0x02, [mode, fps & 0xff])); // FPS in trailing byte
@@ -256,7 +263,7 @@ function buildModeGif(frames, fps, mode, frameBytes, maxFrames) {
   ];
   for (const frame of frames) {
     if (frame.length !== frameBytes) throw new Error(`mode-${mode} frame must be ${frameBytes} bytes, got ${frame.length}`);
-    packets.push(ctrl(0x41, 0x10, 0, 3, [mode, 2], 17)); // per-frame header
+    packets.push(ctrl(0x41, 0x10, 0, 3, [0x02, mode], 17)); // per-frame header = [0x02, mode] (capture-verified)
     packets.push(build(0x41, [0xa5, 0x5a, 0x11, lenHi, lenLo, lenCrc[0], lenCrc[1]], [0, 0], 14)); // per-frame length
     for (let base = 0; base < frameBytes; base += MP_BANK) {
       const remain = frameBytes - base;
@@ -284,6 +291,16 @@ export function buildMainPageGif(frames, fps = 30) {
 /** Startup animation (mode 0): full-screen animated GIF, 96x160, up to 64 frames — replaces the boot GIF. */
 export function buildStartupAnimation(frames, fps = 30) {
   return buildModeGif(frames, fps, 0, SA_FRAME_BYTES, SA_MAX_FRAMES);
+}
+
+// GIF page = mode 1: the separate GIF view, 96x160 banked (30 banks/frame), up to 160 frames.
+// Capture-verified (announce mode byte 0x01, length 0x7800, header [0x02,0x01]).
+export const GP_W = 96;
+export const GP_H = 160;
+export const GP_FRAME_BYTES = GP_W * GP_H * 2; // 30720
+export const GP_MAX_FRAMES = 160;
+export function buildGifPage(frames, fps = 30) {
+  return buildModeGif(frames, fps, 1, GP_FRAME_BYTES, GP_MAX_FRAMES);
 }
 
 /** Save a single still image to the main page (a 1-frame mode-2 GIF). frame = 96x64 RGB565 BE. */

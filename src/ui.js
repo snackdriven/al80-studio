@@ -411,9 +411,9 @@ function setupImageTab() {
       previewImg.style.width = '288px'; previewImg.style.height = '192px'; // inline beats the #imagePreview CSS rule
       destNote.textContent = 'Shows on the home screen — the display path this firmware renders.';
     } else {
-      previewLabel.innerHTML = 'Preview (112&times;137 picture page)';
-      previewImg.style.width = '224px'; previewImg.style.height = '274px';
-      destNote.textContent = 'Separate picture view — may not display on your firmware (page-switch is unsupported on the ripple build).';
+      previewLabel.innerHTML = 'Preview (96&times;160 picture page)';
+      previewImg.style.width = '144px'; previewImg.style.height = '240px';
+      destNote.textContent = 'Full-screen still image on the picture page — the upload shows it as an image-only view.';
     }
     refreshPreview();
   }
@@ -534,7 +534,7 @@ function setupGifTab() {
   // Destination drives decode resolution, frame cap, and preview box size.
   const dims = () => readDest() === 'main'
     ? { w: proto.MP_W, h: proto.MP_H, max: proto.MP_MAX_FRAMES, disp: [288, 192] }
-    : { w: proto.WIDTH, h: proto.HEIGHT, max: 60, disp: [224, 274] };
+    : { w: proto.GP_W, h: proto.GP_H, max: proto.GP_MAX_FRAMES, disp: [144, 240] }; // gif page: 96x160
 
   function stopPreview() {
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
@@ -585,7 +585,7 @@ function setupGifTab() {
   function applyDest() {
     destNote.textContent = readDest() === 'main'
       ? 'Plays on the home screen — the display path this firmware renders (96×64, up to 42 frames).'
-      : 'Separate GIF view (112×137) — may not display on your firmware (the page-switch is unsupported on the ripple build).';
+      : 'Separate GIF page (96×160, up to 160 frames) — a full-screen animated GIF view.';
     if (currentFile) decodeAndPreview(); // re-decode at the new resolution
   }
   $$('input[name="gifDest"]').forEach((r) => r.addEventListener('change', applyDest));
@@ -622,7 +622,7 @@ function setupGifTab() {
     }
     let packets;
     try {
-      packets = dest === 'main' ? proto.buildMainPageGif(frames, +fps.value) : proto.buildGifTransfer(frames, +fps.value);
+      packets = dest === 'main' ? proto.buildMainPageGif(frames, +fps.value) : proto.buildGifPage(frames, +fps.value);
     } catch (err) {
       setStatus(statusEl, 'Build failed: ' + ((err && err.message) || err), 'err');
       return;
