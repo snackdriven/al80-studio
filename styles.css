@@ -318,6 +318,83 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   border-radius: 6px;
 }
 
+/* Slideshow strip */
+.slide-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+.slide-strip:empty::before {
+  content: "No slides yet — add images above.";
+  color: var(--muted);
+  font-size: 13px;
+}
+.slide-thumb {
+  position: relative;
+  width: 72px;
+  height: 120px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+}
+.slide-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.slide-idx {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 11px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-variant-numeric: tabular-nums;
+}
+.slide-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+.slide-remove:hover { background: var(--danger); color: #fff; }
+.slide-reorder {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.5);
+}
+.slide-move {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+.slide-move:hover:not(:disabled) { background: var(--accent); color: #0c1017; }
+.slide-move:disabled { opacity: 0.3; cursor: not-allowed; }
+
 /* Destination toggle (main page vs separate view) */
 .dest-toggle {
   display: flex;

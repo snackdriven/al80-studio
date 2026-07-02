@@ -15,6 +15,7 @@ import * as keymap from './keymap.js';
 // ---- tiny DOM helpers -------------------------------------------------------
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function setStatus(el, msg, kind = '') {
   el.textContent = msg || '';
@@ -106,8 +107,11 @@ function reflectConnection() {
   });
   const gate = $('#lcdGate');
   if (gate) gate.hidden = connected;
-  // if we just disconnected, stop clock sync
-  if (!connected) stopClockSync();
+  // if we just disconnected, stop clock sync and any running slideshow cycle
+  if (!connected) {
+    stopClockSync();
+    slideshowCtl.stop();
+  }
 }
 
 // Wrap a device action: catch errors (incl. the single-opener one), log, surface.
@@ -176,6 +180,7 @@ function init() {
   setupClockTab();
   setupImageTab();
   setupGifTab();
+  setupSlideshowTab();
   setupClearActions();
   setupKeymap();
   setupEasterEgg();
@@ -267,6 +272,15 @@ const gifVisible = () =>
   document.querySelector('#app')?.dataset.section === 'lcd' &&
   document.querySelector('.panel[data-panel="gif"]')?.hidden === false;
 
+// The Slideshow auto-cycle runs a setInterval that fires "next picture" on the device.
+// It must never run while the panel is hidden or the device is disconnected, so the
+// tab/section/connection handlers stop it (mirrors gifPreviewCtl). setupSlideshowTab
+// fills in stop(). slideshowVisible() tells the handlers whether the panel is showing.
+const slideshowCtl = { stop() {} };
+const slideshowVisible = () =>
+  document.querySelector('#app')?.dataset.section === 'lcd' &&
+  document.querySelector('.panel[data-panel="slideshow"]')?.hidden === false;
+
 // ---- top-level sections (LCD / Keymap) --------------------------------------
 function setupSections() {
   const app = $('#app');
@@ -279,6 +293,7 @@ function setupSections() {
       btns.forEach((x) => x.setAttribute('aria-selected', String(x === b)));
       panels.forEach((p) => { p.hidden = p.dataset.sectionPanel !== name; });
       if (gifVisible()) gifPreviewCtl.start(); else gifPreviewCtl.stop();
+      if (!slideshowVisible()) slideshowCtl.stop();
     });
   });
 }
@@ -293,6 +308,7 @@ function setupTabs() {
       tabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
       panels.forEach((p) => { p.hidden = p.dataset.panel !== name; });
       if (name === 'gif') gifPreviewCtl.start(); else gifPreviewCtl.stop();
+      if (name !== 'slideshow') slideshowCtl.stop();
     });
   });
 }
@@ -677,6 +693,287 @@ function setupGifTab() {
     }
     setTimeout(() => { wrap.hidden = true; }, 800);
   });
+}
+
+// ---- slideshow --------------------------------------------------------------
+// Uploads up to 16 stills to the device's picture slots (they accumulate), then
+// host-drives an auto-cycle: a timer fires buildView(PICTURE) ("next picture") at
+// the chosen interval. Clear the slots first so the slideshow is exactly the picks.
+function setupSlideshowTab() {
+  const MAX = 16;
+  const statusEl = $('#slideStatus');
+  const strip = $('#slideStrip');
+  const counter = $('#slideCounter');
+  const fileInput = $('#slideFile');
+  const drop = $('#slideDrop');
+  const readout = $('#slideCurrent');
+  const brightnessOut = $('#slideBrightnessOut');
+  const intervalEl = $('#slideInterval');
+  const intervalOut = $('#slideIntervalOut');
+  const playBtn = $('#slidePlay');
+  const wrap = $('#slideProgressWrap');
+  const bar = $('#slideProgress');
+
+  const controls = {
+    fit: $('#slideFit'),
+    brightness: $('#slideBrightness'),
+    gray: $('#slideGray'),
+  };
+
+  let slides = [];       // [{ file, url }] — url is a 96x160 device-accurate thumbnail
+  let cycleTimer = null; // setInterval handle; non-null == playing
+  let currentIdx = 0;    // which slide the device is showing (readout only)
+  let renderToken = 0;   // guards debounced thumbnail re-renders against races
+
+  // Slideshow only uses fit / brightness / grayscale (percent -> factor for brightness).
+  function readOpts() {
+    return {
+      fit: controls.fit.value,
+      brightness: +controls.brightness.value / 100,
+      grayscale: controls.gray.checked,
+    };
+  }
+
+  const isPlaying = () => cycleTimer !== null;
+
+  function updateCounter() { counter.textContent = `${slides.length}/${MAX}`; }
+  function updateCurrent() {
+    readout.textContent = slides.length
+      ? `Slide ${(currentIdx % slides.length) + 1} of ${slides.length}`
+      : 'No slides';
+  }
+
+  function stopCycle() {
+    if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
+    playBtn.textContent = 'Play';
+  }
+  slideshowCtl.stop = stopCycle;
+
+  // The device keeps cycling the pictures uploaded at the last Send; editing the strip
+  // (remove/reorder) doesn't reach the device until the next Send. So pause the cycle on any
+  // edit and tell the user to re-Send — otherwise the "Slide X of N" readout lies.
+  function onStripEdit() {
+    if (isPlaying()) { stopCycle(); setStatus(statusEl, 'Edited — press Send to apply the new order.'); }
+  }
+
+  function startCycle() {
+    stopCycle();
+    if (!slides.length || !connected) return;
+    playBtn.textContent = 'Pause';
+    const period = Math.max(1, +intervalEl.value || 1) * 1000;
+    cycleTimer = setInterval(async () => {
+      // Never advance while hidden or disconnected — stop and bail.
+      if (!slideshowVisible() || !connected) { stopCycle(); return; }
+      currentIdx = (currentIdx + 1) % slides.length;
+      updateCurrent();
+      await guardedSend('Slideshow → next', statusEl, proto.buildView(proto.VIEW.PICTURE));
+    }, period);
+  }
+
+  // Rebuild the whole strip from `slides`. Each thumb: image, index, remove (×),
+  // and ◀/▶ reorder that swap with the neighbour.
+  function renderStrip() {
+    strip.innerHTML = '';
+    slides.forEach((slide, i) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'slide-thumb';
+
+      const img = document.createElement('img');
+      img.src = slide.url;
+      img.alt = `Slide ${i + 1}`;
+      thumb.appendChild(img);
+
+      const idx = document.createElement('span');
+      idx.className = 'slide-idx';
+      idx.textContent = String(i + 1);
+      thumb.appendChild(idx);
+
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'slide-remove';
+      rm.textContent = '×';
+      rm.title = 'Remove';
+      rm.addEventListener('click', () => {
+        onStripEdit();
+        slides.splice(i, 1);
+        if (i < currentIdx || currentIdx >= slides.length) currentIdx = Math.max(0, Math.min(currentIdx - (i < currentIdx ? 1 : 0), slides.length - 1));
+        if (!slides.length) stopCycle();
+        renderStrip();
+      });
+      thumb.appendChild(rm);
+
+      const nav = document.createElement('div');
+      nav.className = 'slide-reorder';
+      const left = document.createElement('button');
+      left.type = 'button';
+      left.className = 'slide-move';
+      left.textContent = '◀';
+      left.title = 'Move left';
+      left.disabled = i === 0;
+      left.addEventListener('click', () => {
+        if (i === 0) return;
+        onStripEdit();
+        [slides[i - 1], slides[i]] = [slides[i], slides[i - 1]];
+        renderStrip();
+      });
+      const right = document.createElement('button');
+      right.type = 'button';
+      right.className = 'slide-move';
+      right.textContent = '▶';
+      right.title = 'Move right';
+      right.disabled = i === slides.length - 1;
+      right.addEventListener('click', () => {
+        if (i === slides.length - 1) return;
+        onStripEdit();
+        [slides[i + 1], slides[i]] = [slides[i], slides[i + 1]];
+        renderStrip();
+      });
+      nav.append(left, right);
+      thumb.appendChild(nav);
+
+      strip.appendChild(thumb);
+    });
+    updateCounter();
+    updateCurrent();
+  }
+
+  async function addFiles(fileList) {
+    const files = Array.from(fileList).filter((f) => f.type.startsWith('image/'));
+    if (!files.length) { setStatus(statusEl, 'No image files found — pick PNG/JPG/GIF images.', 'err'); return; }
+    const opts = readOpts();
+    let added = 0;
+    let skipped = 0;
+    for (const file of files) {
+      if (slides.length >= MAX) { skipped++; continue; }
+      try {
+        const url = await image.previewDataURL(file, opts);
+        slides.push({ file, url });
+        added++;
+      } catch (err) {
+        setStatus(statusEl, 'Could not read ' + file.name + ': ' + ((err && err.message) || err), 'err');
+      }
+    }
+    renderStrip();
+    if (skipped > 0) setStatus(statusEl, `Added ${added}. Slot limit is ${MAX}; skipped ${skipped}.`, 'err');
+    else if (added) setStatus(statusEl, `Added ${added} slide${added === 1 ? '' : 's'}.`);
+  }
+
+  // Re-render every thumbnail when the global opts change (debounced).
+  let rerenderTimer = null;
+  async function rerenderThumbs() {
+    const token = ++renderToken;
+    const opts = readOpts();
+    for (const slide of slides) {
+      try {
+        const url = await image.previewDataURL(slide.file, opts);
+        if (token !== renderToken) return; // superseded
+        slide.url = url;
+      } catch { /* keep the old thumbnail */ }
+    }
+    if (token !== renderToken) return;
+    renderStrip();
+  }
+  function scheduleRerender() {
+    clearTimeout(rerenderTimer);
+    rerenderTimer = setTimeout(rerenderThumbs, 150);
+  }
+
+  controls.fit.addEventListener('change', scheduleRerender);
+  controls.gray.addEventListener('change', scheduleRerender);
+  controls.brightness.addEventListener('input', () => {
+    brightnessOut.textContent = controls.brightness.value + '%';
+    scheduleRerender();
+  });
+  intervalEl.addEventListener('input', () => {
+    intervalOut.textContent = intervalEl.value + 's';
+    if (isPlaying()) startCycle(); // re-time in place
+  });
+
+  fileInput.addEventListener('change', (e) => { addFiles(e.target.files); fileInput.value = ''; });
+
+  ['dragenter', 'dragover'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('dragover'); }));
+  ['dragleave', 'drop'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('dragover'); }));
+  drop.addEventListener('drop', (e) => {
+    if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
+  });
+
+  // Send slideshow: clear slots -> upload each still (200ms gap between so the device
+  // commits each) -> show picture 1 -> start the auto-cycle. Guarded against re-entry so a
+  // second Send (or Play mid-upload) can't interleave writes to the write-only device.
+  const sendBtn = $('#slideSend');
+  const nextBtn = $('#slideNext');
+  let sending = false;
+  const setBusy = (busy) => {
+    sending = busy;
+    sendBtn.disabled = nextBtn.disabled = playBtn.disabled = busy || !connected;
+  };
+  sendBtn.addEventListener('click', async () => {
+    if (sending) return;
+    if (!slides.length) { setStatus(statusEl, 'Add at least one image first.', 'err'); return; }
+    if (!connected) { setStatus(statusEl, 'Connect first.', 'err'); return; }
+    stopCycle();
+    setBusy(true);
+    wrap.hidden = false;
+    bar.style.width = '0%';
+    const opts = readOpts();
+    const n = slides.length;
+    try {
+      setStatus(statusEl, 'Clearing picture slots…');
+      if (!(await guardedSend('Clear pictures', statusEl, proto.buildClearPicture(), { gap: 2 }))) return;
+      for (let i = 0; i < n; i++) {
+        setStatus(statusEl, `Uploading slide ${i + 1} of ${n}…`);
+        let frame;
+        try { frame = await image.imageToFrame(slides[i].file, opts); }
+        catch (err) { setStatus(statusEl, `Render failed on slide ${i + 1}: ` + ((err && err.message) || err), 'err'); return; }
+        let packets;
+        try { packets = proto.buildImageTransfer(frame); }
+        catch (err) { setStatus(statusEl, `Build failed on slide ${i + 1}: ` + ((err && err.message) || err), 'err'); return; }
+        // Accumulate progress across all slides: slide i contributes [i/n, (i+1)/n).
+        const ok = await sendWithProgress(`Slideshow slide ${i + 1}/${n}`, statusEl, packets, (f) => {
+          bar.style.width = Math.round(((i + f) / n) * 100) + '%';
+        }, { gap: 0 });
+        if (!ok) return;
+        if (i < n - 1) await sleep(200); // let the device commit each picture
+      }
+      setStatus(statusEl, 'Showing slideshow…');
+      currentIdx = 0;
+      updateCurrent();
+      await guardedSend('Slideshow → show', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+      setNowShowing('picture');
+      setBusy(false); // re-enable before starting the cycle
+      startCycle();
+      setStatus(statusEl, `Slideshow running — ${n} slide${n === 1 ? '' : 's'}, ${intervalEl.value}s each.`, 'ok');
+    } finally {
+      setBusy(false);
+      setTimeout(() => { wrap.hidden = true; }, 800);
+    }
+  });
+
+  playBtn.addEventListener('click', () => {
+    if (isPlaying()) {
+      stopCycle();
+      setStatus(statusEl, 'Paused.');
+    } else {
+      if (!slides.length) { setStatus(statusEl, 'Add slides first.', 'err'); return; }
+      startCycle();
+      setStatus(statusEl, 'Playing.', 'ok');
+    }
+  });
+
+  $('#slideNext').addEventListener('click', async () => {
+    if (!slides.length) return;
+    currentIdx = (currentIdx + 1) % slides.length;
+    updateCurrent();
+    await guardedSend('Slideshow → next', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+  });
+
+  // initial read-outs
+  brightnessOut.textContent = controls.brightness.value + '%';
+  intervalOut.textContent = intervalEl.value + 's';
+  updateCounter();
+  updateCurrent();
 }
 
 // ---- clear actions (moved into Picture / GIF editors) -----------------------

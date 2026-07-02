@@ -46,6 +46,7 @@
       <button class="tab" role="tab" data-tab="clock" aria-selected="true">Clock</button>
       <button class="tab" role="tab" data-tab="picture" aria-selected="false">Picture</button>
       <button class="tab" role="tab" data-tab="gif" aria-selected="false">GIF</button>
+      <button class="tab" role="tab" data-tab="slideshow" aria-selected="false">Slideshow</button>
     </nav>
 
     <!-- Gate: shown while disconnected, explains what Connect unlocks -->
@@ -180,6 +181,54 @@
           <button id="clearGif" type="button" class="btn danger device-action" disabled>Clear stored GIF</button>
           <span class="muted small">erases the GIF on the keyboard</span>
         </div>
+      </section>
+
+      <!-- SLIDESHOW -->
+      <section class="panel" data-panel="slideshow" hidden>
+        <h2>Slideshow</h2>
+        <p class="muted">Upload up to 16 stills to the picture slots and auto-cycle them on the LCD.</p>
+
+        <div id="slideDrop" class="dropzone">
+          <p>Drop images here, or</p>
+          <label class="btn">Choose files
+            <input id="slideFile" type="file" accept="image/*" multiple hidden />
+          </label>
+          <p class="muted small"><span id="slideCounter">0/16</span> slots used</p>
+        </div>
+
+        <div id="slideStrip" class="slide-strip"></div>
+
+        <div class="row">
+          <label>Fit
+            <select id="slideFit">
+              <option value="cover" selected>Cover (fill, crop)</option>
+              <option value="contain">Contain (letterbox)</option>
+              <option value="stretch">Stretch</option>
+            </select>
+          </label>
+          <label>Brightness <output id="slideBrightnessOut">100%</output>
+            <input id="slideBrightness" type="range" min="0" max="200" value="100" />
+          </label>
+          <label class="inline"><input id="slideGray" type="checkbox" /> Grayscale</label>
+        </div>
+
+        <div class="row">
+          <label>Interval <output id="slideIntervalOut">5s</output>
+            <input id="slideInterval" type="range" min="1" max="30" value="5" />
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="slideSend" type="button" class="btn primary device-action" disabled>Send slideshow</button>
+          <button id="slidePlay" type="button" class="btn device-action" disabled>Play</button>
+          <button id="slideNext" type="button" class="btn device-action" disabled>Next</button>
+          <span id="slideCurrent" class="muted small">No slides</span>
+        </div>
+
+        <div class="progress" id="slideProgressWrap" hidden>
+          <div class="progress-bar" id="slideProgress"></div>
+        </div>
+        <p id="slideStatus" class="statusline" role="status"></p>
       </section>
     </main>
 
