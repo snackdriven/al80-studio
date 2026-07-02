@@ -293,11 +293,29 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 }
 #imagePreview {
   display: block;
-  width: 336px;
-  height: 411px;
+  width: 288px;
+  height: 192px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   background: #000;
+}
+
+/* GIF live preview (96x64 main-page frames, played at the selected FPS) */
+.gif-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 12px 0;
+}
+#gifPreview {
+  width: 288px;
+  height: 192px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 /* Progress */

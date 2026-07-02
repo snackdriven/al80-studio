@@ -199,6 +199,66 @@ export function buildGifTransfer(frames, fps, mode = 0) {
   return packets;
 }
 
+// ---- MAIN PAGE (the display that actually renders on the ripple firmware) ----
+// Decoded from a live capture of the vendor app's "Save GIF to main page". The main page
+// is a MODE-2 GIF at 96x64 (NOT 112x137). Regular picture/GIF uploads store to slots the
+// firmware won't display; only the main-page path shows. Structure:
+//   announce(type 0x12, mode 2) -> setup(0x13) -> per frame [header(0x10) + length(0x11) + data]
+//   -> finish(0x12 with FRAME COUNT) + finish(0x13 with FPS) + 0x42
+// Each frame = 96*64*2 = 12,288 bytes = 12 banks of 1024 (18 x 56-byte blocks + one 16-byte
+// block, packet offset resetting 0..0x3F0 per bank; the device advances the bank implicitly).
+
+export const MP_W = 96;
+export const MP_H = 64;
+export const MP_FRAME_BYTES = MP_W * MP_H * 2; // 12288
+const MP_BANK = 1024;
+const MP_FULL_BLOCKS = 18; // 18 x 56 + 1 x 16 = 1024
+
+/** 0x40/0x41 control packet with an A5 5A payload and an explicit length marker (byte[3]). */
+function ctrl(op, type, flag, subcmd, extra, reqLen) {
+  const crc = ga([type, flag, subcmd]);
+  return build(op, [0xa5, 0x5a, type, flag, subcmd, crc[0], crc[1], ...extra], [0, 0], reqLen);
+}
+
+/**
+ * Build a "save to main page" GIF transfer (the path that displays).
+ * @param {Uint8Array[]} frames  each exactly MP_FRAME_BYTES (96x64 RGB565 big-endian)
+ * @param {number} fps           1..60 (default 30)
+ */
+export const MP_MAX_FRAMES = 42; // vendor caps mode-2 GIFs at 42 frames
+
+export function buildMainPageGif(frames, fps = 30) {
+  if (!frames.length) throw new Error('buildMainPageGif: no frames');
+  if (frames.length > MP_MAX_FRAMES) frames = frames.slice(0, MP_MAX_FRAMES);
+  fps = Math.max(1, Math.min(60, Math.round(fps) || 30)); // clamp to the vendor's 1..60
+  const packets = [
+    ctrl(0x40, 0x12, 0, 2, [2, 0], 16), // announce (mode 2)
+    ctrl(0x41, 0x13, 0, 2, [2, 0], 16), // setup
+  ];
+  for (const frame of frames) {
+    if (frame.length !== MP_FRAME_BYTES) throw new Error(`main-page frame must be ${MP_FRAME_BYTES} bytes, got ${frame.length}`);
+    packets.push(ctrl(0x41, 0x10, 0, 3, [2, 2], 17)); // per-frame header
+    packets.push(ctrl(0x41, 0x11, 0x30, 0x00, [], 14)); // per-frame length (0x30 = mode-2 param)
+    for (let base = 0; base < MP_FRAME_BYTES; base += MP_BANK) {
+      for (let i = 0; i < MP_FULL_BLOCKS; i++) {
+        const off = i * BLOCK;
+        packets.push(build(0x41, Array.from(frame.subarray(base + off, base + off + BLOCK)), [off & 0xff, (off >> 8) & 0xff], 63));
+      }
+      const off16 = MP_FULL_BLOCKS * BLOCK; // 1008 = 0x3F0
+      packets.push(build(0x41, Array.from(frame.subarray(base + off16, base + off16 + 16)), [off16 & 0xff, (off16 >> 8) & 0xff], 23));
+    }
+  }
+  packets.push(ctrl(0x41, 0x12, 0, 2, [2, frames.length & 0xff], 16)); // finish: FRAME COUNT
+  packets.push(ctrl(0x41, 0x13, 0, 2, [2, fps & 0xff], 16)); // finish: FPS
+  packets.push(finish());
+  return packets;
+}
+
+/** Save a single still image to the main page (a 1-frame mode-2 GIF). frame = 96x64 RGB565 BE. */
+export function buildMainPageImage(frame) {
+  return buildMainPageGif([frame], 1);
+}
+
 /** Serialize a logical packet (64-byte body) to the capture-schema hex string, for tests/logs. */
 export function toHex(pkt) {
   return Array.from(pkt, (b) => b.toString(16).padStart(2, '0')).join(' ');

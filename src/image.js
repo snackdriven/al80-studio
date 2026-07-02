@@ -11,7 +11,7 @@
 //                   -> [optional] Floyd-Steinberg dither snapped to 5/6/5 levels
 //                   -> getImageData -> protocol.rgb565BE -> Uint8Array(30688)
 
-import { WIDTH, HEIGHT, FRAME_BYTES, rgb565BE } from './protocol.js';
+import { WIDTH, HEIGHT, FRAME_BYTES, MP_W, MP_H, MP_FRAME_BYTES, rgb565BE } from './protocol.js';
 
 /**
  * @typedef {Object} ImageOpts
@@ -224,23 +224,23 @@ function ditherFloydSteinberg(data, w, h) {
  * @param {ImageOpts} [opts]
  * @returns {Promise<Uint8ClampedArray>}
  */
-async function renderRGBA(source, opts = {}) {
+async function renderRGBA(source, opts = {}, w = WIDTH, h = HEIGHT) {
   const o = { ...DEFAULTS, ...opts };
-  const canvas = makeCanvas(WIDTH, HEIGHT);
+  const canvas = makeCanvas(w, h);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('image.js: could not get a 2D context.');
 
   const { drawable, close } = await decodeSource(source);
   try {
     ctx.filter = filterString(o);
-    fitDraw(ctx, drawable, WIDTH, HEIGHT, o.fit, o.padColor);
+    fitDraw(ctx, drawable, w, h, o.fit, o.padColor);
     ctx.filter = 'none';
   } finally {
     close();
   }
 
-  const img = ctx.getImageData(0, 0, WIDTH, HEIGHT);
-  if (o.dither) ditherFloydSteinberg(img.data, WIDTH, HEIGHT);
+  const img = ctx.getImageData(0, 0, w, h);
+  if (o.dither) ditherFloydSteinberg(img.data, w, h);
   return img.data;
 }
 
@@ -260,12 +260,29 @@ export async function imageToFrame(source, opts = {}) {
 }
 
 /**
+ * Turn any image source into a MAIN-PAGE frame: 96x64 RGB565-BE (12,288 bytes).
+ * The main page is the only surface that actually displays on the AL80's firmware,
+ * so this — not imageToFrame — is what "Send & show" should use.
+ * @param {File|Blob|HTMLImageElement|ImageBitmap} source
+ * @param {ImageOpts} [opts]
+ * @returns {Promise<Uint8Array>}  exactly MP_FRAME_BYTES long
+ */
+export async function imageToMainPageFrame(source, opts = {}) {
+  const rgba = await renderRGBA(source, opts, MP_W, MP_H);
+  const frame = rgb565BE(rgba);
+  if (frame.length !== MP_FRAME_BYTES) {
+    throw new Error(`imageToMainPageFrame: expected ${MP_FRAME_BYTES} bytes, produced ${frame.length}`);
+  }
+  return frame;
+}
+
+/**
  * Expand a 30,688-byte RGB565-BE frame back to RGBA (the real, quantized colours).
  * @param {Uint8Array} frame
  * @returns {Uint8ClampedArray}  length WIDTH*HEIGHT*4
  */
-function frameToRGBA(frame) {
-  const out = new Uint8ClampedArray(WIDTH * HEIGHT * 4);
+export function frameToRGBA(frame) {
+  const out = new Uint8ClampedArray((frame.length / 2) * 4);
   for (let i = 0, o = 0; i < frame.length; i += 2, o += 4) {
     const v = (frame[i] << 8) | frame[i + 1];
     out[o] = expand5(v >> 11);
@@ -304,5 +321,22 @@ export async function previewDataURL(source, opts = {}) {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('image.js: could not get a 2D context for preview.');
   ctx.putImageData(new ImageData(rgba, WIDTH, HEIGHT), 0, 0);
+  return await canvasToDataURL(canvas);
+}
+
+/**
+ * Preview of exactly what the MAIN-PAGE upload will send: 96x64, round-tripped through
+ * RGB565 so the quantization (and dither) match the device.
+ * @param {File|Blob|HTMLImageElement|ImageBitmap} source
+ * @param {ImageOpts} [opts]
+ * @returns {Promise<string>}
+ */
+export async function previewMainPageDataURL(source, opts = {}) {
+  const frame = await imageToMainPageFrame(source, opts);
+  const rgba = frameToRGBA(frame);
+  const canvas = makeCanvas(MP_W, MP_H);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('image.js: could not get a 2D context for preview.');
+  ctx.putImageData(new ImageData(rgba, MP_W, MP_H), 0, 0);
   return await canvasToDataURL(canvas);
 }

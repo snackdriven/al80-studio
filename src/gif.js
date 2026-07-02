@@ -8,7 +8,7 @@
 // Chromium-based browsers, needs a secure context (https / localhost), and is not
 // available in Firefox or Safari as of mid-2026. When absent we throw a clear error.
 
-import { WIDTH, HEIGHT, FRAME_BYTES, rgb565BE } from './protocol.js';
+import { WIDTH, HEIGHT, rgb565BE } from './protocol.js';
 
 const BROWSER_REQ =
   'ImageDecoder (WebCodecs) is unavailable. Animated GIF import needs a Chromium-based ' +
@@ -57,15 +57,15 @@ async function openDecoder(file) {
  * @param {CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D} ctx
  * @param {VideoFrame} frame
  */
-function coverDrawVideoFrame(ctx, frame) {
-  const sw = frame.displayWidth || frame.codedWidth || WIDTH;
-  const sh = frame.displayHeight || frame.codedHeight || HEIGHT;
+function coverDrawVideoFrame(ctx, frame, w, h) {
+  const sw = frame.displayWidth || frame.codedWidth || w;
+  const sh = frame.displayHeight || frame.codedHeight || h;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  const scale = Math.max(WIDTH / sw, HEIGHT / sh);
+  const scale = Math.max(w / sw, h / sh);
   const dw = sw * scale;
   const dh = sh * scale;
-  ctx.drawImage(frame, (WIDTH - dw) / 2, (HEIGHT - dh) / 2, dw, dh);
+  ctx.drawImage(frame, (w - dw) / 2, (h - dh) / 2, dw, dh);
 }
 
 /**
@@ -94,11 +94,12 @@ export async function gifFrameCount(file) {
  * @param {{maxFrames?: number}} [opts]
  * @returns {Promise<Uint8Array[] & {frameCount:number, truncated:boolean, note:string}>}
  */
-export async function gifToFrames(file, { maxFrames = 64 } = {}) {
+export async function gifToFrames(file, { maxFrames = 64, width = WIDTH, height = HEIGHT } = {}) {
   const decoder = await openDecoder(file);
-  const canvas = makeCanvas(WIDTH, HEIGHT);
+  const canvas = makeCanvas(width, height);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('gif.js: could not get a 2D context.');
+  const expectBytes = width * height * 2;
 
   try {
     const track = decoder.tracks.selectedTrack;
@@ -110,11 +111,11 @@ export async function gifToFrames(file, { maxFrames = 64 } = {}) {
     for (let i = 0; i < n; i++) {
       const { image } = await decoder.decode({ frameIndex: i });
       try {
-        coverDrawVideoFrame(ctx, image);
-        const rgba = ctx.getImageData(0, 0, WIDTH, HEIGHT).data;
+        coverDrawVideoFrame(ctx, image, width, height);
+        const rgba = ctx.getImageData(0, 0, width, height).data;
         const frame = rgb565BE(rgba);
-        if (frame.length !== FRAME_BYTES) {
-          throw new Error(`gif.js: frame ${i} produced ${frame.length} bytes, expected ${FRAME_BYTES}`);
+        if (frame.length !== expectBytes) {
+          throw new Error(`gif.js: frame ${i} produced ${frame.length} bytes, expected ${expectBytes}`);
         }
         frames.push(frame);
       } finally {

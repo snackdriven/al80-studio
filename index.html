@@ -1,6 +1,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>AL80 Studio</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20rx='3'%20fill='%2314161a'/%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='7'%20rx='1'%20fill='%237cc4ff'/%3E%3Crect%20x='6'%20y='12'%20width='4'%20height='1.5'%20rx='.75'%20fill='%233a3f47'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="styles.css" />
 
 <div id="app" data-section="lcd">
@@ -118,9 +119,9 @@
           </div>
 
           <div class="image-preview">
-            <p class="muted small">Preview (112&times;137, 3&times;)</p>
+            <p class="muted small">Preview (96&times;64 main page, 3&times;)</p>
             <div class="preview-frame">
-              <img id="imagePreview" width="336" height="411" alt="Image preview" />
+              <img id="imagePreview" width="288" height="192" alt="Image preview" />
             </div>
             <button id="imageSend" type="button" class="btn primary block device-action" disabled>Send &amp; show</button>
             <div class="progress" id="imageProgressWrap" hidden>
@@ -140,7 +141,7 @@
       <!-- GIF -->
       <section class="panel" data-panel="gif" hidden>
         <h2>GIF</h2>
-        <p class="experimental">EXPERIMENTAL — the GIF wire path isn&rsquo;t capture-verified. Try the still-image path first.</p>
+        <p class="muted small">Saves to the main page (96&times;64, up to 42 frames) &mdash; the display path this firmware actually renders.</p>
         <div class="row">
           <label class="btn">Choose GIF
             <input id="gifFile" type="file" accept="image/gif" hidden />
@@ -148,6 +149,10 @@
           <span id="gifName" class="muted small"></span>
         </div>
         <p id="gifCount" class="muted"></p>
+        <div class="gif-preview-wrap">
+          <canvas id="gifPreview" width="96" height="64" aria-label="GIF preview at selected FPS"></canvas>
+          <span class="muted small">live preview at the selected FPS</span>
+        </div>
         <label>FPS <output id="gifFpsOut">30</output>
           <input id="gifFps" type="range" min="1" max="60" value="30" />
         </label>

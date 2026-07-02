@@ -231,6 +231,14 @@ function setupHeader() {
   } catch { /* ignore */ }
 }
 
+// The GIF preview runs a setInterval; the tab/section handlers pause it when the GIF
+// panel isn't visible so it doesn't keep repainting a hidden canvas. setupGifTab fills
+// these in. gifVisible() tells the handlers whether the GIF panel is currently showing.
+const gifPreviewCtl = { start() {}, stop() {} };
+const gifVisible = () =>
+  document.querySelector('#app')?.dataset.section === 'lcd' &&
+  document.querySelector('.panel[data-panel="gif"]')?.hidden === false;
+
 // ---- top-level sections (LCD / Keymap) --------------------------------------
 function setupSections() {
   const app = $('#app');
@@ -242,6 +250,7 @@ function setupSections() {
       app.dataset.section = name;
       btns.forEach((x) => x.setAttribute('aria-selected', String(x === b)));
       panels.forEach((p) => { p.hidden = p.dataset.sectionPanel !== name; });
+      if (gifVisible()) gifPreviewCtl.start(); else gifPreviewCtl.stop();
     });
   });
 }
@@ -255,6 +264,7 @@ function setupTabs() {
       const name = tab.dataset.tab;
       tabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
       panels.forEach((p) => { p.hidden = p.dataset.panel !== name; });
+      if (name === 'gif') gifPreviewCtl.start(); else gifPreviewCtl.stop();
     });
   });
 }
@@ -394,7 +404,7 @@ function setupImageTab() {
   async function refreshPreview() {
     if (!currentFile) return;
     try {
-      const url = await image.previewDataURL(currentFile, readOpts());
+      const url = await image.previewMainPageDataURL(currentFile, readOpts());
       previewImg.src = url;
     } catch (err) {
       setStatus(statusEl, 'Preview failed: ' + ((err && err.message) || err), 'err');
@@ -443,14 +453,16 @@ function setupImageTab() {
     setStatus(statusEl, 'Rendering frame…');
     let frame;
     try {
-      frame = await image.imageToFrame(currentFile, readOpts());
+      frame = await image.imageToMainPageFrame(currentFile, readOpts());
     } catch (err) {
       setStatus(statusEl, 'Render failed: ' + ((err && err.message) || err), 'err');
       return;
     }
     let packets;
     try {
-      packets = proto.buildImageTransfer(frame);
+      // The main page (96x64 mode-2 GIF) is the only surface that actually displays on
+      // this firmware. A still image is a 1-frame main-page GIF.
+      packets = proto.buildMainPageImage(frame);
     } catch (err) {
       setStatus(statusEl, 'Build failed: ' + ((err && err.message) || err), 'err');
       return;
@@ -458,16 +470,12 @@ function setupImageTab() {
     wrap.hidden = false;
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets…`);
-    const ok = await sendWithProgress('Picture upload', statusEl, packets, (f) => {
+    const ok = await sendWithProgress('Picture → main page', statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
     }, { gap: 0 });
     if (ok) {
-      // The upload only lands in the picture slot — switch the LCD to the picture
-      // view so it's actually shown (otherwise you keep seeing the clock).
-      setStatus(statusEl, 'Showing image…');
-      const shown = await guardedSend('View → Picture', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
-      if (shown) setNowShowing('picture');
-      setStatus(statusEl, 'Image sent and displayed.', 'ok');
+      setNowShowing('clock'); // main page = clock + your image
+      setStatus(statusEl, 'Saved to the main page — it should be showing now.', 'ok');
     }
     setTimeout(() => { wrap.hidden = true; }, 800);
   });
@@ -481,20 +489,61 @@ function setupGifTab() {
   const countEl = $('#gifCount');
   const fps = $('#gifFps');
   const fpsOut = $('#gifFpsOut');
+  const previewCanvas = $('#gifPreview');
+  const pctx = previewCanvas.getContext('2d');
   let currentFile = null;
+  let currentFrames = null;   // cached 96x64 RGB565 frames (reused by preview + send)
+  let previewImages = null;   // ImageData[] for the preview canvas
+  let playTimer = null;
+  let playIdx = 0;
+  let loadToken = 0;          // guards against out-of-order decodes on rapid re-selection
 
-  fps.addEventListener('input', () => { fpsOut.textContent = fps.value; });
+  function stopPreview() {
+    if (playTimer) { clearInterval(playTimer); playTimer = null; }
+  }
+  // reset=true restarts from frame 0 (new file); reset=false keeps position (re-timing / tab return).
+  function startPreview(reset = true) {
+    stopPreview();
+    if (!previewImages || !previewImages.length) return;
+    if (reset || playIdx >= previewImages.length) playIdx = 0;
+    const step = () => {
+      pctx.putImageData(previewImages[playIdx % previewImages.length], 0, 0);
+      playIdx++;
+    };
+    step(); // paint current frame immediately
+    if (previewImages.length > 1) {
+      playTimer = setInterval(step, Math.max(16, Math.round(1000 / (+fps.value || 1))));
+    }
+  }
+  gifPreviewCtl.start = () => startPreview(false);
+  gifPreviewCtl.stop = stopPreview;
+
+  fps.addEventListener('input', () => {
+    fpsOut.textContent = fps.value;
+    if (previewImages && previewImages.length > 1) startPreview(false); // re-time, keep position
+  });
 
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const token = ++loadToken;
     currentFile = file;
     nameEl.textContent = file.name;
-    countEl.textContent = 'Counting frames…';
+    countEl.textContent = 'Decoding…';
+    stopPreview();
+    currentFrames = null;
+    previewImages = null;
     try {
-      const n = await gif.gifFrameCount(file);
-      countEl.textContent = `${n} frame${n === 1 ? '' : 's'}`;
+      const frames = await gif.gifToFrames(file, { maxFrames: proto.MP_MAX_FRAMES, width: proto.MP_W, height: proto.MP_H });
+      if (token !== loadToken) return; // a newer file was picked mid-decode; drop this stale result
+      currentFrames = frames;
+      previewImages = frames.map((f) => new ImageData(image.frameToRGBA(f), proto.MP_W, proto.MP_H));
+      const total = frames.frameCount ?? frames.length;
+      const cap = total > proto.MP_MAX_FRAMES ? ` (keeping the first ${proto.MP_MAX_FRAMES})` : '';
+      countEl.textContent = `${total} frame${total === 1 ? '' : 's'}${cap}`;
+      startPreview(true);
     } catch (err) {
+      if (token !== loadToken) return;
       countEl.textContent = 'Could not read frames: ' + ((err && err.message) || err);
     }
   });
@@ -503,32 +552,35 @@ function setupGifTab() {
   const bar = $('#gifProgress');
   $('#gifSend').addEventListener('click', async () => {
     if (!currentFile) { setStatus(statusEl, 'Pick a GIF first.', 'err'); return; }
-    setStatus(statusEl, 'Decoding GIF…');
-    let frames;
-    try {
-      frames = await gif.gifToFrames(currentFile, { maxFrames: 60 });
-    } catch (err) {
-      setStatus(statusEl, 'Decode failed: ' + ((err && err.message) || err), 'err');
-      return;
+    let frames = currentFrames;
+    if (!frames) {
+      setStatus(statusEl, 'Decoding GIF…');
+      try {
+        frames = await gif.gifToFrames(currentFile, { maxFrames: proto.MP_MAX_FRAMES, width: proto.MP_W, height: proto.MP_H });
+      } catch (err) {
+        setStatus(statusEl, 'Decode failed: ' + ((err && err.message) || err), 'err');
+        return;
+      }
     }
     let packets;
     try {
-      packets = proto.buildGifTransfer(frames, +fps.value);
+      packets = proto.buildMainPageGif(frames, +fps.value);
     } catch (err) {
       setStatus(statusEl, 'Build failed: ' + ((err && err.message) || err), 'err');
       return;
     }
+    const total = frames.frameCount ?? frames.length; // original count; frames.length is already capped
+    const kept = frames.length;
     wrap.hidden = false;
     bar.style.width = '0%';
-    setStatus(statusEl, `Sending ${packets.length} packets (${frames.length} frames)…`);
-    const ok = await sendWithProgress('GIF upload', statusEl, packets, (f) => {
+    setStatus(statusEl, `Sending ${packets.length} packets (${kept} frame${kept === 1 ? '' : 's'} @ ${fps.value} fps)…`);
+    const ok = await sendWithProgress('GIF → main page', statusEl, packets, (f) => {
       bar.style.width = Math.round(f * 100) + '%';
     }, { gap: 0 });
     if (ok) {
-      setStatus(statusEl, 'Showing GIF…');
-      const shown = await guardedSend('View → GIF', statusEl, proto.buildView(proto.VIEW.GIF), { gap: 1 });
-      if (shown) setNowShowing('gif');
-      setStatus(statusEl, 'GIF sent and displayed (experimental).', 'ok');
+      setNowShowing('clock'); // main page = clock + your GIF
+      const capNote = total > kept ? ` (kept the first ${kept} of ${total})` : '';
+      setStatus(statusEl, `Saved GIF to the main page${capNote} — it should be playing now.`, 'ok');
     }
     setTimeout(() => { wrap.hidden = true; }, 800);
   });

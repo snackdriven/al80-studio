@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   yne, ga, build, announce, finish, rgb565BE, buildImageTransfer, buildClock, clockFromDate,
   buildView, VIEW, FRAME_BYTES, BLOCK_COUNT, toHex,
+  buildMainPageGif, buildMainPageImage, MP_FRAME_BYTES, MP_MAX_FRAMES,
 } from '../src/protocol.js';
 
 let pass = 0;
@@ -88,6 +89,36 @@ ok('view switch = homepage/picture/gif announce + finish', () => {
 ok('clockFromDate produces a valid 18-packet transfer', () => {
   const p = clockFromDate(new Date(2026, 6, 2, 15, 47, 9), true);
   assert.equal(p.length, 18);
+});
+
+ok('main-page GIF control packets are byte-identical to the live capture', () => {
+  const f = new Uint8Array(MP_FRAME_BYTES);
+  const p = buildMainPageGif([f, f], 4); // 2 frames, fps 4 (matches the capture's fps)
+  assert.equal(hex(p[0]).startsWith('40 00 00 09 b2 01 00 a5 5a 12 00 02 04 50 02 00'), true, hex(p[0])); // announce mode2
+  assert.equal(hex(p[1]).startsWith('41 00 00 09 25 02 00 a5 5a 13 00 02 c4 01 02 00'), true, hex(p[1])); // setup19
+  assert.equal(hex(p[2]).startsWith('41 00 00 0a 95 01 00 a5 5a 10 00 03 04 30 02 02'), true, hex(p[2])); // per-frame header
+  assert.equal(hex(p[3]).startsWith('41 00 00 07 82 02 00 a5 5a 11 30 00 c5 35'), true, hex(p[3])); // per-frame length (0x30)
+  assert.equal(hex(p.at(-2)).startsWith('41 00 00 09 29 02 00 a5 5a 13 00 02 c4 01 02 04'), true, hex(p.at(-2))); // fps=4
+  assert.equal(hex(p.at(-1)).startsWith('42 00 00 38 7a'), true); // finish
+});
+
+ok('main-page GIF structure: 12 banks/frame, offsets reset per 1024, 228 data blocks/frame', () => {
+  const p = buildMainPageGif([new Uint8Array(MP_FRAME_BYTES), new Uint8Array(MP_FRAME_BYTES)], 30);
+  assert.equal(p.length, 2 + 2 * (2 + 228) + 3); // 465
+  const data = p.slice(4, 4 + 228); // first frame's data blocks
+  assert.equal(data[0][1] | (data[0][2] << 8), 0);
+  assert.equal(data[17][3], 0x38); // 18th block is 56 bytes
+  assert.equal(data[18][1] | (data[18][2] << 8), 0x3f0); // 19th block at 0x3F0
+  assert.equal(data[18][3], 0x10); // ...and is 16 bytes
+  assert.equal(data[19][1] | (data[19][2] << 8), 0); // next bank resets to offset 0
+});
+
+ok('main-page: frame count in finish-18, fps clamped 1..60, 42-frame cap', () => {
+  const f = new Uint8Array(MP_FRAME_BYTES);
+  assert.equal(buildMainPageImage(f).at(-3)[15], 1); // still image = 1 frame
+  const many = buildMainPageGif(Array.from({ length: 50 }, () => f), 999);
+  assert.equal(many.at(-3)[15], MP_MAX_FRAMES); // count byte capped at 42
+  assert.equal(many.at(-2)[15], 60); // fps clamped to 60
 });
 
 // Optional: cross-check block structure against the real sibling capture, if present.
