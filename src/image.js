@@ -11,7 +11,7 @@
 //                   -> [optional] Floyd-Steinberg dither snapped to 5/6/5 levels
 //                   -> getImageData -> protocol.rgb565BE -> Uint8Array(30688)
 
-import { WIDTH, HEIGHT, FRAME_BYTES, MP_W, MP_H, MP_FRAME_BYTES, rgb565BE, rgb565BEColMajor } from './protocol.js';
+import { WIDTH, HEIGHT, FRAME_BYTES, MP_W, MP_H, MP_FRAME_BYTES, rgb565BE } from './protocol.js';
 
 /**
  * @typedef {Object} ImageOpts
@@ -252,8 +252,7 @@ async function renderRGBA(source, opts = {}, w = WIDTH, h = HEIGHT) {
  */
 export async function imageToFrame(source, opts = {}) {
   const rgba = await renderRGBA(source, opts);
-  // Picture page is the AttackShark-family image stream: column-major, not row-major.
-  const frame = rgb565BEColMajor(rgba, WIDTH, HEIGHT);
+  const frame = rgb565BE(rgba); // canonical row-major; buildImageTransfer transposes for the wire
   if (frame.length !== FRAME_BYTES) {
     throw new Error(`imageToFrame: expected ${FRAME_BYTES} bytes, produced ${frame.length}`);
   }

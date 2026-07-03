@@ -92,20 +92,21 @@ export function rgb565BE(rgba) {
 }
 
 /**
- * RGBA (row-major w×h from getImageData) -> RGB565 big-endian, packed COLUMN-major (x-first).
- * The AL80 screen is the AttackShark smart-display family, whose picture stream is column-major
- * (confirmed against the x85pro reference encoder: `for x: for y:`). Sending row-major shears a
- * photo into red/blue banding while leaving solids clean. Same 5-6-5 bit math as rgb565BE.
+ * Transpose a row-major RGB565 frame to COLUMN-major (x-first) for the picture stream.
+ * The AL80 screen is the AttackShark smart-display family, which scans column-major
+ * (confirmed against the x85pro reference encoder: `for x: for y:`). Row-major shears a
+ * photo into red/blue banding while leaving solids clean. Frames stay canonical row-major
+ * everywhere (previews, processing); only the wire is transposed, right before chunking.
+ * w*h*2 bytes in and out.
  */
-export function rgb565BEColMajor(rgba, w, h) {
-  const out = new Uint8Array(w * h * 2);
-  for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      const i = (y * w + x) * 4; // source pixel, row-major
-      const o = (x * h + y) * 2; // dest byte, column-major
-      const v = ((rgba[i] >> 3) << 11) | ((rgba[i + 1] >> 2) << 5) | (rgba[i + 2] >> 3);
-      out[o] = (v >> 8) & 0xff;
-      out[o + 1] = v & 0xff;
+export function transposeToColMajor(frame, w, h) {
+  const out = new Uint8Array(frame.length);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const src = (y * w + x) * 2;
+      const dst = (x * h + y) * 2;
+      out[dst] = frame[src];
+      out[dst + 1] = frame[src + 1];
     }
   }
   return out;
@@ -141,7 +142,8 @@ function dataBlocks(frame) {
 /** Build the full still-image transfer (picture page, 96x160): announce -> setup -> 548x56 + 1x32 -> finish. */
 export function buildImageTransfer(frame) {
   if (frame.length !== FRAME_BYTES) throw new Error(`frame must be ${FRAME_BYTES} bytes, got ${frame.length}`);
-  return [announce(0x10, 0, 0x01, [0x01]), buildImageSetup(), ...dataBlocks(frame), finish()];
+  const wire = transposeToColMajor(frame, WIDTH, HEIGHT); // column-major on the wire (AttackShark scan order)
+  return [announce(0x10, 0, 0x01, [0x01]), buildImageSetup(), ...dataBlocks(wire), finish()];
 }
 
 /**
@@ -303,6 +305,10 @@ function buildModeGif(frames, fps, mode, frameBytes, maxFrames) {
   ];
   frames.forEach((frame, fi) => {
     if (frame.length !== frameBytes) throw new Error(`mode-${mode} frame must be ${frameBytes} bytes, got ${frame.length}`);
+    // 96x160 animation pages scan column-major like the still picture page; the 96x64 main
+    // page is row-major. Transpose to wire order here (unconfirmed on-device for GIF, but
+    // consistent with the confirmed still-image fix — same module, same RGB565 stream).
+    const wire = frameBytes === SA_FRAME_BYTES ? transposeToColMajor(frame, SA_W, SA_H) : frame;
     // per-frame header = [0x02, mode, FRAME INDEX] — the frame index is the 10th payload byte
     // (header length byte is 0x0a=10). Dropping it made every frame index 0, so frames overwrote
     // each other and GIFs rendered white. Capture-verified: frame N's header checksum = base + N.
@@ -313,11 +319,11 @@ function buildModeGif(frames, fps, mode, frameBytes, maxFrames) {
       const full = Math.min(MP_FULL_BLOCKS, Math.floor(remain / BLOCK));
       for (let i = 0; i < full; i++) {
         const off = i * BLOCK;
-        packets.push(build(0x41, Array.from(frame.subarray(base + off, base + off + BLOCK)), [off & 0xff, (off >> 8) & 0xff], 63));
+        packets.push(build(0x41, Array.from(wire.subarray(base + off, base + off + BLOCK)), [off & 0xff, (off >> 8) & 0xff], 63));
       }
       const off16 = full * BLOCK;
       const tail = Math.min(16, remain - off16);
-      if (tail > 0) packets.push(build(0x41, Array.from(frame.subarray(base + off16, base + off16 + tail)), [off16 & 0xff, (off16 >> 8) & 0xff], 7 + tail));
+      if (tail > 0) packets.push(build(0x41, Array.from(wire.subarray(base + off16, base + off16 + tail)), [off16 & 0xff, (off16 >> 8) & 0xff], 7 + tail));
     }
   });
   packets.push(ctrl(0x41, 0x12, 0, 2, [mode, frames.length & 0xff], 16)); // finish: FRAME COUNT
