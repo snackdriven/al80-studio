@@ -124,6 +124,26 @@ export function buildImageTransfer(frame) {
   return [announce(0x10, 0, 0x01, [0x01]), buildImageSetup(), ...dataBlocks(frame), finish()];
 }
 
+/**
+ * Partial (region) update of the picture page: announce + setup + only the 56-byte data blocks
+ * covering the byte range [startOff, endOff), + finish. The device writes by offset, so blocks we
+ * don't send keep their previous pixels (proven on-device: a green frame + a partial red write left
+ * the green intact). This is the real-time path — redraw only what changed. startOff snaps down to
+ * a 56-byte block boundary. Flat/unpaced, like a still image.
+ */
+export function buildImageRegion(frame, startOff, endOff) {
+  if (frame.length !== FRAME_BYTES) throw new Error(`frame must be ${FRAME_BYTES} bytes, got ${frame.length}`);
+  const s = Math.max(0, startOff - (startOff % BLOCK));
+  const e = Math.min(FRAME_BYTES, endOff);
+  const packets = [announce(0x10, 0, 0x01, [0x01]), buildImageSetup()];
+  for (let off = s; off < e; off += BLOCK) {
+    const chunk = frame.subarray(off, Math.min(off + BLOCK, FRAME_BYTES));
+    packets.push(build(0x41, Array.from(chunk), le16(off), 7 + chunk.length));
+  }
+  packets.push(finish());
+  return packets;
+}
+
 // ---- clock + date (sent 3x; §5b/§5c/§5f) ------------------------------------
 
 /**

@@ -1,0 +1,11 @@
+{
+  "name": "al80-host",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Always-on host for the AL80 LCD. Reuses ../src/protocol.js. Mock transport + apps first; native node-hid transport later.",
+  "scripts": {
+    "demo": "node demo.js",
+    "test": "node test/roundtrip.test.mjs"
+  }
+}
