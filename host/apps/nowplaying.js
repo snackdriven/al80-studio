@@ -12,16 +12,22 @@
 //     elapsedMs  optional — draws M:SS elapsed/total if both present
 //     durationMs optional
 //
-// SPIKE NOTE on album art: real Spotify art is a JPEG URL. This package is zero-dep, so there's
-// no JPEG decoder here. `artRGB` is the decoded-and-scaled 96x96 RGB buffer the art step WOULD
-// produce. Until that step exists we take the placeholder path (see makePlaceholderArt).
-//   TODO(real-art): add host/lib/art-cache.js — fetch album.images URL, decode+scale to 96x96,
-//   cache by trackId, hand the RGB buffer in as state.artRGB. Needs a decode dep (jimp / sharp /
-//   @napi-rs/canvas) or a pre-resized fetch. Also gated on the picture-page byte-swap banding fix
-//   (see SPARC). The LAYOUT below is the deliverable; swapping placeholder->real art is a drop-in.
+// REAL ALBUM ART (spike proven — see apps/nowplaying-preview-realart.mjs): `artRGB` is the
+// decoded-and-scaled 96x96 RGB buffer, and the pipeline that produces it now exists:
+//   lib/spotify.js  getNowPlaying(token) -> { ..., artUrl, trackId }   (Spotify currently-playing)
+//   lib/art.js      decodeToRGB96(jpegBuffer) -> Uint8Array(96*96*3)   (jpeg-js decode + box scale)
+// Connection the daemon's poll layer wires up (cache by trackId so we decode once per track):
+//   np = getNowPlaying(token)
+//   if (np.trackId !== cachedId) { jpeg = await (await fetch(np.artUrl)).arrayBuffer();
+//                                  artRGB = decodeToRGB96(Buffer.from(jpeg)); cachedId = np.trackId }
+//   state = { ...np, artRGB }   // hand into render() below
+// When artRGB is absent (nothing playing, decode not ready) we fall back to the themed placeholder.
+// CAVEAT: on-device this is still gated on the picture-page byte-swap banding fix (see SPARC) —
+// the render + transfer are validated device-free; the panel view swap needs that fix first.
 
 import { newFrame, fillRect, setPx, drawText, drawTextCentered, WIDTH, HEIGHT } from '../lib/render.js';
 import { GLYPH_W, GLYPH_H, textWidth } from '../lib/font.js';
+import { accentFromArt } from '../lib/art.js';
 
 const ART = 96;            // album-art tile is the top 96x96 square
 const clamp01 = (n) => (n < 0 ? 0 : n > 1 ? 1 : n);
@@ -143,9 +149,12 @@ export function render(state = {}) {
   const fb = newFrame(bg);
 
   // --- top 96x96: album art (real blit if provided, else themed placeholder) -------------
+  // The accent (progress bar, transport glyph) tracks the cover: real art -> its dominant color
+  // (the same {hue,sat} seed the future screen-synced LEDs will use), placeholder -> its base hue.
   let accent = [90, 210, 170];
   if (state.artRGB && state.artRGB.length >= ART * ART * 3) {
     blitArt(fb, state.artRGB);
+    try { accent = accentFromArt(state.artRGB); } catch { /* keep default accent on any decode hiccup */ }
   } else {
     const base = drawPlaceholderArt(fb, state.artist);
     accent = [lerp(base[0], 255, 0.25), lerp(base[1], 255, 0.25), lerp(base[2], 255, 0.25)];
