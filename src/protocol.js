@@ -403,6 +403,51 @@ export const buildLightColor = (hue, sat) => [buildLightSet(LIGHT.COLOR, [hue, s
  */
 export const buildLightColorLive = (hue, sat) => buildLightSet(LIGHT.COLOR, [hue, sat]);
 
+// ---- VIA keymap / macros / encoder — live editing on ripple, same 0xFF60/0x61 channel, 64-byte reports ----
+// Standard VIA command IDs (the-via/app + qmk quantum/via.c). Ripple implements VIA (usevia drives it),
+// so these work on the stock firmware — no custom flash. Each builds a REQUEST report; the device replies
+// on an inputreport that the host reads (same read pattern as buildLightGet). Keycodes are 16-bit,
+// big-endian (hi, lo) per VIA. Dangerous commands (0x0a eeprom_reset, 0x0b bootloader_jump) are refused
+// by viaReport — a keymap edit can never accidentally wipe eeprom or jump to bootloader.
+export const VIA_CMD = Object.freeze({
+  GET_PROTOCOL_VERSION: 0x01,
+  GET_KEYBOARD_VALUE: 0x02, SET_KEYBOARD_VALUE: 0x03,
+  DYN_GET_KEYCODE: 0x04, DYN_SET_KEYCODE: 0x05, DYN_RESET: 0x06,
+  MACRO_GET_COUNT: 0x0c, MACRO_GET_BUFSIZE: 0x0d, MACRO_GET_BUFFER: 0x0e, MACRO_SET_BUFFER: 0x0f, MACRO_RESET: 0x10,
+  DYN_GET_LAYER_COUNT: 0x11, DYN_GET_BUFFER: 0x12, DYN_SET_BUFFER: 0x13,
+  DYN_GET_ENCODER: 0x14, DYN_SET_ENCODER: 0x15,
+});
+/** get_keyboard_value sub-ids. SWITCH_MATRIX_STATE drives a live key tester. */
+export const VIA_VALUE = Object.freeze({ UPTIME: 0x01, LAYOUT_OPTIONS: 0x02, SWITCH_MATRIX_STATE: 0x03, FIRMWARE_VERSION: 0x04 });
+
+const hi16 = (n) => (n >> 8) & 0xff;
+const lo16 = (n) => n & 0xff;
+
+/** get_protocol_version (0x01) → reply [01, ver_hi, ver_lo]. VIA protocol handshake. */
+export const buildViaProtocolVersion = () => viaReport([VIA_CMD.GET_PROTOCOL_VERSION]);
+/** dynamic_keymap_get_layer_count (0x11) → reply [11, count]. */
+export const buildViaLayerCount = () => viaReport([VIA_CMD.DYN_GET_LAYER_COUNT]);
+/** dynamic_keymap_get_keycode (0x04) → reply [04, layer, row, col, kc_hi, kc_lo]. */
+export const buildKeymapGet = (layer, row, col) => viaReport([VIA_CMD.DYN_GET_KEYCODE, layer & 0xff, row & 0xff, col & 0xff]);
+/** dynamic_keymap_set_keycode (0x05): write one key. kc = 16-bit VIA keycode. */
+export const buildKeymapSet = (layer, row, col, kc) => viaReport([VIA_CMD.DYN_SET_KEYCODE, layer & 0xff, row & 0xff, col & 0xff, hi16(kc), lo16(kc)]);
+/** dynamic_keymap_reset (0x06): restore the keymap to firmware default (recoverable — re-apply your layout). */
+export const buildKeymapReset = () => viaReport([VIA_CMD.DYN_RESET]);
+/** dynamic_keymap_get/set_buffer (0x12/0x13): bulk keymap read/write, ≤28 data bytes per chunk (VIA convention). */
+export const buildKeymapGetBuffer = (offset, size) => viaReport([VIA_CMD.DYN_GET_BUFFER, hi16(offset), lo16(offset), size & 0xff]);
+export const buildKeymapSetBuffer = (offset, data) => viaReport([VIA_CMD.DYN_SET_BUFFER, hi16(offset), lo16(offset), data.length & 0xff, ...data.map((b) => b & 0xff)]);
+/** dynamic_keymap_get/set_encoder (0x14/0x15): the knob ("radial"). clockwise=true is CW, false is CCW. */
+export const buildEncoderGet = (layer, idx, clockwise) => viaReport([VIA_CMD.DYN_GET_ENCODER, layer & 0xff, idx & 0xff, clockwise ? 1 : 0]);
+export const buildEncoderSet = (layer, idx, clockwise, kc) => viaReport([VIA_CMD.DYN_SET_ENCODER, layer & 0xff, idx & 0xff, clockwise ? 1 : 0, hi16(kc), lo16(kc)]);
+/** get_keyboard_value / SWITCH_MATRIX_STATE (0x02 0x03) → reply is a bit-packed matrix snapshot: a live key tester. */
+export const buildSwitchMatrixState = () => viaReport([VIA_CMD.GET_KEYBOARD_VALUE, VIA_VALUE.SWITCH_MATRIX_STATE]);
+/** dynamic_keymap_macro_* (0x0c count, 0x0d buffer-size, 0x0e/0x0f get/set buffer, 0x10 reset). */
+export const buildMacroCount = () => viaReport([VIA_CMD.MACRO_GET_COUNT]);
+export const buildMacroBufferSize = () => viaReport([VIA_CMD.MACRO_GET_BUFSIZE]);
+export const buildMacroGetBuffer = (offset, size) => viaReport([VIA_CMD.MACRO_GET_BUFFER, hi16(offset), lo16(offset), size & 0xff]);
+export const buildMacroSetBuffer = (offset, data) => viaReport([VIA_CMD.MACRO_SET_BUFFER, hi16(offset), lo16(offset), data.length & 0xff, ...data.map((b) => b & 0xff)]);
+export const buildMacroReset = () => viaReport([VIA_CMD.MACRO_RESET]);
+
 /** Serialize a logical packet (64-byte body) to the capture-schema hex string, for tests/logs. */
 export function toHex(pkt) {
   return Array.from(pkt, (b) => b.toString(16).padStart(2, '0')).join(' ');

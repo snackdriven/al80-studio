@@ -9,6 +9,8 @@ import {
   buildGifPage, buildStartupAnimation, GP_FRAME_BYTES, SA_FRAME_BYTES,
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightSave, buildLightGet,
   buildLightColorLive, transposeToColMajor,
+  buildKeymapGet, buildKeymapSet, buildEncoderSet, buildSwitchMatrixState, buildViaLayerCount,
+  buildMacroSetBuffer, VIA_CMD,
 } from '../src/protocol.js';
 
 let pass = 0;
@@ -54,6 +56,26 @@ ok('transposeToColMajor maps row-major pixel (x,y) to column-major slot x*h+y', 
   // a solid frame is transpose-invariant (why solids never revealed the banding)
   const solid = new Uint8Array(w * h * 2).fill(0xf8);
   assert.deepEqual(Array.from(transposeToColMajor(solid, w, h)), Array.from(solid));
+});
+
+ok('VIA keymap builders emit the standard command layout, padded to 64', () => {
+  // set_keycode 0x05: [cmd, layer, row, col, kc_hi, kc_lo]
+  const set = buildKeymapSet(0, 2, 3, 0x0004);
+  assert.equal(set.length, 64);
+  assert.deepEqual(Array.from(set.subarray(0, 6)), [0x05, 0x00, 0x02, 0x03, 0x00, 0x04]);
+  assert.equal(set.subarray(6).every((b) => b === 0), true); // rest padded
+  // get_keycode 0x04
+  assert.deepEqual(Array.from(buildKeymapGet(1, 5, 6).subarray(0, 4)), [0x04, 0x01, 0x05, 0x06]);
+  // encoder 0x15 (the knob): [cmd, layer, idx, cw?1:0, kc_hi, kc_lo] — KC_MUTE = 0x00A5
+  assert.deepEqual(Array.from(buildEncoderSet(0, 0, true, 0x00a5).subarray(0, 6)), [0x15, 0x00, 0x00, 0x01, 0x00, 0xa5]);
+  assert.deepEqual(Array.from(buildEncoderSet(0, 0, false, 0x00a5).subarray(0, 6)), [0x15, 0x00, 0x00, 0x00, 0x00, 0xa5]);
+  // switch-matrix-state key tester = get_keyboard_value 0x02 with sub-id 0x03
+  assert.deepEqual(Array.from(buildSwitchMatrixState().subarray(0, 2)), [0x02, 0x03]);
+  assert.deepEqual(Array.from(buildViaLayerCount().subarray(0, 1)), [0x11]);
+  // macro set_buffer 0x0f: [cmd, off_hi, off_lo, len, ...data]
+  assert.deepEqual(Array.from(buildMacroSetBuffer(0x0102, [0x41, 0x42]).subarray(0, 6)), [0x0f, 0x01, 0x02, 0x02, 0x41, 0x42]);
+  // the eeprom-reset / bootloader ids are NOT in our keymap command set
+  assert.equal([VIA_CMD.DYN_SET_KEYCODE, VIA_CMD.DYN_GET_ENCODER].includes(0x0a), false);
 });
 
 ok('image announce is byte-identical to the captured one', () => {
