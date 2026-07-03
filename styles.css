@@ -252,6 +252,12 @@ input[type="time"], input[type="date"], select {
 input[type="time"]:hover, input[type="date"]:hover, select:hover { border-color: var(--border-2); }
 input[type="range"] { accent-color: var(--accent); width: 220px; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
+input[type="color"] {
+  width: 48px; height: 32px; padding: 2px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); cursor: pointer;
+}
+input[type="color"]:hover { border-color: var(--border-2); }
 output { color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* Buttons */

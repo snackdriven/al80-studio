@@ -69,6 +69,7 @@
         <button class="tab" role="tab" data-tab="picture" aria-selected="false" aria-controls="panel-picture">Picture</button>
         <button class="tab" role="tab" data-tab="gif" aria-selected="false" aria-controls="panel-gif">GIF</button>
         <button class="tab" role="tab" data-tab="slideshow" aria-selected="false" aria-controls="panel-slideshow">Slideshow</button>
+        <button class="tab" role="tab" data-tab="lighting" aria-selected="false" aria-controls="panel-lighting">Lighting</button>
       </nav>
 
       <main class="panels">
@@ -266,6 +267,62 @@
             <div class="progress-bar" id="slideProgress"></div>
           </div>
           <p id="slideStatus" class="statusline" role="status"></p>
+        </section>
+
+        <!-- LIGHTING -->
+        <section class="panel" data-panel="lighting" id="panel-lighting" role="tabpanel" hidden>
+          <div class="panel-head">
+            <h2>Lighting</h2>
+            <p class="muted">keyboard RGB &mdash; same connection as the LCD</p>
+          </div>
+
+          <div class="row">
+            <label>Brightness <output id="lightBrightnessOut">200</output>
+              <input id="lightBrightness" type="range" min="0" max="255" value="200" class="device-action" disabled />
+            </label>
+          </div>
+
+          <div class="row">
+            <label>Effect
+              <select id="lightEffect" class="device-action" disabled>
+                <option value="0">All Off</option>
+                <option value="1">Solid Color</option>
+                <option value="2">Breathing</option>
+                <option value="3">Band Val.</option>
+                <option value="4">Cycle All</option>
+                <option value="5">Cycle Left/Right</option>
+                <option value="6">Cycle Up/Down</option>
+                <option value="7">Rainbow Moving Chevron</option>
+                <option value="8">Cycle Out/In</option>
+                <option value="9">Cycle Out/In Dual</option>
+                <option value="10">Cycle Pinwheel</option>
+                <option value="11">Cycle Spiral</option>
+                <option value="12">Dual Beacon</option>
+                <option value="13">Rainbow Beacon</option>
+                <option value="14">Typing Heatmap</option>
+                <option value="15">Digital Rain</option>
+                <option value="16">Solid Reactive Simple</option>
+                <option value="17">Solid Reactive Nexus</option>
+                <option value="18">Splash</option>
+                <option value="19">Solid Splash</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="row">
+            <label>Effect Speed <output id="lightSpeedOut">128</output>
+              <input id="lightSpeed" type="range" min="0" max="255" value="128" class="device-action" disabled />
+            </label>
+          </div>
+
+          <div class="row">
+            <label>Color
+              <input id="lightColor" type="color" value="#5b9dff" class="device-action" disabled />
+            </label>
+            <span class="muted small">color = hue + saturation; brightness is the separate slider above</span>
+          </div>
+
+          <p id="lightStatus" class="statusline" role="status"></p>
         </section>
       </main>
     </div>

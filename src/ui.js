@@ -181,6 +181,7 @@ function init() {
   setupImageTab();
   setupGifTab();
   setupSlideshowTab();
+  setupLightingTab();
   setupClearActions();
   setupKeymap();
   setupEasterEgg();
@@ -974,6 +975,72 @@ function setupSlideshowTab() {
   intervalOut.textContent = intervalEl.value + 's';
   updateCounter();
   updateCurrent();
+}
+
+// ---- lighting (keyboard RGB — VIA RGB-matrix over the same HID interface) ----
+// #RRGGBB -> [hue, sat] in VIA's 0-255 units. Drop value/brightness (that's the
+// separate slider). h = round(hDeg/360*255), s = round(s*255).
+function rgbToHueSat(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return { hue: 0, sat: 0 };
+  const r = parseInt(m[1], 16) / 255;
+  const g = parseInt(m[2], 16) / 255;
+  const b = parseInt(m[3], 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let hDeg = 0;
+  if (d !== 0) {
+    if (max === r) hDeg = ((g - b) / d) % 6;
+    else if (max === g) hDeg = (b - r) / d + 2;
+    else hDeg = (r - g) / d + 4;
+    hDeg *= 60;
+    if (hDeg < 0) hDeg += 360;
+  }
+  const s = max === 0 ? 0 : d / max;
+  return { hue: Math.round((hDeg / 360) * 255), sat: Math.round(s * 255) };
+}
+
+function setupLightingTab() {
+  const statusEl = $('#lightStatus');
+  const brightness = $('#lightBrightness');
+  const brightnessOut = $('#lightBrightnessOut');
+  const effect = $('#lightEffect');
+  const speed = $('#lightSpeed');
+  const speedOut = $('#lightSpeedOut');
+  const color = $('#lightColor');
+
+  const debounce = (fn, ms = 120) => {
+    let t = null;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  };
+
+  const sendBrightness = debounce(() =>
+    guardedSend('Light brightness', statusEl, proto.buildLightBrightness(+brightness.value)));
+  brightness.addEventListener('input', () => {
+    brightnessOut.textContent = brightness.value;
+    sendBrightness();
+  });
+
+  effect.addEventListener('change', () =>
+    guardedSend('Light effect', statusEl, proto.buildLightEffect(+effect.value)));
+
+  const sendSpeed = debounce(() =>
+    guardedSend('Light speed', statusEl, proto.buildLightSpeed(+speed.value)));
+  speed.addEventListener('input', () => {
+    speedOut.textContent = speed.value;
+    sendSpeed();
+  });
+
+  const sendColor = debounce(() => {
+    const { hue, sat } = rgbToHueSat(color.value);
+    guardedSend('Light color', statusEl, proto.buildLightColor(hue, sat));
+  });
+  color.addEventListener('input', sendColor);
+
+  // initial read-outs
+  brightnessOut.textContent = brightness.value;
+  speedOut.textContent = speed.value;
 }
 
 // ---- clear actions (moved into Picture / GIF editors) -----------------------
