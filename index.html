@@ -368,6 +368,46 @@
           </div>
 
           <p id="fxStatus" class="statusline" role="status"></p>
+
+          <h3>Palettes</h3>
+          <p class="muted small">Build a multi-color palette, then animate the whole board through it &mdash;
+            <strong>global</strong>, one color at a time. Save named presets to this browser. Runs live over
+            the connection (no EEPROM writes), so it stops on Stop, on leaving this tab, and on disconnect.</p>
+
+          <div class="palette-editor">
+            <div class="row">
+              <span class="db-label">Stops</span>
+              <div id="paletteStops" class="palette-stops" aria-label="Palette color stops"></div>
+              <button id="paletteAddStop" type="button" class="btn small device-action" disabled>+ Add stop</button>
+              <span class="muted small">2&ndash;6 colors</span>
+            </div>
+
+            <div class="row">
+              <label>Mode
+                <select id="paletteMode" class="device-action" disabled>
+                  <option value="cycle" selected>Cycle (smooth loop)</option>
+                  <option value="breathe">Breathe / Pulse</option>
+                  <option value="strobe">Strobe (hard switch)</option>
+                </select>
+              </label>
+              <label>Speed <output id="paletteSpeedOut">40</output>
+                <input id="paletteSpeed" type="range" min="10" max="300" value="40" class="device-action" disabled />
+              </label>
+              <button id="paletteStart" type="button" class="btn primary small device-action" disabled>Start</button>
+              <button id="paletteStop" type="button" class="btn small device-action" disabled>Stop</button>
+            </div>
+
+            <div class="row palette-presets">
+              <label>Preset
+                <select id="palettePresetSelect"></select>
+              </label>
+              <button id="palettePresetDelete" type="button" class="btn small">Delete</button>
+              <input id="palettePresetName" type="text" class="preset-name-input" placeholder="Preset name" maxlength="32" />
+              <button id="palettePresetSave" type="button" class="btn small">Save</button>
+            </div>
+
+            <p id="paletteStatus" class="statusline" role="status"></p>
+          </div>
         </section>
       </main>
     </div>

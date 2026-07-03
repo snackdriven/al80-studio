@@ -1101,17 +1101,18 @@ function setupLightingTab() {
   }
 
   // frameFn(i) -> {hue, sat} for step i; delayFn() -> ms until the next step.
-  async function startFx(name, frameFn, delayFn) {
+  // sEl = which status line to narrate on (defaults to the effects one; palette passes its own).
+  async function startFx(name, frameFn, delayFn, sEl = fxStatus) {
     stopFx();                                     // Start stops any other effect
-    if (!connected) { setStatus(fxStatus, 'Connect first.', 'err'); return; }
+    if (!connected) { setStatus(sEl, 'Connect first.', 'err'); return; }
     const token = ++fxToken;
     fxRunning = true;
-    setStatus(fxStatus, `${name} — starting…`);
+    setStatus(sEl, `${name} — starting…`);
     // The ONLY EEPROM write: pin the base effect to Solid Color so live color reports show through.
-    const ok = await guardedSend('FX effect → Solid Color', fxStatus, proto.buildLightEffect(SOLID_COLOR_EFFECT));
+    const ok = await guardedSend('FX effect → Solid Color', sEl, proto.buildLightEffect(SOLID_COLOR_EFFECT));
     if (!ok) { stopFx(); return; }
     if (token !== fxToken || !fxRunning) return;  // Stop pressed during the await
-    setStatus(fxStatus, `${name} running — press Stop to end.`, 'ok');
+    setStatus(sEl, `${name} running — press Stop to end.`, 'ok');
     let i = 0;
     const tick = async () => {
       if (token !== fxToken || !fxRunning) return;
@@ -1182,6 +1183,196 @@ function setupLightingTab() {
   // Manual effect/color changes take over from any running animation.
   effect.addEventListener('change', stopFx);
   color.addEventListener('input', stopFx);
+
+  // ---- palettes (multi-color presets, GLOBAL board animation) ---------------
+  // A palette is an ordered list of color stops. Three modes animate the WHOLE board through them,
+  // one color at a time: Cycle (smooth loop stop→stop→…→first), Breathe (same path, eased in/out at
+  // each stop), Strobe (hard-switch, no interpolation). Runs on the shared startFx loop, so it's the
+  // same "one animation at a time / save-less / stops on Stop, tab-away, disconnect" machinery as the
+  // fixed effects above. Named {stops, mode, speed} presets live in localStorage.
+  const paletteStopsEl = $('#paletteStops');
+  const paletteAddStop = $('#paletteAddStop');
+  const paletteMode = $('#paletteMode');
+  const paletteSpeed = $('#paletteSpeed');
+  const paletteSpeedOut = $('#paletteSpeedOut');
+  const paletteStatus = $('#paletteStatus');
+  const palettePresetSelect = $('#palettePresetSelect');
+  const palettePresetName = $('#palettePresetName');
+  const palettePresetSave = $('#palettePresetSave');
+  const palettePresetDelete = $('#palettePresetDelete');
+
+  const PALETTE_MIN = 2;
+  const PALETTE_MAX = 6;
+  const PALETTE_STEPS_PER_SEG = 48; // interpolation resolution per stop→stop segment (cycle/breathe)
+  const PRESET_KEY = 'al80.palettePresets';
+
+  // No red/blue "police" combos in the seeds.
+  const DEFAULT_PRESETS = {
+    Sunset: { stops: ['#ff8c42', '#ff4d8d', '#8a2be2'], mode: 'cycle', speed: 40 },
+    Ocean:  { stops: ['#1fb9b0', '#1f7ae0', '#0b3a8a'], mode: 'breathe', speed: 60 },
+    Forest: { stops: ['#1f8a3a', '#8ad11f'], mode: 'cycle', speed: 50 },
+    Ember:  { stops: ['#e01f1f', '#ff7a1f', '#ffd11f'], mode: 'strobe', speed: 120 },
+  };
+
+  // Current editor state. Seeded from Sunset so the row isn't empty on first paint.
+  let paletteStops = DEFAULT_PRESETS.Sunset.stops.slice();
+
+  // localStorage helpers — tolerant of quota/parse failures (private mode, disabled storage).
+  function loadPresets() {
+    try { return JSON.parse(localStorage.getItem(PRESET_KEY)) || {}; } catch { return {}; }
+  }
+  function savePresets(obj) {
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(obj)); } catch { /* storage unavailable */ }
+  }
+  // Seed defaults ONCE (only when the key has never existed), so user deletes stick.
+  if (localStorage.getItem(PRESET_KEY) == null) savePresets(DEFAULT_PRESETS);
+
+  function refreshPresetDropdown(selectName) {
+    const presets = loadPresets();
+    const names = Object.keys(presets);
+    palettePresetSelect.innerHTML = '';
+    if (!names.length) {
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = '(no presets)'; opt.disabled = true;
+      palettePresetSelect.appendChild(opt);
+      return;
+    }
+    names.forEach((name) => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      palettePresetSelect.appendChild(opt);
+    });
+    if (selectName && presets[selectName]) palettePresetSelect.value = selectName;
+  }
+
+  // Rebuild the stop row from `paletteStops`. Each stop: a color input, ◀/▶ reorder, and × remove.
+  // Editing a stop mutates paletteStops live, so a running animation picks it up next frame.
+  function renderStops() {
+    paletteStopsEl.innerHTML = '';
+    paletteStops.forEach((hex, i) => {
+      const stop = document.createElement('div');
+      stop.className = 'palette-stop';
+
+      const picker = document.createElement('input');
+      picker.type = 'color';
+      picker.value = hex;
+      picker.className = 'device-action';
+      picker.disabled = !connected;
+      picker.title = `Stop ${i + 1}`;
+      picker.addEventListener('input', () => { paletteStops[i] = picker.value; });
+      stop.appendChild(picker);
+
+      const nav = document.createElement('div');
+      nav.className = 'palette-stop-nav';
+      const left = document.createElement('button');
+      left.type = 'button'; left.className = 'palette-move'; left.textContent = '◀';
+      left.title = 'Move left'; left.disabled = i === 0;
+      left.addEventListener('click', () => {
+        if (i === 0) return;
+        [paletteStops[i - 1], paletteStops[i]] = [paletteStops[i], paletteStops[i - 1]];
+        renderStops();
+      });
+      const right = document.createElement('button');
+      right.type = 'button'; right.className = 'palette-move'; right.textContent = '▶';
+      right.title = 'Move right'; right.disabled = i === paletteStops.length - 1;
+      right.addEventListener('click', () => {
+        if (i === paletteStops.length - 1) return;
+        [paletteStops[i + 1], paletteStops[i]] = [paletteStops[i], paletteStops[i + 1]];
+        renderStops();
+      });
+      nav.append(left, right);
+      stop.appendChild(nav);
+
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'palette-stop-remove'; rm.textContent = '×';
+      rm.title = 'Remove stop'; rm.disabled = paletteStops.length <= PALETTE_MIN;
+      rm.addEventListener('click', () => {
+        if (paletteStops.length <= PALETTE_MIN) return;
+        paletteStops.splice(i, 1);
+        renderStops();
+      });
+      stop.appendChild(rm);
+
+      paletteStopsEl.appendChild(stop);
+    });
+    // add-stop is connection-gated (device-action) plus capped at PALETTE_MAX.
+    paletteAddStop.disabled = !connected || paletteStops.length >= PALETTE_MAX;
+  }
+
+  // frameFn(i) for the shared startFx loop. Reads stops/mode LIVE so mid-run edits apply.
+  function paletteFrame(i) {
+    const cols = paletteStops.map(rgbToHueSat);
+    const n = cols.length;
+    if (n === 0) return { hue: 0, sat: 0 };
+    if (n === 1) return cols[0];
+    const mode = paletteMode.value;
+    if (mode === 'strobe') return cols[i % n];       // hard switch, one stop per step
+    // cycle / breathe: n segments (…→first), PALETTE_STEPS_PER_SEG steps each, shortest-path hue lerp.
+    const seg = Math.floor(i / PALETTE_STEPS_PER_SEG) % n;
+    let t = (i % PALETTE_STEPS_PER_SEG) / PALETTE_STEPS_PER_SEG;
+    if (mode === 'breathe') t = t * t * (3 - 2 * t); // smoothstep — ease in/out through each stop
+    const from = cols[seg];
+    const to = cols[(seg + 1) % n];
+    return { hue: Math.round(lerpHue(from.hue, to.hue, t)), sat: Math.round(lerp(from.sat, to.sat, t)) };
+  }
+
+  function applyPreset(name) {
+    const p = loadPresets()[name];
+    if (!p) return;
+    let stops = Array.isArray(p.stops) ? p.stops.slice(0, PALETTE_MAX) : [];
+    if (stops.length < PALETTE_MIN) stops = DEFAULT_PRESETS.Sunset.stops.slice();
+    paletteStops = stops;
+    paletteMode.value = ['cycle', 'breathe', 'strobe'].includes(p.mode) ? p.mode : 'cycle';
+    paletteSpeed.value = String(Math.max(10, Math.min(300, +p.speed || 40)));
+    paletteSpeedOut.textContent = paletteSpeed.value;
+    renderStops();
+    setStatus(paletteStatus, `Loaded "${name}".`, 'ok');
+  }
+
+  paletteAddStop.addEventListener('click', () => {
+    if (paletteStops.length >= PALETTE_MAX) return;
+    paletteStops.push(paletteStops[paletteStops.length - 1] || '#5b9dff');
+    renderStops();
+  });
+
+  paletteSpeed.addEventListener('input', () => { paletteSpeedOut.textContent = paletteSpeed.value; });
+
+  palettePresetSelect.addEventListener('change', () => {
+    if (palettePresetSelect.value) applyPreset(palettePresetSelect.value);
+  });
+
+  palettePresetSave.addEventListener('click', () => {
+    const name = (palettePresetName.value || '').trim();
+    if (!name) { setStatus(paletteStatus, 'Enter a name to save.', 'err'); return; }
+    const presets = loadPresets();
+    presets[name] = { stops: paletteStops.slice(), mode: paletteMode.value, speed: +paletteSpeed.value };
+    savePresets(presets);
+    refreshPresetDropdown(name);
+    palettePresetName.value = '';
+    setStatus(paletteStatus, `Saved "${name}".`, 'ok');
+  });
+
+  palettePresetDelete.addEventListener('click', () => {
+    const name = palettePresetSelect.value;
+    if (!name) return;
+    const presets = loadPresets();
+    if (!(name in presets)) return;
+    delete presets[name];
+    savePresets(presets);
+    refreshPresetDropdown();
+    setStatus(paletteStatus, `Deleted "${name}".`, 'ok');
+  });
+
+  $('#paletteStart').addEventListener('click', () =>
+    startFx('Palette', paletteFrame, () => +paletteSpeed.value || 40, paletteStatus));
+  $('#paletteStop').addEventListener('click', () => {
+    stopFx();
+    setStatus(paletteStatus, 'Stopped.');
+  });
+
+  refreshPresetDropdown();
+  paletteSpeedOut.textContent = paletteSpeed.value;
+  renderStops();
 
   // initial read-outs
   brightnessOut.textContent = brightness.value;
