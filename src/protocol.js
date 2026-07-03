@@ -331,6 +331,44 @@ export function buildMainPageImage(frame) {
   return buildMainPageGif([frame], 1);
 }
 
+// ---- RGB lighting (VIA / QMK RGB Matrix) — SAME 0xFF60/0x61 interface + 64-byte reports as the LCD ----
+// Decoded from a live usevia.app capture: the firmware multiplexes standard VIA commands and the
+// vendor LCD stream on one raw-HID channel (first byte distinguishes them: 0x07/0x09 = VIA lighting,
+// 0x40-0x42 = LCD). Standard VIA custom-value protocol on the QMK RGB-Matrix channel (0x03):
+//   set:  07 03 <valueId> <data...>     save: 09 03     read: 08 03 <valueId>
+//   valueId 1=brightness 2=effect 3=speed 4=color(hue,sat); all 0-255.
+const LIGHT_CHANNEL = 0x03;
+export const LIGHT = { BRIGHTNESS: 1, EFFECT: 2, SPEED: 3, COLOR: 4 };
+const clamp8 = (n) => Math.max(0, Math.min(255, Math.round(n) || 0));
+
+/** Pad a raw VIA report to 64 bytes. Refuses the dangerous VIA commands (eeprom reset / bootloader). */
+function viaReport(bytes) {
+  const cmd = bytes[0];
+  if (cmd === 0x0a || cmd === 0x0b) throw new Error(`protocol.viaReport: refusing VIA cmd 0x${cmd.toString(16)} (eeprom-reset/bootloader-jump)`);
+  const out = new Uint8Array(REPORT);
+  out.set(bytes.slice(0, REPORT));
+  return out;
+}
+
+/** id_custom_set_value (0x07) on the RGB-matrix channel. Returns a single 64-byte report. */
+export function buildLightSet(valueId, data = []) {
+  return viaReport([0x07, LIGHT_CHANNEL, valueId & 0xff, ...data.map(clamp8)]);
+}
+/** id_custom_save (0x09) — persist current lighting to EEPROM. */
+export function buildLightSave() {
+  return viaReport([0x09, LIGHT_CHANNEL]);
+}
+/** id_custom_get_value (0x08) — device replies with the value on an inputreport. */
+export function buildLightGet(valueId) {
+  return viaReport([0x08, LIGHT_CHANNEL, valueId & 0xff]);
+}
+
+// Convenience: each returns [setReport, saveReport] to send in order.
+export const buildLightBrightness = (v) => [buildLightSet(LIGHT.BRIGHTNESS, [v]), buildLightSave()];
+export const buildLightEffect = (mode) => [buildLightSet(LIGHT.EFFECT, [mode]), buildLightSave()];
+export const buildLightSpeed = (v) => [buildLightSet(LIGHT.SPEED, [v]), buildLightSave()];
+export const buildLightColor = (hue, sat) => [buildLightSet(LIGHT.COLOR, [hue, sat]), buildLightSave()];
+
 /** Serialize a logical packet (64-byte body) to the capture-schema hex string, for tests/logs. */
 export function toHex(pkt) {
   return Array.from(pkt, (b) => b.toString(16).padStart(2, '0')).join(' ');

@@ -7,6 +7,7 @@ import {
   buildView, VIEW, FRAME_BYTES, BLOCK_COUNT, toHex,
   buildMainPageGif, buildMainPageImage, MP_FRAME_BYTES, MP_MAX_FRAMES,
   buildGifPage, buildStartupAnimation, GP_FRAME_BYTES, SA_FRAME_BYTES,
+  buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightSave, buildLightGet,
 } from '../src/protocol.js';
 
 let pass = 0;
@@ -162,5 +163,19 @@ if (existsSync(cap)) {
 } else {
   console.log('  (skipped sibling-capture cross-check — al80-lcd not adjacent)');
 }
+
+ok('RGB lighting builders match the live usevia capture (VIA RGB-matrix channel 3)', () => {
+  const [b, save] = buildLightBrightness(0x50);
+  assert.equal(hex(b).startsWith('07 03 01 50'), true, hex(b)); // set brightness
+  assert.equal(hex(save).startsWith('09 03'), true, hex(save)); // id_custom_save
+  assert.equal(b.length, 64); assert.equal(save.length, 64); // padded to the 64-byte report
+  assert.equal(hex(buildLightEffect(0x12)[0]).startsWith('07 03 02 12'), true);
+  assert.equal(hex(buildLightSpeed(0x5a)[0]).startsWith('07 03 03 5a'), true);
+  assert.equal(hex(buildLightColor(0xc2, 0xd2)[0]).startsWith('07 03 04 c2 d2'), true); // hue+sat
+  assert.equal(hex(buildLightGet(1)).startsWith('08 03 01'), true); // id_custom_get_value
+  // clamps to 0..255, no negative/overflow leakage
+  assert.equal(buildLightBrightness(999)[0][3], 0xff);
+  assert.equal(buildLightBrightness(-5)[0][3], 0x00);
+});
 
 console.log(`\n${pass} checks passed.`);
