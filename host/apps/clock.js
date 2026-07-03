@@ -37,4 +37,4 @@ export function renderClock(date, opts = {}) {
   return fb;
 }
 
-export const clockApp = { id: 'clock', fps: 1, render: (_ctx, date) => renderClock(date) };
+export const clockApp = { id: 'clock', fps: 1, render: (now) => renderClock(now) };

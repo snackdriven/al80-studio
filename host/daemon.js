@@ -5,14 +5,22 @@
 //
 //   node daemon.js [durationMs]   (omit duration to run until Ctrl-C)
 import { HidTransport } from './transport-hid.js';
-import { renderClock } from './apps/clock.js';
+import { clockApp } from './apps/clock.js';
 import { diffRegion } from './lib/diff.js';
+import { Scheduler } from './lib/scheduler.js';
+import { startLocalHook } from './control/local-hook.js';
 import { buildImageTransfer, buildImageRegion } from '../src/protocol.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class Daemon {
-  constructor() { this.t = new HidTransport(); this.prev = null; this.stalls = 0; }
+  constructor() {
+    this.t = new HidTransport();
+    this.prev = null;
+    this.stalls = 0;
+    this.scheduler = new Scheduler(clockApp); // base app = clock; alerts preempt
+    this.hook = null;
+  }
 
   async connect() {
     for (let attempt = 0; ; attempt++) {
@@ -54,19 +62,25 @@ class Daemon {
 
   async run(durationMs) {
     await this.connect();
+    this.hook = startLocalHook(this.scheduler); // 127.0.0.1:7333 — Claude hook + local notifiers POST here
+    console.log('[daemon] local alert intake on http://127.0.0.1:7333/alert');
     const stopAt = durationMs ? Date.now() + durationMs : Infinity;
     let ticks = 0;
     while (Date.now() < stopAt) {
       const t0 = Date.now();
+      this.scheduler.update(t0); // expire transient alerts
+      const app = this.scheduler.active();
       try {
-        const r = await this.pushFrame(renderClock(new Date()));
-        if (r.kind !== 'skip') console.log(`[tick ${++ticks}] ${r.kind.padEnd(12)} echoed ${r.echoed}/${r.sent}`);
+        const r = await this.pushFrame(app.render(new Date()));
+        if (r.kind !== 'skip') console.log(`[tick ${++ticks}] ${app.id.padEnd(18)} ${r.kind}`);
       } catch (e) {
         console.log('[daemon]', e.message);
         await this.recover();
       }
-      await sleep(Math.max(0, 1000 - (Date.now() - t0))); // ~1 fps
+      const fps = app.fps || 1;
+      await sleep(Math.max(0, 1000 / fps - (Date.now() - t0)));
     }
+    this.hook?.close();
     this.t.close();
     console.log(`[daemon] stopped after ${ticks} ticks, ${this.stalls} recoveries, ${this.t.echoes} total echoes`);
   }

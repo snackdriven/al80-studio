@@ -3,6 +3,7 @@
 // concern applied at send time; apps always draw in plain row-major logical space.
 import { WIDTH, HEIGHT, FRAME_BYTES } from '../../src/protocol.js';
 import { glyph, GLYPH_W, GLYPH_H, textWidth } from './font.js';
+export { GLYPH_H };
 
 export { WIDTH, HEIGHT };
 
@@ -53,4 +54,18 @@ export function drawTextCentered(fb, str, y, opts = {}) {
   const scale = opts.scale ?? 1, gap = opts.gap ?? 1;
   const w = textWidth(String(str), scale, gap);
   return drawText(fb, str, Math.round((WIDTH - w) / 2), y, opts);
+}
+
+/** Greedy word-wrap. Returns the y just below the last line. */
+export function wrapText(fb, str, x, y, { scale = 1, gap = 1, color = [255, 255, 255], maxWidth = WIDTH - x, lineH } = {}) {
+  const lh = lineH ?? (GLYPH_H + 2) * scale;
+  const words = String(str).split(/\s+/).filter(Boolean);
+  let line = '', cy = y;
+  const flush = () => { if (line) { drawText(fb, line, x, cy, { scale, gap, color }); cy += lh; line = ''; } };
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (line && textWidth(test, scale, gap) > maxWidth) { flush(); line = w; } else line = test;
+  }
+  flush();
+  return cy;
 }
