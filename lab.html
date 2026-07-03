@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AL80 Lab — picture-page banding tests</title>
+<style>
+  :root{--bg:#14161a;--panel:#1c2027;--border:#2e3440;--text:#e6e8ec;--muted:#9aa3b2;--accent:#5b9dff;--ok:#3fbf7f;--danger:#e5534b;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;line-height:1.5;max-width:820px;margin:0 auto;padding:24px 18px 80px}
+  h1{font-size:20px;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .bar{display:flex;gap:10px;align-items:center;margin:14px 0;flex-wrap:wrap}
+  button{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;cursor:pointer}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#0c1017;font-weight:600}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin:10px 0}
+  .card h3{margin:0 0 4px;font-size:15px}
+  .card p{margin:0 0 10px;color:var(--muted);font-size:13px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--muted);display:inline-block}
+  .dot.on{background:var(--ok)}
+  #log{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;color:var(--muted);background:#0f1114;border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:16px;max-height:220px;overflow:auto}
+  .note{font-size:13px;color:var(--muted)}
+  code{background:#0f1114;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>AL80 Lab — picture-page banding</h1>
+<p class="sub">Each test uploads a <b>solid red</b> image to the picture page a different way, then switches to picture view. After each, note on the LCD: <b>clean solid red</b>, <b>red/blue bands</b>, or <b>something else</b>. Tell Claude which test (by name) came out clean.</p>
+
+<div class="bar">
+  <button id="connect" class="primary">Connect AL80</button>
+  <span class="dot" id="dot"></span><span id="status" class="note">disconnected</span>
+</div>
+
+<div class="card" style="border-color:var(--accent)">
+  <h3>Morning run order (≈2 min)</h3>
+  <p style="color:var(--text)">
+    1. <b>Connect</b>.<br>
+    2. <b>A. Green probe</b> — does green split into two hues (like red did)? That confirms the firmware byte-swaps alternate rows.<br>
+    3. <b>B</b> then <b>C</b> — one of them should come out <b>uniform red</b>. That's the fix.<br>
+    4. <b>D. Vendor-exact</b> — if this bands too, the official app bands solids as well (module quirk); only photos matter then.<br>
+    5. Load an <b>asymmetric photo</b> (a face) and try the 3 photo buttons — note which is <b>upright</b> and <b>clean</b>.<br>
+    6. Tell Claude: which solid test (B/C/E) was clean, whether D banded, and which photo mode was upright+clean. That pins the fix and I'll bake it into the app.
+  </p>
+</div>
+
+<div id="tests"></div>
+
+<div class="card">
+  <h3>Real photo test</h3>
+  <p>Pick an image, then send it packed different ways. Watch for: which one is <b>upright</b> (row-major vs column-major) and whether it's <b>clean</b> (the swap fix carries to real images). Use a clearly asymmetric photo (a face), not a pattern — grids/solids hide offset bugs.</p>
+  <input type="file" id="photo" accept="image/*" />
+  <div class="bar" style="margin-top:10px">
+    <button data-mode="row" disabled>Row-major + swap-odd</button>
+    <button data-mode="col" disabled>Column-major (no swap)</button>
+    <button data-mode="rowraw" disabled>Row-major (no swap)</button>
+  </div>
+</div>
+
+<div id="log">ready.</div>
+
+<script type="module">
+const $ = (s)=>document.querySelector(s);
+const log = (m)=>{ const el=$('#log'); el.textContent += "\n"+m; el.scrollTop=el.scrollHeight; };
+const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+const VID=0x28e9, PID=0x30af, FRAME=30720, W=96, H=160;
+let dev=null;
+
+// ---- packet helpers (from the decoded protocol) ----
+const yne=(a)=>{let n=0;for(const b of a)n=(n+b)&0xffff;return[n&0xff,(n>>8)&0xff];};
+// build a data/announce/finish report; pad to `rlen` bytes (63 or 64)
+function report(op, payload, off, rlen){
+  const p=[op, off&0xff,(off>>8)&0xff,(payload.length)&0xff,0,0,0,...payload];
+  const k=yne(p); p[4]=k[0]; p[5]=k[1];
+  const u=new Uint8Array(rlen); u.set(p.subarray?p.subarray(0,rlen):p.slice(0,rlen)); return u;
+}
+const ANN=[0x40,0,0,0x08,0xcf,0x02,0,0xa5,0x5a,0x10,0,0x01,0xc5,0xb1,0x01];
+const FIN=[0x42,0,0,0x38,0x7a];
+const PICVIEW=[0x40,0,0,0x07,0x36,0x02,0,0xa5,0x5a,0x0d,0,0,0x03,0xe0];
+function setupLen(totalBytes){ // 0x0C length-setup, big-endian length
+  const hi=(totalBytes>>8)&0xff, lo=totalBytes&0xff;
+  // inner CRC ga([0x0c,hi,lo]) — precompute via same MODBUS crc as protocol.js
+  const ga=(arr)=>{let c=0xffff;for(const b of arr){c^=b;for(let i=0;i<8;i++)c=c&1?(c>>1)^0xa001:c>>1;}return[(c>>8)&0xff,c&0xff];};
+  const cr=ga([0x0c,hi,lo]); return [0x41,0,0,0x07,0x21,0x03,0,0xa5,0x5a,0x0c,hi,lo,cr[0],cr[1]];
+}
+const padReport=(bytes,rlen)=>{const u=new Uint8Array(rlen);u.set(bytes.slice(0,rlen));return u;};
+const send=(bytes,rlen)=>dev.sendReport(0,padReport(bytes,rlen));
+
+// solid framebuffers, RGB565 BE (row-major, 96x160)
+function solid(hi,lo){ const f=new Uint8Array(FRAME); for(let i=0;i<FRAME;i+=2){f[i]=hi;f[i+1]=lo;} return f; }
+const solidRed=()=>solid(0xf8,0x00), solidGreen=()=>solid(0x07,0xe0);
+// swap each pixel's 2 bytes on rows matching `parity` (0=even rows, 1=odd rows)
+function swapRows(fb, parity){ const out=fb.slice(); for(let y=0;y<H;y++){ if((y&1)!==parity) continue; const base=y*W*2; for(let x=0;x<W;x++){const o=base+x*2;const t=out[o];out[o]=out[o+1];out[o+1]=t;} } return out; }
+
+// ---- send strategies ----
+// blasted: fire all data blocks with a tiny gap
+async function sendBlasted(fb, {rlen=64, gap=2, blk=56, total=FRAME}={}){
+  await send(ANN, rlen); await sleep(300);
+  await send(setupLen(total), rlen); await sleep(30);
+  for(let off=0; off<fb.length; off+=blk){ const ch=Array.from(fb.subarray(off,Math.min(off+blk,fb.length)));
+    await send(report(0x41,ch,off,rlen), rlen); if(gap)await sleep(gap); }
+  await send(FIN, rlen);
+  await send(PICVIEW, rlen); await send(FIN, rlen);
+}
+// ack-gated: wait for each block's echo (byte0/byte1 match) before next, like the vendor
+async function sendAckGated(fb, {rlen=63, blk=56, total=FRAME}={}){
+  await send(ANN, rlen); await sleep(300);
+  await send(setupLen(total), rlen); await sleep(30);
+  for(let off=0; off<fb.length; off+=blk){
+    const ch=Array.from(fb.subarray(off,Math.min(off+blk,fb.length)));
+    const rep=report(0x41,ch,off,rlen);
+    await new Promise((res)=>{
+      const to=setTimeout(()=>{dev.removeEventListener('inputreport',h);res();},60);
+      const h=(e)=>{const b=new Uint8Array(e.data.buffer); if(b[0]===rep[0]&&b[1]===rep[1]){clearTimeout(to);dev.removeEventListener('inputreport',h);res();}};
+      dev.addEventListener('inputreport',h);
+      dev.sendReport(0,padReport(rep,rlen));
+    });
+  }
+  await send(FIN, rlen);
+  await send(PICVIEW, rlen); await send(FIN, rlen);
+}
+
+// ---- candidate tests ----
+const TESTS=[
+  { name:"A. Green probe", desc:"Solid GREEN (07 E0). If it bands into two hues like red did, the firmware byte-swaps alternate scanlines (white couldn't show this — it's swap-symmetric). This tells us the mechanism before we fix it.",
+    run:()=>sendBlasted(solidGreen(), {rlen:64,gap:2}) },
+  { name:"B. FIX — swap ODD rows (red)", desc:"Pre-swap the 2 pixel bytes on odd scanlines. If the firmware un-swaps odd rows, this cancels → uniform red. THE likely fix.",
+    run:()=>sendBlasted(swapRows(solidRed(),1), {rlen:64,gap:2}) },
+  { name:"C. FIX — swap EVEN rows (red)", desc:"Same idea, opposite parity. If B still bands but C is clean, the slip is on even rows instead. One of B/C should be uniform red.",
+    run:()=>sendBlasted(swapRows(solidRed(),0), {rlen:64,gap:2}) },
+  { name:"D. Vendor-exact control (63B + ACK-gated)", desc:"63-byte reports, wait for each block's ACK echo, 300ms settle — exactly the official app. If THIS bands too, the vendor bands solids as well (module quirk), and only real photos matter.",
+    run:()=>sendAckGated(solidRed(), {rlen:63}) },
+  { name:"E. Stride +1 pad/row (193 B/row)", desc:"Alternate theory: module scanout stride is odd (193). Pads one byte per row, total 30880. Try only if B/C don't help.",
+    run:()=>{ const rows=H, stride=W*2+1, total=rows*stride; const fb=new Uint8Array(total);
+      for(let y=0;y<rows;y++){ const base=y*stride; for(let x=0;x<W;x++){fb[base+x*2]=0xf8;fb[base+x*2+1]=0x00;} }
+      return sendBlasted(fb,{rlen:64,gap:2,total}); } },
+  { name:"F. Baseline (reproduce the bug)", desc:"Current method: solid red, 56B blocks, 64B reports, blasted. Expected: the red/blue bands, as a reference.",
+    run:()=>sendBlasted(solidRed(), {rlen:64,gap:2}) },
+];
+
+function renderTests(){
+  const c=$('#tests'); c.innerHTML='';
+  for(const t of TESTS){
+    const d=document.createElement('div'); d.className='card';
+    d.innerHTML=`<h3>${t.name}</h3><p>${t.desc}</p>`;
+    const b=document.createElement('button'); b.textContent='Run'; b.disabled=!dev;
+    b.onclick=async()=>{ try{ log("▶ "+t.name); b.disabled=true; await t.run(); log("  sent — check the LCD"); }catch(e){ log("  ERROR: "+(e.message||e)); } finally{ b.disabled=false; } };
+    d.appendChild(b); c.appendChild(d); t._btn=b;
+  }
+}
+
+$('#connect').onclick=async()=>{
+  try{
+    let ds=await navigator.hid.getDevices();
+    dev=ds.find(x=>x.vendorId===VID&&x.productId===PID&&(x.collections||[]).some(c=>c.usagePage===0xff60&&c.usage===0x61));
+    if(!dev){ const pick=await navigator.hid.requestDevice({filters:[{vendorId:VID,productId:PID}]});
+      dev=pick.find(x=>(x.collections||[]).some(c=>c.usagePage===0xff60&&c.usage===0x61)); }
+    if(!dev){ log("No AL80 LCD interface found."); return; }
+    if(!dev.opened) await dev.open();
+    $('#dot').classList.add('on'); $('#status').textContent='connected'; log("connected.");
+    document.querySelectorAll('#tests button').forEach(b=>b.disabled=false);
+    if(photoBitmap) document.querySelectorAll('[data-mode]').forEach(b=>b.disabled=false);
+  }catch(e){ log("connect error: "+(e.message||e)); }
+};
+
+let photoBitmap=null;
+$('#photo').onchange=async(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  photoBitmap=await createImageBitmap(f);
+  document.querySelectorAll('[data-mode]').forEach(b=>b.disabled=!dev);
+  log("photo loaded: "+f.name+" ("+photoBitmap.width+"×"+photoBitmap.height+")");
+};
+function packPhoto(mode){
+  const cv=new OffscreenCanvas(W,H); const ctx=cv.getContext('2d');
+  const img=photoBitmap; const s=Math.max(W/img.width,H/img.height); const dw=img.width*s, dh=img.height*s;
+  ctx.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
+  const px=ctx.getImageData(0,0,W,H).data; const fb=new Uint8Array(FRAME);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const i=(y*W+x)*4;
+    const v=((px[i]>>3)<<11)|((px[i+1]>>2)<<5)|(px[i+2]>>3);
+    const off=(mode==='col')?(x*H+y)*2:(y*W+x)*2; fb[off]=(v>>8)&0xff; fb[off+1]=v&0xff; }
+  return (mode==='row') ? swapRows(fb,1) : fb; // 'row' applies the odd-row swap fix
+}
+document.querySelectorAll('[data-mode]').forEach(b=>{ b.onclick=async()=>{
+  if(!photoBitmap||!dev) return;
+  try{ log("▶ photo — "+b.dataset.mode); b.disabled=true; await sendBlasted(packPhoto(b.dataset.mode),{rlen:64,gap:2}); log("  sent — upright? clean?"); }
+  catch(err){ log("  ERROR: "+(err.message||err)); } finally{ b.disabled=false; }
+}; });
+
+if(!('hid' in navigator)) log("WebHID unavailable — use Chrome/Edge.");
+renderTests();
+</script>
+</body>
+</html>
