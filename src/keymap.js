@@ -33,7 +33,32 @@ export const AL80 = Object.freeze({
   LAYER_SIZE: 90,
   ENCODER_COUNT: 1,
   MACRO_COUNT: 16,
+  MATRIX_ROWS: 6,
+  MATRIX_COLS: 15,
 });
+
+/**
+ * Physical layout of the AL80, extracted from the VIA definition's KLE keymap
+ * (AL80_QMK__V0106_20251219.json). One entry per physical key:
+ *   [row, col, x, y, w]  — x/y in key units (1u), w = key width in units.
+ * The matrix is 6x15 = 90 positions (LAYER_SIZE); only 80 are populated (the
+ * rest are KC_NO fillers with no physical key). Matrix/flat-layer index of a
+ * key is row * MATRIX_COLS + col.
+ * @readonly
+ */
+export const AL80_LAYOUT = Object.freeze([
+  [0,0,0,0,1],[0,1,1.25,0,1],[0,2,2.25,0,1],[0,3,3.25,0,1],[0,4,4.25,0,1],[0,5,5.5,0,1],[0,6,6.5,0,1],[0,7,7.5,0,1],[0,8,8.5,0,1],[0,9,9.75,0,1],[0,10,10.75,0,1],[0,11,11.75,0,1],[0,12,12.75,0,1],[0,13,14.0,0,1],[0,14,15.0,0,1],
+  [1,0,0,1,1.5],[1,1,1.5,1,1],[1,2,2.5,1,1],[1,3,3.5,1,1],[1,4,4.5,1,1],[1,5,5.5,1,1],[1,6,6.5,1,1],[1,7,7.5,1,1],[1,8,8.5,1,1],[1,9,9.5,1,1],[1,10,10.5,1,1],[1,11,11.5,1,1],[1,12,12.5,1,1],[1,13,13.5,1,1.5],[1,14,15.0,1,1],
+  [2,0,0,2,1.75],[2,1,1.75,2,1],[2,2,2.75,2,1],[2,3,3.75,2,1],[2,4,4.75,2,1],[2,5,5.75,2,1],[2,6,6.75,2,1],[2,7,7.75,2,1],[2,8,8.75,2,1],[2,9,9.75,2,1],[2,10,10.75,2,1],[2,11,11.75,2,1],[2,12,12.75,2,1],[2,13,13.75,2,1.25],[2,14,15.0,2,1],
+  [3,0,0,3,2],[3,1,2,3,1],[3,2,3,3,1],[3,3,4,3,1],[3,4,5,3,1],[3,5,6,3,1],[3,6,7,3,1],[3,7,8,3,1],[3,8,9,3,1],[3,9,10,3,1],[3,10,11,3,1],[3,11,12,3,1],[3,13,13,3,2],
+  [4,0,0,4,2.25],[4,2,2.25,4,1],[4,3,3.25,4,1],[4,4,4.25,4,1],[4,5,5.25,4,1],[4,6,6.25,4,1],[4,7,7.25,4,1],[4,8,8.25,4,1],[4,9,9.25,4,1],[4,10,10.25,4,1],[4,11,11.25,4,1],[4,12,12.25,4,1.75],[4,13,14.0,4,1],
+  [5,0,0,5,1.25],[5,1,1.25,5,1.25],[5,2,2.5,5,1.25],[5,6,3.75,5,6.25],[5,10,10.0,5,1.25],[5,11,11.25,5,1.25],[5,12,13.0,5,1],[5,13,14.0,5,1],[5,14,15.0,5,1],
+]);
+
+/** Flat matrix/layer index for a (row, col). Layers store keycodes in this order. */
+export function matrixIndex(row, col) {
+  return row * AL80.MATRIX_COLS + col;
+}
 
 // ---------------------------------------------------------------------------
 // PRESETS — grouped catalog of ready-to-bind keycodes.
@@ -332,11 +357,224 @@ export function buildAppLauncherMacro(runTarget, opts = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Keycode string <-> 16-bit VIA number
+//
+// The wire protocol (dynamic_keymap_get/set_keycode, encoders, buffer) speaks
+// 16-bit numbers; the JSON model and presets speak VIA strings. These two
+// functions bridge them. They cover the basic HID set, media/consumer keys,
+// mod-wrapped keys (LGUI/LCTL/LALT/LSFT + right-hand), MO/TG/TO/DF/TT/OSL,
+// LT(), MT(), MACRO(n) and CUSTOM(n). Everything is best-effort and defensive:
+// an unknown string encodes to null (skip the live write), and an unknown
+// number decodes to a "0xXXXX" token (still shows something in the UI).
+//
+// Ranges follow modern QMK / VIA v3 quantum keycodes (quantum_keycodes.h).
+// ---------------------------------------------------------------------------
+
+/** @type {Record<string, number>} canonical basic name -> number (num->name reverse built from this) */
+const BASIC = (() => {
+  const m = {
+    KC_NO: 0x00, KC_TRNS: 0x01,
+    KC_ENT: 0x28, KC_ESC: 0x29, KC_BSPC: 0x2a, KC_TAB: 0x2b, KC_SPC: 0x2c,
+    KC_MINS: 0x2d, KC_EQL: 0x2e, KC_LBRC: 0x2f, KC_RBRC: 0x30, KC_BSLS: 0x31,
+    KC_NUHS: 0x32, KC_SCLN: 0x33, KC_QUOT: 0x34, KC_GRV: 0x35, KC_COMM: 0x36,
+    KC_DOT: 0x37, KC_SLSH: 0x38, KC_CAPS: 0x39,
+    KC_PSCR: 0x46, KC_SCRL: 0x47, KC_PAUS: 0x48, KC_INS: 0x49, KC_HOME: 0x4a,
+    KC_PGUP: 0x4b, KC_DEL: 0x4c, KC_END: 0x4d, KC_PGDN: 0x4e,
+    KC_RGHT: 0x4f, KC_LEFT: 0x50, KC_DOWN: 0x51, KC_UP: 0x52,
+    KC_NUM: 0x53, KC_PSLS: 0x54, KC_PAST: 0x55, KC_PMNS: 0x56, KC_PPLS: 0x57,
+    KC_PENT: 0x58, KC_PDOT: 0x63, KC_NUBS: 0x64, KC_APP: 0x65,
+    KC_LCTL: 0xe0, KC_LSFT: 0xe1, KC_LALT: 0xe2, KC_LGUI: 0xe3,
+    KC_RCTL: 0xe4, KC_RSFT: 0xe5, KC_RALT: 0xe6, KC_RGUI: 0xe7,
+    // media / consumer (QMK internal keycodes)
+    KC_PWR: 0xa5, KC_MUTE: 0xa8, KC_VOLU: 0xa9, KC_VOLD: 0xaa,
+    KC_MNXT: 0xab, KC_MPRV: 0xac, KC_MSTP: 0xad, KC_MPLY: 0xae, KC_MSEL: 0xaf,
+    KC_EJCT: 0xb0, KC_MAIL: 0xb1, KC_CALC: 0xb2, KC_MYCM: 0xb3, KC_WSCH: 0xb4,
+    KC_WHOM: 0xb5, KC_WBAK: 0xb6, KC_WFWD: 0xb7, KC_WSTP: 0xb8, KC_WREF: 0xb9,
+    KC_WFAV: 0xba, KC_BRIU: 0xbd, KC_BRID: 0xbe,
+  };
+  for (let i = 0; i < 26; i++) m['KC_' + String.fromCharCode(65 + i)] = 0x04 + i; // KC_A..KC_Z
+  for (let i = 1; i <= 9; i++) m['KC_' + i] = 0x1e + (i - 1); // KC_1..KC_9
+  m['KC_0'] = 0x27;
+  for (let i = 1; i <= 12; i++) m['KC_F' + i] = 0x3a + (i - 1); // KC_F1..KC_F12
+  for (let i = 13; i <= 24; i++) m['KC_F' + i] = 0x68 + (i - 13); // KC_F13..KC_F24
+  for (let i = 1; i <= 9; i++) m['KC_P' + i] = 0x59 + (i - 1); // KC_P1..KC_P9
+  m['KC_P0'] = 0x62;
+  return m;
+})();
+
+/** Aliases accepted on the way IN (name -> number) but never emitted on the way out. */
+const BASIC_ALIASES = {
+  KC_TRANSPARENT: 0x01, KC_ENTER: 0x28, KC_ESCAPE: 0x29, KC_BACKSPACE: 0x2a,
+  KC_SPACE: 0x2c, KC_MINUS: 0x2d, KC_EQUAL: 0x2e, KC_CAPS_LOCK: 0x39,
+  KC_AUDIO_MUTE: 0xa8, KC_AUDIO_VOL_UP: 0xa9, KC_AUDIO_VOL_DOWN: 0xaa,
+  KC_MEDIA_NEXT_TRACK: 0xab, KC_MEDIA_PREV_TRACK: 0xac,
+  KC_MEDIA_PLAY_PAUSE: 0xae, KC_RIGHT: 0x4f,
+};
+
+/** number -> canonical basic name (0x00..0xff range only). */
+const BASIC_REV = (() => {
+  const r = {};
+  for (const [name, n] of Object.entries(BASIC)) if (!(n in r)) r[n] = name;
+  return r;
+})();
+
+/** Modifier-wrap tokens -> [modNibble, isRight]. Nibble bits: CTL=1 SFT=2 ALT=4 GUI=8. */
+const MOD_WRAP = {
+  LCTL: [0x1, 0], C: [0x1, 0], LSFT: [0x2, 0], S: [0x2, 0],
+  LALT: [0x4, 0], A: [0x4, 0], LGUI: [0x8, 0], G: [0x8, 0],
+  RCTL: [0x1, 1], RSFT: [0x2, 1], RALT: [0x4, 1], RGUI: [0x8, 1],
+};
+
+/** MT() mod bitfield tokens. Right-hand sets bit 4 (0x10). */
+const MOD_BITS = {
+  MOD_LCTL: 0x01, MOD_LSFT: 0x02, MOD_LALT: 0x04, MOD_LGUI: 0x08,
+  MOD_RCTL: 0x11, MOD_RSFT: 0x12, MOD_RALT: 0x14, MOD_RGUI: 0x18,
+};
+
+/**
+ * Encode a VIA keycode string to its 16-bit number, or null when unrecognized.
+ * @param {string} kc VIA keycode token (e.g. "KC_A", "MO(1)", "LT(1,KC_ESC)", "LGUI(KC_1)")
+ * @returns {number|null}
+ */
+export function keycodeToNumber(kc) {
+  if (typeof kc !== 'string') return null;
+  const s = kc.trim();
+  if (s === '') return null;
+
+  // basic / alias
+  if (s in BASIC) return BASIC[s];
+  if (s in BASIC_ALIASES) return BASIC_ALIASES[s];
+
+  // hex passthrough (round-trips unknown decodes)
+  if (/^0x[0-9a-f]{1,4}$/i.test(s)) return parseInt(s, 16) & 0xffff;
+
+  const fn = s.match(/^([A-Z_]+)\((.*)\)$/i);
+  if (!fn) return null;
+  const name = fn[1].toUpperCase();
+  const arg = fn[2].trim();
+
+  // layer ops with a single numeric layer arg
+  const layerBase = { MO: 0x5220, TG: 0x5260, TO: 0x5200, DF: 0x5240, TT: 0x52c0, OSL: 0x5280 };
+  if (name in layerBase && /^\d+$/.test(arg)) return layerBase[name] + (parseInt(arg, 10) & 0x1f);
+
+  if (name === 'MACRO' && /^\d+$/.test(arg)) return 0x7700 + (parseInt(arg, 10) & 0xff);
+  if (name === 'CUSTOM' && /^\d+$/.test(arg)) return 0x7e00 + (parseInt(arg, 10) & 0xff);
+
+  if (name === 'LT') {
+    const p = splitArgs(arg);
+    if (p.length === 2 && /^\d+$/.test(p[0])) {
+      const inner = keycodeToNumber(p[1]);
+      if (inner == null) return null;
+      return 0x4000 | ((parseInt(p[0], 10) & 0xf) << 8) | (inner & 0xff);
+    }
+    return null;
+  }
+
+  if (name === 'MT') {
+    const p = splitArgs(arg);
+    if (p.length === 2) {
+      let mod = 0;
+      for (const t of p[0].split('|').map((x) => x.trim())) {
+        if (!(t in MOD_BITS)) return null;
+        mod |= MOD_BITS[t];
+      }
+      const inner = keycodeToNumber(p[1]);
+      if (inner == null) return null;
+      return 0x2000 | ((mod & 0x1f) << 8) | (inner & 0xff);
+    }
+    return null;
+  }
+
+  // modifier wrap (possibly nested): LGUI(KC_1), LCTL(LSFT(KC_A))
+  if (name in MOD_WRAP) {
+    const inner = keycodeToNumber(arg);
+    if (inner == null) return null;
+    const [nibble, right] = MOD_WRAP[name];
+    // Combine with any mod bits already present on the inner QK_MODS value.
+    const innerNibble = (inner >> 8) & 0xf;
+    const innerRight = (inner >> 12) & 0x1;
+    const base = inner & 0xff;
+    const r = right || innerRight;
+    return ((r & 1) << 12) | (((nibble | innerNibble) & 0xf) << 8) | base;
+  }
+
+  return null;
+}
+
+/** Split "a, b" respecting nested parens: "MOD_LCTL, KC_ESC" or "1, LT(2,KC_A)". */
+function splitArgs(s) {
+  const out = [];
+  let depth = 0, cur = '';
+  for (const ch of s) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; }
+    else cur += ch;
+  }
+  if (cur.trim() !== '') out.push(cur.trim());
+  return out;
+}
+
+/**
+ * Decode a 16-bit VIA keycode number to a readable string. Never throws;
+ * unknown values come back as "0xXXXX" (still round-trips via keycodeToNumber).
+ * @param {number} n
+ * @returns {string}
+ */
+export function numberToKeycode(n) {
+  n &= 0xffff;
+  if (n in BASIC_REV) return BASIC_REV[n];
+  if (n <= 0xff) return '0x' + n.toString(16).padStart(2, '0');
+
+  // CUSTOM / MACRO
+  if (n >= 0x7e00 && n <= 0x7fff) return `CUSTOM(${n - 0x7e00})`;
+  if (n >= 0x7700 && n <= 0x777f) return `MACRO(${n - 0x7700})`;
+
+  // single-layer ops
+  const layerRanges = [
+    [0x5200, 'TO'], [0x5220, 'MO'], [0x5240, 'DF'], [0x5260, 'TG'],
+    [0x5280, 'OSL'], [0x52c0, 'TT'],
+  ];
+  for (const [base, fn] of layerRanges) {
+    if (n >= base && n < base + 0x20) return `${fn}(${n - base})`;
+  }
+
+  // LT(layer, kc)
+  if (n >= 0x4000 && n <= 0x4fff) {
+    return `LT(${(n >> 8) & 0xf},${numberToKeycode(n & 0xff)})`;
+  }
+  // MT(mod, kc)
+  if (n >= 0x2000 && n <= 0x3fff) {
+    const mod = (n >> 8) & 0x1f;
+    const modName = Object.keys(MOD_BITS).find((k) => MOD_BITS[k] === mod);
+    return `MT(${modName || '0x' + mod.toString(16)},${numberToKeycode(n & 0xff)})`;
+  }
+  // QK_MODS: mod-wrapped basic keycode
+  if (n >= 0x0100 && n <= 0x1fff) {
+    const nibble = (n >> 8) & 0xf;
+    const right = (n >> 12) & 0x1;
+    const names = { 0x1: right ? 'RCTL' : 'LCTL', 0x2: right ? 'RSFT' : 'LSFT', 0x4: right ? 'RALT' : 'LALT', 0x8: right ? 'RGUI' : 'LGUI' };
+    // Emit one wrap per set mod bit, nesting the basic keycode inside.
+    let inner = numberToKeycode(n & 0xff);
+    for (const bit of [0x8, 0x4, 0x2, 0x1]) {
+      if (nibble & bit) inner = `${names[bit]}(${inner})`;
+    }
+    return inner;
+  }
+
+  return '0x' + n.toString(16).padStart(4, '0');
+}
+
 export default {
   AL80,
+  AL80_LAYOUT,
   PRESETS,
+  matrixIndex,
   emptyKeymap,
   importKeymap,
   exportKeymap,
   buildAppLauncherMacro,
+  keycodeToNumber,
+  numberToKeycode,
 };

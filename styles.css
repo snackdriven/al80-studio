@@ -658,6 +658,76 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .preset-chip:hover { border-color: var(--accent); }
 .preset-chip code { color: var(--muted); font-size: 11px; }
 
+/* ---- Live keymap editor -------------------------------------------------- */
+.keymap-toolbar { align-items: center; }
+
+.layer-select { display: inline-flex; gap: 4px; padding: 3px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.layer-btn {
+  min-width: 34px; padding: 5px 10px; font: inherit; font-size: 13px;
+  background: transparent; color: var(--muted);
+  border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+}
+.layer-btn:hover { color: var(--text); }
+.layer-btn[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+/* Absolute-positioned key grid. --u (key unit, px) is set inline by JS on the container. */
+.key-grid {
+  position: relative;
+  margin: 18px 0 8px;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.key {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+  padding: 2px;
+  font: inherit; font-size: 11px; line-height: 1.05;
+  text-align: center; word-break: break-word;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: 6px;
+  cursor: pointer; overflow: hidden;
+}
+.key:hover { border-color: var(--accent); }
+.key.selected { border-color: var(--accent); box-shadow: var(--focus); }
+.key.k-trns { color: var(--muted); background: var(--panel); }
+.key.k-no { color: var(--muted); background: var(--panel); opacity: 0.6; }
+.key.pressed { background: var(--ok); color: var(--accent-ink); border-color: var(--ok); }
+
+/* Encoder widget */
+.encoder-widget { display: flex; align-items: flex-end; gap: 16px; margin: 10px 0 4px; }
+.enc-key { display: flex; flex-direction: column; gap: 4px; }
+.enc-cap { font-size: 11px; color: var(--muted); }
+.enc-btn { position: static; min-width: 120px; height: 40px; }
+.enc-dial { font-size: 30px; color: var(--muted); padding-bottom: 4px; }
+
+/* Keycode picker overlay */
+.picker-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(8, 10, 14, 0.6); padding: 24px;
+}
+.picker-box {
+  width: min(560px, 100%); max-height: 80vh; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: var(--radius);
+  padding: 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.picker-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.picker-head code { color: var(--accent); }
+.picker-search {
+  width: 100%; padding: 8px 10px; margin-bottom: 10px;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 13px;
+}
+.picker-body { overflow-y: auto; flex: 1; }
+.picker-foot { display: flex; align-items: flex-end; gap: 8px; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+.picker-custom { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.picker-custom input {
+  padding: 7px 10px; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 13px;
+}
+
 /* Unsupported message */
 .unsupported {
   max-width: 520px;

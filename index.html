@@ -428,27 +428,58 @@
     <section class="panel">
       <div class="panel-head">
         <h2>Keymap</h2>
-        <p class="muted">Offline tool &mdash; builds a VIA keymap JSON file. Doesn&rsquo;t touch your keyboard, so no connection needed.</p>
+        <p class="muted">Live VIA keymap editor. Connect the keyboard to read and write keys in real time, or edit offline and export a VIA JSON file. Click a key to remap it.</p>
       </div>
-      <div class="row">
-        <label class="btn">Import keymap JSON
+
+      <div class="row keymap-toolbar">
+        <div class="layer-select" id="layerSelect" role="tablist" aria-label="Layer"></div>
+        <button id="keymapRead" type="button" class="btn device-action" disabled title="Read the current keymap from the keyboard">Read from keyboard</button>
+        <label class="btn">Import JSON
           <input id="keymapImport" type="file" accept="application/json,.json" hidden />
         </label>
-        <button id="keymapExport" type="button" class="btn">Export keymap JSON</button>
-        <span id="keymapStatus" class="muted small"></span>
+        <button id="keymapExport" type="button" class="btn">Export JSON</button>
       </div>
-      <div class="shortcuts-grid">
-        <div>
-          <label>Preset
-            <select id="presetSelect"></select>
-          </label>
-          <p class="keycode-readout">
-            VIA keycode: <code id="presetKeycode">&mdash;</code>
-          </p>
+      <span id="keymapStatus" class="statusline"></span>
+
+      <div id="keyGrid" class="key-grid" role="group" aria-label="Key layout"></div>
+
+      <h3>Encoder / knob</h3>
+      <div class="encoder-widget">
+        <div class="enc-key">
+          <span class="enc-cap">Turn left (CCW)</span>
+          <button id="encCcw" type="button" class="key enc-btn" title="Set the counter-clockwise action">&mdash;</button>
         </div>
-        <div id="presetCatalog" class="preset-catalog"></div>
+        <div class="enc-dial" aria-hidden="true">&#9673;</div>
+        <div class="enc-key">
+          <span class="enc-cap">Turn right (CW)</span>
+          <button id="encCw" type="button" class="key enc-btn" title="Set the clockwise action">&mdash;</button>
+        </div>
+      </div>
+
+      <h3>Key tester</h3>
+      <div class="row">
+        <button id="testerToggle" type="button" class="btn device-action" disabled title="Poll the switch matrix and light up pressed keys">Start key tester</button>
+        <span id="testerStatus" class="muted small"></span>
       </div>
     </section>
+
+    <!-- Keycode picker: opened when a key or the encoder is clicked -->
+    <div id="keycodePicker" class="picker-overlay" hidden>
+      <div class="picker-box" role="dialog" aria-label="Choose a keycode" aria-modal="true">
+        <div class="picker-head">
+          <span>Set <code id="pickerTarget">&mdash;</code></span>
+          <button id="pickerClose" type="button" class="btn small">Close</button>
+        </div>
+        <input id="pickerSearch" type="search" class="picker-search" placeholder="Filter keycodes&hellip;" />
+        <div id="pickerBody" class="picker-body"></div>
+        <div class="picker-foot">
+          <label class="picker-custom">Custom keycode
+            <input id="pickerCustom" type="text" placeholder="e.g. KC_A, MO(1), LGUI(KC_L)" />
+          </label>
+          <button id="pickerApply" type="button" class="btn small primary">Apply</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <footer class="app-footer">
