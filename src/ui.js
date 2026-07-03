@@ -107,10 +107,11 @@ function reflectConnection() {
   });
   const gate = $('#lcdGate');
   if (gate) gate.hidden = connected;
-  // if we just disconnected, stop clock sync and any running slideshow cycle
+  // if we just disconnected, stop clock sync, any running slideshow cycle, and any lighting effect
   if (!connected) {
     stopClockSync();
     slideshowCtl.stop();
+    lightingFxCtl.stop();
   }
 }
 
@@ -282,6 +283,15 @@ const slideshowVisible = () =>
   document.querySelector('#app')?.dataset.section === 'lcd' &&
   document.querySelector('.panel[data-panel="slideshow"]')?.hidden === false;
 
+// A software lighting effect (strobe / cycle / breathe) is a host-driven color loop that streams
+// save-less color reports over the connection. Exactly one runs at a time. Like the slideshow cycle,
+// it must stop when the Lighting panel is hidden or the device disconnects; setupLightingTab fills
+// stop() in. lightingVisible() tells the handlers whether the panel is currently showing.
+const lightingFxCtl = { stop() {} };
+const lightingVisible = () =>
+  document.querySelector('#app')?.dataset.section === 'lcd' &&
+  document.querySelector('.panel[data-panel="lighting"]')?.hidden === false;
+
 // ---- top-level sections (LCD / Keymap) --------------------------------------
 function setupSections() {
   const app = $('#app');
@@ -295,6 +305,7 @@ function setupSections() {
       panels.forEach((p) => { p.hidden = p.dataset.sectionPanel !== name; });
       if (gifVisible()) gifPreviewCtl.start(); else gifPreviewCtl.stop();
       if (!slideshowVisible()) slideshowCtl.stop();
+      if (!lightingVisible()) lightingFxCtl.stop();
     });
   });
 }
@@ -310,6 +321,7 @@ function setupTabs() {
       panels.forEach((p) => { p.hidden = p.dataset.panel !== name; });
       if (name === 'gif') gifPreviewCtl.start(); else gifPreviewCtl.stop();
       if (name !== 'slideshow') slideshowCtl.stop();
+      if (name !== 'lighting') lightingFxCtl.stop();
     });
   });
 }
@@ -1037,6 +1049,139 @@ function setupLightingTab() {
     guardedSend('Light color', statusEl, proto.buildLightColor(hue, sat));
   });
   color.addEventListener('input', sendColor);
+
+  // ---- software effects (host-driven color animation) -----------------------
+  // These stream SAVE-LESS color reports (proto.buildLightColorLive) so they never touch the EEPROM;
+  // only the one-time effect=Solid Color at the start of a run is persisted. Exactly one effect runs
+  // at a time — Start stops any other. A setTimeout chain (not rAF) drives the per-step delay; a
+  // generation token + running flag cancel it cleanly on Stop, tab-switch, or disconnect.
+  const SOLID_COLOR_EFFECT = 1; // matches the "Solid Color" option in #lightEffect
+  const fxStatus = $('#fxStatus');
+  const strobeColorA = $('#strobeColorA');
+  const strobeColorB = $('#strobeColorB');
+  const strobeSpeed = $('#strobeSpeed');
+  const strobeSpeedOut = $('#strobeSpeedOut');
+  const cycleSpeed = $('#cycleSpeed');
+  const cycleSpeedOut = $('#cycleSpeedOut');
+  const breatheColorA = $('#breatheColorA');
+  const breatheColorB = $('#breatheColorB');
+  const breatheSpeed = $('#breatheSpeed');
+  const breatheSpeedOut = $('#breatheSpeedOut');
+
+  let fxToken = 0;      // bumped on every start/stop; a running loop bails when its token is stale
+  let fxTimer = null;   // pending setTimeout handle
+  let fxRunning = false;
+
+  function stopFx() {
+    fxRunning = false;
+    fxToken++;                                    // invalidate any in-flight loop iteration
+    if (fxTimer) { clearTimeout(fxTimer); fxTimer = null; }
+  }
+  lightingFxCtl.stop = stopFx;
+
+  // One save-less color frame. Uses hid.send directly (not guardedSend) so animation frames don't
+  // flood the device log — only errors are logged/surfaced. Returns false on failure.
+  async function sendFrame(report) {
+    try {
+      await hid.send([report], { gap: 0 });
+      return true;
+    } catch (err) {
+      const msg = (err && err.message) || String(err);
+      devLog('Light FX frame', { packets: 1, error: msg });
+      setStatus(fxStatus, 'Send failed: ' + msg, 'err');
+      return false;
+    }
+  }
+
+  // Leave the board resting on a solid color (the given picker) — used on Stop.
+  async function restTo(colorInput) {
+    if (!connected) return;
+    const { hue, sat } = rgbToHueSat(colorInput.value);
+    await sendFrame(proto.buildLightColorLive(hue, sat));
+  }
+
+  // frameFn(i) -> {hue, sat} for step i; delayFn() -> ms until the next step.
+  async function startFx(name, frameFn, delayFn) {
+    stopFx();                                     // Start stops any other effect
+    if (!connected) { setStatus(fxStatus, 'Connect first.', 'err'); return; }
+    const token = ++fxToken;
+    fxRunning = true;
+    setStatus(fxStatus, `${name} — starting…`);
+    // The ONLY EEPROM write: pin the base effect to Solid Color so live color reports show through.
+    const ok = await guardedSend('FX effect → Solid Color', fxStatus, proto.buildLightEffect(SOLID_COLOR_EFFECT));
+    if (!ok) { stopFx(); return; }
+    if (token !== fxToken || !fxRunning) return;  // Stop pressed during the await
+    setStatus(fxStatus, `${name} running — press Stop to end.`, 'ok');
+    let i = 0;
+    const tick = async () => {
+      if (token !== fxToken || !fxRunning) return;
+      const { hue, sat } = frameFn(i);
+      const sent = await sendFrame(proto.buildLightColorLive(hue, sat));
+      if (!sent) { stopFx(); return; }            // sendFrame already surfaced the error
+      if (token !== fxToken || !fxRunning) return; // Stop pressed while the frame was in flight
+      i++;
+      fxTimer = setTimeout(tick, Math.max(10, delayFn()));
+    };
+    tick();
+  }
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+  // Shortest-path interpolation on the 0..255 hue wheel (avoids sweeping the long way round).
+  function lerpHue(a, b, t) {
+    let d = b - a;
+    if (d > 128) d -= 256; else if (d < -128) d += 256;
+    return ((a + d * t) % 256 + 256) % 256;
+  }
+
+  // Strobe: alternate A/B every `ms/color`. Pickers are read live so edits apply mid-run.
+  strobeSpeed.addEventListener('input', () => { strobeSpeedOut.textContent = strobeSpeed.value; });
+  strobeSpeedOut.textContent = strobeSpeed.value;
+  $('#strobeStart').addEventListener('click', () =>
+    startFx('Strobe',
+      (i) => rgbToHueSat((i % 2 === 0 ? strobeColorA : strobeColorB).value),
+      () => +strobeSpeed.value));
+  $('#strobeStop').addEventListener('click', async () => {
+    stopFx();
+    setStatus(fxStatus, 'Stopped.');
+    await restTo(strobeColorA);                   // rest on the last A
+  });
+
+  // Cycle: rainbow hue sweep 0→255 at full saturation.
+  cycleSpeed.addEventListener('input', () => { cycleSpeedOut.textContent = cycleSpeed.value; });
+  cycleSpeedOut.textContent = cycleSpeed.value;
+  $('#cycleStart').addEventListener('click', () =>
+    startFx('Cycle',
+      (i) => ({ hue: i % 256, sat: 255 }),
+      () => +cycleSpeed.value));
+  $('#cycleStop').addEventListener('click', () => {
+    stopFx();
+    setStatus(fxStatus, 'Stopped.');              // leave on the last hue — no effect change
+  });
+
+  // Breathe: triangle interpolate hue/sat A→B→A over N steps.
+  const BREATHE_STEPS = 64;
+  breatheSpeed.addEventListener('input', () => { breatheSpeedOut.textContent = breatheSpeed.value; });
+  breatheSpeedOut.textContent = breatheSpeed.value;
+  $('#breatheStart').addEventListener('click', () =>
+    startFx('Breathe',
+      (i) => {
+        const a = rgbToHueSat(breatheColorA.value);
+        const b = rgbToHueSat(breatheColorB.value);
+        const half = BREATHE_STEPS / 2;
+        const phase = i % BREATHE_STEPS;
+        const t = phase <= half ? phase / half : (BREATHE_STEPS - phase) / half; // 0→1→0
+        return { hue: Math.round(lerpHue(a.hue, b.hue, t)), sat: Math.round(lerp(a.sat, b.sat, t)) };
+      },
+      () => +breatheSpeed.value));
+  $('#breatheStop').addEventListener('click', async () => {
+    stopFx();
+    setStatus(fxStatus, 'Stopped.');
+    await restTo(breatheColorA);                  // rest on the last A
+  });
+
+  // Manual effect/color changes take over from any running animation.
+  effect.addEventListener('change', stopFx);
+  color.addEventListener('input', stopFx);
 
   // initial read-outs
   brightnessOut.textContent = brightness.value;

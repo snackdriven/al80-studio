@@ -369,6 +369,14 @@ export const buildLightEffect = (mode) => [buildLightSet(LIGHT.EFFECT, [mode]), 
 export const buildLightSpeed = (v) => [buildLightSet(LIGHT.SPEED, [v]), buildLightSave()];
 export const buildLightColor = (hue, sat) => [buildLightSet(LIGHT.COLOR, [hue, sat]), buildLightSave()];
 
+/**
+ * SAVE-LESS color set for real-time animation. Returns a SINGLE 64-byte report (no 0x09 save),
+ * so software effects (strobe / cycle / breathe) can push hundreds of colors/second without
+ * hammering the EEPROM. Set effect=Solid Color once (with save) up front, then stream these.
+ * @returns {Uint8Array} one 07 03 04 <hue> <sat> report — NOT an array, unlike buildLightColor.
+ */
+export const buildLightColorLive = (hue, sat) => buildLightSet(LIGHT.COLOR, [hue, sat]);
+
 /** Serialize a logical packet (64-byte body) to the capture-schema hex string, for tests/logs. */
 export function toHex(pkt) {
   return Array.from(pkt, (b) => b.toString(16).padStart(2, '0')).join(' ');

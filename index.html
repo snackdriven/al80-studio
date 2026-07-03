@@ -323,6 +323,51 @@
           </div>
 
           <p id="lightStatus" class="statusline" role="status"></p>
+
+          <h3>Effects</h3>
+          <p class="muted small">Software-driven animations that run from the browser. One plays at a
+            time; Start switches. These stream color live over the connection (no EEPROM writes), so
+            they stop on Stop, on leaving this tab, and on disconnect.</p>
+
+          <div class="fx-mode">
+            <div class="row">
+              <strong>Strobe</strong>
+              <label class="inline">A <input id="strobeColorA" type="color" value="#ff0000" class="device-action" disabled /></label>
+              <label class="inline">B <input id="strobeColorB" type="color" value="#0000ff" class="device-action" disabled /></label>
+              <label class="inline">ms/color <output id="strobeSpeedOut">120</output>
+                <input id="strobeSpeed" type="range" min="40" max="500" value="120" class="device-action" disabled />
+              </label>
+              <button id="strobeStart" type="button" class="btn primary small device-action" disabled>Start</button>
+              <button id="strobeStop" type="button" class="btn small device-action" disabled>Stop</button>
+            </div>
+          </div>
+
+          <div class="fx-mode">
+            <div class="row">
+              <strong>Cycle</strong>
+              <span class="muted small">rainbow hue sweep</span>
+              <label class="inline">ms/step <output id="cycleSpeedOut">30</output>
+                <input id="cycleSpeed" type="range" min="10" max="200" value="30" class="device-action" disabled />
+              </label>
+              <button id="cycleStart" type="button" class="btn primary small device-action" disabled>Start</button>
+              <button id="cycleStop" type="button" class="btn small device-action" disabled>Stop</button>
+            </div>
+          </div>
+
+          <div class="fx-mode">
+            <div class="row">
+              <strong>Breathe</strong>
+              <label class="inline">A <input id="breatheColorA" type="color" value="#ff2d95" class="device-action" disabled /></label>
+              <label class="inline">B <input id="breatheColorB" type="color" value="#2d9dff" class="device-action" disabled /></label>
+              <label class="inline">ms/step <output id="breatheSpeedOut">40</output>
+                <input id="breatheSpeed" type="range" min="10" max="200" value="40" class="device-action" disabled />
+              </label>
+              <button id="breatheStart" type="button" class="btn primary small device-action" disabled>Start</button>
+              <button id="breatheStop" type="button" class="btn small device-action" disabled>Stop</button>
+            </div>
+          </div>
+
+          <p id="fxStatus" class="statusline" role="status"></p>
         </section>
       </main>
     </div>

@@ -283,6 +283,17 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .btn.small { padding: 5px 10px; font-size: 12px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Lighting effects (software-driven strobe / cycle / breathe) */
+.fx-mode {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 14px;
+  margin: 10px 0;
+}
+.fx-mode .row { margin: 10px 0; }
+.fx-mode strong { color: var(--text); font-size: 13px; min-width: 56px; }
+
 /* Status lines */
 .statusline { min-height: 18px; font-size: 13px; margin: 12px 0 0; color: var(--muted); }
 .statusline.ok { color: var(--ok); }

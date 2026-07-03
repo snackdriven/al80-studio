@@ -8,6 +8,7 @@ import {
   buildMainPageGif, buildMainPageImage, MP_FRAME_BYTES, MP_MAX_FRAMES,
   buildGifPage, buildStartupAnimation, GP_FRAME_BYTES, SA_FRAME_BYTES,
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightSave, buildLightGet,
+  buildLightColorLive,
 } from '../src/protocol.js';
 
 let pass = 0;
@@ -176,6 +177,18 @@ ok('RGB lighting builders match the live usevia capture (VIA RGB-matrix channel 
   // clamps to 0..255, no negative/overflow leakage
   assert.equal(buildLightBrightness(999)[0][3], 0xff);
   assert.equal(buildLightBrightness(-5)[0][3], 0x00);
+});
+
+ok('buildLightColorLive is a single save-less color report (for real-time animation)', () => {
+  const r = buildLightColorLive(0, 255);
+  assert.ok(r instanceof Uint8Array, 'returns one report, not an [set, save] pair');
+  assert.equal(r.length, 64);                              // one 64-byte report
+  assert.equal(hex(r).startsWith('07 03 04 00 ff'), true, hex(r)); // set color hue=0 sat=255, no 0x09 save
+  // it must NOT carry a save: buildLightColor pairs a 09 03 save after the set; live has none.
+  const paired = buildLightColor(0, 255);
+  assert.equal(paired.length, 2);
+  assert.equal(hex(paired[1]).startsWith('09 03'), true);  // the paired builder DOES save
+  assert.deepEqual(Array.from(r), Array.from(paired[0]));   // live == the set half, sans save
 });
 
 console.log(`\n${pass} checks passed.`);
