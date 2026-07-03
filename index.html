@@ -1,8 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>AL80 Studio</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20rx='3'%20fill='%2314161a'/%3E%3Crect%20x='3'%20y='4'%20width='10'%20height='7'%20rx='1'%20fill='%237cc4ff'/%3E%3Crect%20x='6'%20y='12'%20width='4'%20height='1.5'%20rx='.75'%20fill='%233a3f47'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
 
 <div id="app" data-section="lcd">
   <header class="app-header">
@@ -12,225 +17,258 @@
     </div>
     <div class="conn" data-device-chrome>
       <span id="statusDot" class="dot" data-state="disconnected" aria-hidden="true"></span>
-      <span id="statusText" class="status-text">Disconnected</span>
+      <span id="statusText" class="status-text" aria-live="polite">Disconnected</span>
       <button id="connectBtn" type="button" class="btn primary">Connect</button>
     </div>
   </header>
 
   <p id="connectWarn" class="warn" role="note" data-device-chrome>
-    Close the yunzii-game.com tab and VIA before connecting (one opener at a time).
+    <strong>One opener at a time.</strong> Close the yunzii-game.com tab and VIA before connecting.
   </p>
 
   <!-- Top-level sections: live device control vs. offline file tool -->
-  <nav class="sections" aria-label="AL80 Studio sections">
-    <button class="section-btn" data-section="lcd" aria-selected="true">LCD</button>
-    <button class="section-btn" data-section="keymap" aria-selected="false">Keymap</button>
+  <nav class="sections" role="tablist" aria-label="AL80 Studio sections">
+    <button class="section-btn" role="tab" data-section="lcd" aria-selected="true" aria-controls="section-lcd">LCD</button>
+    <button class="section-btn" role="tab" data-section="keymap" aria-selected="false" aria-controls="section-keymap">Keymap</button>
   </nav>
 
   <!-- ============================ LCD ============================ -->
-  <div class="section" data-section-panel="lcd">
-    <!-- Ambient state: what the LCD is showing (last set by this app) -->
-    <div class="now-showing" role="group" aria-label="Now showing on the LCD">
-      <span class="ns-label">Now showing <span class="ns-sub">(last set)</span></span>
-      <div class="ns-segments">
-        <button id="nsClock" type="button" class="ns-seg device-action" data-view="clock" aria-pressed="false" disabled>Clock</button>
-        <button id="nsPicture" type="button" class="ns-seg device-action" data-view="picture" aria-pressed="false" disabled>Picture</button>
-        <button id="nsGif" type="button" class="ns-seg device-action" data-view="gif" aria-pressed="false" disabled>GIF</button>
+  <div class="section" id="section-lcd" role="tabpanel" data-section-panel="lcd">
+    <!-- Device status strip: what's on the LCD now + quick view switches.
+         This is a READOUT + shortcuts, not the editor nav (that's .tabs below). -->
+    <div class="device-bar" role="group" aria-label="Device state">
+      <div class="device-bar-state">
+        <span class="db-label">On the LCD now</span>
+        <span id="nsState" class="ns-state">unknown</span>
       </div>
-      <span id="nsState" class="ns-state">unknown</span>
-      <span id="syncBadge" class="sync-badge" hidden>Syncing &middot; every 60s</span>
+      <div class="device-bar-actions">
+        <span class="db-hint">Show:</span>
+        <div class="ns-segments">
+          <button id="nsClock" type="button" class="ns-seg device-action" data-view="clock" aria-pressed="false" title="Switch the LCD to the clock view" disabled>Clock</button>
+          <button id="nsPicture" type="button" class="ns-seg device-action" data-view="picture" aria-pressed="false" title="Switch the LCD to the picture view" disabled>Picture</button>
+          <button id="nsGif" type="button" class="ns-seg device-action" data-view="gif" aria-pressed="false" title="Switch the LCD to the GIF view" disabled>GIF</button>
+        </div>
+        <span id="syncBadge" class="sync-badge" hidden>Syncing &middot; every 60s</span>
+      </div>
     </div>
 
-    <!-- Content sub-nav: three sources that map 1:1 to the three device views -->
-    <nav class="tabs" role="tablist" aria-label="LCD content">
-      <button class="tab" role="tab" data-tab="clock" aria-selected="true">Clock</button>
-      <button class="tab" role="tab" data-tab="picture" aria-selected="false">Picture</button>
-      <button class="tab" role="tab" data-tab="gif" aria-selected="false">GIF</button>
-      <button class="tab" role="tab" data-tab="slideshow" aria-selected="false">Slideshow</button>
-    </nav>
-
-    <!-- Gate: shown while disconnected, explains what Connect unlocks -->
+    <!-- Gate: non-blocking banner while disconnected. Editing/preview work offline;
+         only Send needs the device. -->
     <div id="lcdGate" class="gate" hidden>
-      <p>Connect your AL80 to edit what&rsquo;s on the LCD.</p>
+      <div class="gate-text">
+        <strong>Not connected.</strong>
+        <span>Prepare and preview anything below &mdash; <em>Send</em> unlocks once your AL80 is connected.</span>
+      </div>
       <button id="gateConnect" type="button" class="btn primary">Connect</button>
     </div>
 
-    <main class="panels">
-      <!-- CLOCK -->
-      <section class="panel" data-panel="clock">
-        <h2>Clock</h2>
-        <p class="muted">Push the current time to the LCD. Keep it synced to fight drift.</p>
-        <div class="row">
-          <label>Time
-            <input id="clockTime" type="time" step="1" />
-          </label>
-          <label>Date
-            <input id="clockDate" type="date" />
-          </label>
-          <label class="inline">
-            <input id="clock12hr" type="checkbox" />
-            12-hour format
-          </label>
-        </div>
-        <div class="row">
-          <button id="clockSendOnce" type="button" class="btn primary device-action" disabled>Send &amp; show</button>
-          <label class="inline">
-            <input id="clockSync" type="checkbox" class="device-action" disabled />
-            Keep synced (every 60s)
-          </label>
-        </div>
-        <p id="clockStatus" class="statusline" role="status"></p>
-      </section>
+    <div class="lcd-body">
+      <!-- Content sub-nav: the editor. Each tab = one thing you can build & send. -->
+      <nav class="tabs" role="tablist" aria-label="LCD content">
+        <button class="tab" role="tab" data-tab="clock" aria-selected="true" aria-controls="panel-clock">Clock</button>
+        <button class="tab" role="tab" data-tab="picture" aria-selected="false" aria-controls="panel-picture">Picture</button>
+        <button class="tab" role="tab" data-tab="gif" aria-selected="false" aria-controls="panel-gif">GIF</button>
+        <button class="tab" role="tab" data-tab="slideshow" aria-selected="false" aria-controls="panel-slideshow">Slideshow</button>
+      </nav>
 
-      <!-- PICTURE (was "Image") -->
-      <section class="panel" data-panel="picture" hidden>
-        <h2>Picture</h2>
-        <div class="image-grid">
-          <div class="image-controls">
-            <div id="imageDrop" class="dropzone">
-              <p>Drop an image here, or</p>
-              <label class="btn">Choose file
-                <input id="imageFile" type="file" accept="image/*" hidden />
+      <main class="panels">
+        <!-- CLOCK -->
+        <section class="panel" id="panel-clock" role="tabpanel" data-panel="clock">
+          <div class="panel-head">
+            <h2>Clock</h2>
+            <p class="muted">Push the current time to the LCD. Keep it synced to fight drift.</p>
+          </div>
+          <div class="row">
+            <label>Time
+              <input id="clockTime" type="time" step="1" />
+            </label>
+            <label>Date
+              <input id="clockDate" type="date" />
+            </label>
+            <label class="inline">
+              <input id="clock12hr" type="checkbox" />
+              12-hour format
+            </label>
+          </div>
+          <div class="row">
+            <button id="clockSendOnce" type="button" class="btn primary device-action" disabled>Send &amp; show</button>
+            <label class="inline">
+              <input id="clockSync" type="checkbox" class="device-action" disabled />
+              Keep synced (every 60s)
+            </label>
+          </div>
+          <p id="clockStatus" class="statusline" role="status"></p>
+        </section>
+
+        <!-- PICTURE (was "Image") -->
+        <section class="panel" id="panel-picture" role="tabpanel" data-panel="picture" hidden>
+          <div class="panel-head">
+            <h2>Picture</h2>
+            <p class="muted">Send a single still to the LCD.</p>
+          </div>
+          <div class="image-grid">
+            <div class="image-controls">
+              <div id="imageDrop" class="dropzone">
+                <p>Drop an image here, or</p>
+                <label class="btn">Choose file
+                  <input id="imageFile" type="file" accept="image/*" hidden />
+                </label>
+                <p id="imageName" class="muted small"></p>
+              </div>
+
+              <label>Fit
+                <select id="imageFit">
+                  <option value="cover" selected>Cover (fill, crop)</option>
+                  <option value="contain">Contain (letterbox)</option>
+                  <option value="stretch">Stretch</option>
+                </select>
               </label>
-              <p id="imageName" class="muted small"></p>
+
+              <label>Brightness <output id="imageBrightnessOut">100%</output>
+                <input id="imageBrightness" type="range" min="0" max="200" value="100" />
+              </label>
+              <label>Contrast <output id="imageContrastOut">100%</output>
+                <input id="imageContrast" type="range" min="0" max="200" value="100" />
+              </label>
+              <label>Saturation <output id="imageSaturationOut">100%</output>
+                <input id="imageSaturation" type="range" min="0" max="200" value="100" />
+              </label>
+
+              <div class="row">
+                <label class="inline"><input id="imageGray" type="checkbox" /> Grayscale</label>
+                <label class="inline"><input id="imageDither" type="checkbox" /> Dither</label>
+              </div>
             </div>
 
+            <div class="image-preview">
+              <p class="muted small" id="imagePreviewLabel">Preview (96&times;64 main page)</p>
+              <div class="preview-frame">
+                <img id="imagePreview" width="288" height="192" alt="Image preview" />
+              </div>
+
+              <div class="dest-toggle" role="radiogroup" aria-label="Picture destination">
+                <span class="dest-label">Send to</span>
+                <div class="seg-radio">
+                  <label><input type="radio" name="picDest" value="main" checked /> <span>Main page</span></label>
+                  <label><input type="radio" name="picDest" value="page" /> <span>Picture page</span></label>
+                </div>
+              </div>
+              <p id="picDestNote" class="muted small dest-note"></p>
+
+              <button id="imageSend" type="button" class="btn primary block device-action" disabled>Send &amp; show</button>
+              <div class="progress" id="imageProgressWrap" hidden>
+                <div class="progress-bar" id="imageProgress"></div>
+              </div>
+              <p id="imageStatus" class="statusline" role="status"></p>
+            </div>
+          </div>
+
+          <div class="danger-zone">
+            <span class="danger-label">Danger</span>
+            <button id="clearPicture" type="button" class="btn danger device-action" disabled>Clear stored picture</button>
+            <span class="muted small">erases pictures on the keyboard</span>
+          </div>
+        </section>
+
+        <!-- GIF -->
+        <section class="panel" id="panel-gif" role="tabpanel" data-panel="gif" hidden>
+          <div class="panel-head">
+            <h2>GIF</h2>
+            <p class="muted">Send an animated GIF to the LCD.</p>
+          </div>
+          <div class="image-grid">
+            <div class="image-controls">
+              <div class="row">
+                <label class="btn">Choose GIF
+                  <input id="gifFile" type="file" accept="image/gif" hidden />
+                </label>
+                <span id="gifName" class="muted small"></span>
+              </div>
+              <p id="gifCount" class="muted"></p>
+
+              <label>FPS <output id="gifFpsOut">30</output>
+                <input id="gifFps" type="range" min="1" max="60" value="30" />
+              </label>
+            </div>
+
+            <div class="image-preview">
+              <p class="muted small">Live preview at the selected FPS</p>
+              <div class="preview-frame">
+                <canvas id="gifPreview" width="96" height="64" aria-label="GIF preview at selected FPS"></canvas>
+              </div>
+
+              <div class="dest-toggle" role="radiogroup" aria-label="GIF destination">
+                <span class="dest-label">Send to</span>
+                <div class="seg-radio">
+                  <label><input type="radio" name="gifDest" value="main" checked /> <span>Main page</span></label>
+                  <label><input type="radio" name="gifDest" value="page" /> <span>GIF page</span></label>
+                </div>
+              </div>
+              <p id="gifDestNote" class="muted small dest-note"></p>
+
+              <button id="gifSend" type="button" class="btn primary block device-action" disabled>Send &amp; show</button>
+              <div class="progress" id="gifProgressWrap" hidden>
+                <div class="progress-bar" id="gifProgress"></div>
+              </div>
+              <p id="gifStatus" class="statusline" role="status"></p>
+            </div>
+          </div>
+
+          <div class="danger-zone">
+            <span class="danger-label">Danger</span>
+            <button id="clearGif" type="button" class="btn danger device-action" disabled>Clear stored GIF</button>
+            <span class="muted small">erases the GIF on the keyboard</span>
+          </div>
+        </section>
+
+        <!-- SLIDESHOW -->
+        <section class="panel" id="panel-slideshow" role="tabpanel" data-panel="slideshow" hidden>
+          <div class="panel-head">
+            <h2>Slideshow</h2>
+            <p class="muted">Upload up to 16 stills to the picture slots and auto-cycle them on the LCD.</p>
+          </div>
+
+          <div id="slideDrop" class="dropzone">
+            <p>Drop images here, or</p>
+            <label class="btn">Choose files
+              <input id="slideFile" type="file" accept="image/*" multiple hidden />
+            </label>
+            <p class="muted small"><span id="slideCounter">0/16</span> slots used</p>
+          </div>
+
+          <div id="slideStrip" class="slide-strip"></div>
+
+          <div class="row">
             <label>Fit
-              <select id="imageFit">
+              <select id="slideFit">
                 <option value="cover" selected>Cover (fill, crop)</option>
                 <option value="contain">Contain (letterbox)</option>
                 <option value="stretch">Stretch</option>
               </select>
             </label>
-
-            <label>Brightness <output id="imageBrightnessOut">100%</output>
-              <input id="imageBrightness" type="range" min="0" max="200" value="100" />
+            <label>Brightness <output id="slideBrightnessOut">100%</output>
+              <input id="slideBrightness" type="range" min="0" max="200" value="100" />
             </label>
-            <label>Contrast <output id="imageContrastOut">100%</output>
-              <input id="imageContrast" type="range" min="0" max="200" value="100" />
+            <label class="inline"><input id="slideGray" type="checkbox" /> Grayscale</label>
+            <label>Interval <output id="slideIntervalOut">5s</output>
+              <input id="slideInterval" type="range" min="1" max="30" value="5" />
             </label>
-            <label>Saturation <output id="imageSaturationOut">100%</output>
-              <input id="imageSaturation" type="range" min="0" max="200" value="100" />
-            </label>
-
-            <div class="row">
-              <label class="inline"><input id="imageGray" type="checkbox" /> Grayscale</label>
-              <label class="inline"><input id="imageDither" type="checkbox" /> Dither</label>
-            </div>
           </div>
 
-          <div class="image-preview">
-            <p class="muted small" id="imagePreviewLabel">Preview (96&times;64 main page)</p>
-            <div class="preview-frame">
-              <img id="imagePreview" width="288" height="192" alt="Image preview" />
-            </div>
-            <div class="dest-toggle" role="radiogroup" aria-label="Picture destination">
-              <span class="dest-label">Send to</span>
-              <label class="inline"><input type="radio" name="picDest" value="main" checked /> Main page</label>
-              <label class="inline"><input type="radio" name="picDest" value="page" /> Picture page</label>
-            </div>
-            <p id="picDestNote" class="muted small"></p>
-            <button id="imageSend" type="button" class="btn primary block device-action" disabled>Send &amp; show</button>
-            <div class="progress" id="imageProgressWrap" hidden>
-              <div class="progress-bar" id="imageProgress"></div>
-            </div>
-            <p id="imageStatus" class="statusline" role="status"></p>
+          <div class="row slide-transport">
+            <button id="slideSend" type="button" class="btn primary device-action" disabled>Send slideshow</button>
+            <button id="slidePlay" type="button" class="btn device-action" disabled>Play</button>
+            <button id="slideNext" type="button" class="btn device-action" disabled>Next</button>
+            <span id="slideCurrent" class="muted small">No slides</span>
           </div>
-        </div>
 
-        <div class="danger-zone">
-          <span class="danger-label">Danger</span>
-          <button id="clearPicture" type="button" class="btn danger device-action" disabled>Clear stored picture</button>
-          <span class="muted small">erases pictures on the keyboard</span>
-        </div>
-      </section>
-
-      <!-- GIF -->
-      <section class="panel" data-panel="gif" hidden>
-        <h2>GIF</h2>
-        <div class="row">
-          <label class="btn">Choose GIF
-            <input id="gifFile" type="file" accept="image/gif" hidden />
-          </label>
-          <span id="gifName" class="muted small"></span>
-        </div>
-        <p id="gifCount" class="muted"></p>
-        <div class="gif-preview-wrap">
-          <canvas id="gifPreview" width="96" height="64" aria-label="GIF preview at selected FPS"></canvas>
-          <span class="muted small">live preview at the selected FPS</span>
-        </div>
-        <label>FPS <output id="gifFpsOut">30</output>
-          <input id="gifFps" type="range" min="1" max="60" value="30" />
-        </label>
-        <div class="dest-toggle" role="radiogroup" aria-label="GIF destination">
-          <span class="dest-label">Send to</span>
-          <label class="inline"><input type="radio" name="gifDest" value="main" checked /> Main page</label>
-          <label class="inline"><input type="radio" name="gifDest" value="page" /> GIF page</label>
-        </div>
-        <p id="gifDestNote" class="muted small"></p>
-        <div class="row">
-          <button id="gifSend" type="button" class="btn primary device-action" disabled>Send &amp; show</button>
-        </div>
-        <div class="progress" id="gifProgressWrap" hidden>
-          <div class="progress-bar" id="gifProgress"></div>
-        </div>
-        <p id="gifStatus" class="statusline" role="status"></p>
-
-        <div class="danger-zone">
-          <span class="danger-label">Danger</span>
-          <button id="clearGif" type="button" class="btn danger device-action" disabled>Clear stored GIF</button>
-          <span class="muted small">erases the GIF on the keyboard</span>
-        </div>
-      </section>
-
-      <!-- SLIDESHOW -->
-      <section class="panel" data-panel="slideshow" hidden>
-        <h2>Slideshow</h2>
-        <p class="muted">Upload up to 16 stills to the picture slots and auto-cycle them on the LCD.</p>
-
-        <div id="slideDrop" class="dropzone">
-          <p>Drop images here, or</p>
-          <label class="btn">Choose files
-            <input id="slideFile" type="file" accept="image/*" multiple hidden />
-          </label>
-          <p class="muted small"><span id="slideCounter">0/16</span> slots used</p>
-        </div>
-
-        <div id="slideStrip" class="slide-strip"></div>
-
-        <div class="row">
-          <label>Fit
-            <select id="slideFit">
-              <option value="cover" selected>Cover (fill, crop)</option>
-              <option value="contain">Contain (letterbox)</option>
-              <option value="stretch">Stretch</option>
-            </select>
-          </label>
-          <label>Brightness <output id="slideBrightnessOut">100%</output>
-            <input id="slideBrightness" type="range" min="0" max="200" value="100" />
-          </label>
-          <label class="inline"><input id="slideGray" type="checkbox" /> Grayscale</label>
-        </div>
-
-        <div class="row">
-          <label>Interval <output id="slideIntervalOut">5s</output>
-            <input id="slideInterval" type="range" min="1" max="30" value="5" />
-          </label>
-        </div>
-
-        <div class="row">
-          <button id="slideSend" type="button" class="btn primary device-action" disabled>Send slideshow</button>
-          <button id="slidePlay" type="button" class="btn device-action" disabled>Play</button>
-          <button id="slideNext" type="button" class="btn device-action" disabled>Next</button>
-          <span id="slideCurrent" class="muted small">No slides</span>
-        </div>
-
-        <div class="progress" id="slideProgressWrap" hidden>
-          <div class="progress-bar" id="slideProgress"></div>
-        </div>
-        <p id="slideStatus" class="statusline" role="status"></p>
-      </section>
-    </main>
+          <div class="progress" id="slideProgressWrap" hidden>
+            <div class="progress-bar" id="slideProgress"></div>
+          </div>
+          <p id="slideStatus" class="statusline" role="status"></p>
+        </section>
+      </main>
+    </div>
 
     <!-- Device log — collapsed by default, logs every command sent -->
     <details id="deviceLog" class="device-log">
@@ -244,10 +282,12 @@
   </div>
 
   <!-- ============================ KEYMAP ============================ -->
-  <div class="section" data-section-panel="keymap" hidden>
+  <div class="section" id="section-keymap" role="tabpanel" data-section-panel="keymap" hidden>
     <section class="panel">
-      <h2>Keymap</h2>
-      <p class="offline-note">Offline tool — builds a VIA keymap JSON file. Doesn&rsquo;t touch your keyboard, so no connection needed.</p>
+      <div class="panel-head">
+        <h2>Keymap</h2>
+        <p class="muted">Offline tool &mdash; builds a VIA keymap JSON file. Doesn&rsquo;t touch your keyboard, so no connection needed.</p>
+      </div>
       <div class="row">
         <label class="btn">Import keymap JSON
           <input id="keymapImport" type="file" accept="application/json,.json" hidden />
@@ -268,6 +308,13 @@
       </div>
     </section>
   </div>
+
+  <footer class="app-footer">
+    <span class="muted small">AL80 Studio &middot; drives the LCD over WebHID</span>
+    <a class="experimental" href="lab.html">Lab &middot; picture-page banding tests</a>
+  </footer>
 </div>
 
 <script type="module" src="src/ui.js"></script>
+</body>
+</html>
