@@ -1208,10 +1208,19 @@ function setupLightingTab() {
 
   // No red/blue "police" combos in the seeds.
   const DEFAULT_PRESETS = {
-    Sunset: { stops: ['#ff8c42', '#ff4d8d', '#8a2be2'], mode: 'cycle', speed: 40 },
-    Ocean:  { stops: ['#1fb9b0', '#1f7ae0', '#0b3a8a'], mode: 'breathe', speed: 60 },
-    Forest: { stops: ['#1f8a3a', '#8ad11f'], mode: 'cycle', speed: 50 },
-    Ember:  { stops: ['#e01f1f', '#ff7a1f', '#ffd11f'], mode: 'strobe', speed: 120 },
+    Sunset:      { stops: ['#ff8c42', '#ff4d8d', '#8a2be2'], mode: 'cycle', speed: 40 },
+    Ocean:       { stops: ['#1fb9b0', '#1f7ae0', '#0b3a8a'], mode: 'breathe', speed: 60 },
+    Forest:      { stops: ['#1f8a3a', '#8ad11f'], mode: 'cycle', speed: 50 },
+    Ember:       { stops: ['#e01f1f', '#ff7a1f', '#ffd11f'], mode: 'strobe', speed: 120 },
+    Vaporwave:   { stops: ['#ff6ac1', '#22d3ee', '#a855f7'], mode: 'cycle', speed: 40 },
+    Miami:       { stops: ['#ff2d95', '#14e0c8'], mode: 'breathe', speed: 55 },
+    Aurora:      { stops: ['#2fe07a', '#1fb9b0', '#8a5cf6'], mode: 'cycle', speed: 45 },
+    Lavender:    { stops: ['#7c3aed', '#b794f6', '#f0abfc'], mode: 'breathe', speed: 65 },
+    Candy:       { stops: ['#ff7ab8', '#7affc4'], mode: 'breathe', speed: 55 },
+    Neon:        { stops: ['#a3ff12', '#ff12d1', '#12e0ff'], mode: 'cycle', speed: 35 },
+    Galaxy:      { stops: ['#5b21b6', '#c026d3', '#3b5bdb'], mode: 'cycle', speed: 45 },
+    'Rose Gold': { stops: ['#ff9a8b', '#ffd194', '#ff6f91'], mode: 'breathe', speed: 65 },
+    Mint:        { stops: ['#0fb39a', '#4fe0b0'], mode: 'breathe', speed: 55 },
   };
 
   // Current editor state. Seeded from Sunset so the row isn't empty on first paint.
@@ -1224,8 +1233,17 @@ function setupLightingTab() {
   function savePresets(obj) {
     try { localStorage.setItem(PRESET_KEY, JSON.stringify(obj)); } catch { /* storage unavailable */ }
   }
-  // Seed defaults ONCE (only when the key has never existed), so user deletes stick.
-  if (localStorage.getItem(PRESET_KEY) == null) savePresets(DEFAULT_PRESETS);
+  // Merge in any curated defaults the browser doesn't have yet: first run gets them all,
+  // and existing users pick up newly-added sets without losing their own saved presets.
+  {
+    const firstRun = localStorage.getItem(PRESET_KEY) == null;
+    const have = loadPresets();
+    let added = false;
+    for (const [name, p] of Object.entries(DEFAULT_PRESETS)) {
+      if (!(name in have)) { have[name] = p; added = true; }
+    }
+    if (firstRun || added) savePresets(have);
+  }
 
   function refreshPresetDropdown(selectName) {
     const presets = loadPresets();
