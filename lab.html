@@ -55,6 +55,7 @@
     <button data-mode="row" disabled>Row-major + swap-odd</button>
     <button data-mode="col" disabled>Column-major (no swap)</button>
     <button data-mode="rowraw" disabled>Row-major (no swap)</button>
+    <button data-mode="roweven" disabled>Row-major + swap-even</button>
   </div>
 </div>
 
@@ -179,7 +180,7 @@ function packPhoto(mode){
   for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const i=(y*W+x)*4;
     const v=((px[i]>>3)<<11)|((px[i+1]>>2)<<5)|(px[i+2]>>3);
     const off=(mode==='col')?(x*H+y)*2:(y*W+x)*2; fb[off]=(v>>8)&0xff; fb[off+1]=v&0xff; }
-  return (mode==='row') ? swapRows(fb,1) : fb; // 'row' applies the odd-row swap fix
+  return (mode==='row') ? swapRows(fb,1) : (mode==='roweven') ? swapRows(fb,0) : fb; // swap-odd / swap-even / none
 }
 document.querySelectorAll('[data-mode]').forEach(b=>{ b.onclick=async()=>{
   if(!photoBitmap||!dev) return;
