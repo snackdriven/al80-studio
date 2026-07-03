@@ -91,6 +91,26 @@ export function rgb565BE(rgba) {
   return out;
 }
 
+/**
+ * RGBA (row-major w×h from getImageData) -> RGB565 big-endian, packed COLUMN-major (x-first).
+ * The AL80 screen is the AttackShark smart-display family, whose picture stream is column-major
+ * (confirmed against the x85pro reference encoder: `for x: for y:`). Sending row-major shears a
+ * photo into red/blue banding while leaving solids clean. Same 5-6-5 bit math as rgb565BE.
+ */
+export function rgb565BEColMajor(rgba, w, h) {
+  const out = new Uint8Array(w * h * 2);
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      const i = (y * w + x) * 4; // source pixel, row-major
+      const o = (x * h + y) * 2; // dest byte, column-major
+      const v = ((rgba[i] >> 3) << 11) | ((rgba[i + 1] >> 2) << 5) | (rgba[i + 2] >> 3);
+      out[o] = (v >> 8) & 0xff;
+      out[o + 1] = v & 0xff;
+    }
+  }
+  return out;
+}
+
 // ---- still image (capture-verified: announce + 548 data + finish; NO 0x0C length packet) ----
 
 /**
