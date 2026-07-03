@@ -56,6 +56,9 @@
     <button data-mode="col" disabled>Column-major (no swap)</button>
     <button data-mode="rowraw" disabled>Row-major (no swap)</button>
     <button data-mode="roweven" disabled>Row-major + swap-even</button>
+    <button data-mode="rowack" disabled>Row-major + ACK-paced</button>
+    <button data-mode="rowslow" disabled>Row-major + 30ms pace</button>
+    <button data-mode="rowstride" disabled>Row-major + stride+1</button>
   </div>
 </div>
 
@@ -172,19 +175,34 @@ $('#photo').onchange=async(e)=>{
   document.querySelectorAll('[data-mode]').forEach(b=>b.disabled=!dev);
   log("photo loaded: "+f.name+" ("+photoBitmap.width+"×"+photoBitmap.height+")");
 };
-function packPhoto(mode){
+function photoRGBA(){ // draw the picked photo to a WxH (cover) canvas -> RGBA
   const cv=new OffscreenCanvas(W,H); const ctx=cv.getContext('2d');
   const img=photoBitmap; const s=Math.max(W/img.width,H/img.height); const dw=img.width*s, dh=img.height*s;
   ctx.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
-  const px=ctx.getImageData(0,0,W,H).data; const fb=new Uint8Array(FRAME);
-  for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const i=(y*W+x)*4;
-    const v=((px[i]>>3)<<11)|((px[i+1]>>2)<<5)|(px[i+2]>>3);
-    const off=(mode==='col')?(x*H+y)*2:(y*W+x)*2; fb[off]=(v>>8)&0xff; fb[off+1]=v&0xff; }
-  return (mode==='row') ? swapRows(fb,1) : (mode==='roweven') ? swapRows(fb,0) : fb; // swap-odd / swap-even / none
+  return ctx.getImageData(0,0,W,H).data;
+}
+// returns {fb,total,ack,gap} for a given mode. Covers packing (swap/col), stride, and pacing.
+function packPhoto(mode){
+  const px=photoRGBA();
+  const R5=(i)=>((px[i]>>3)<<11)|((px[i+1]>>2)<<5)|(px[i+2]>>3);
+  if(mode==='rowstride'){ // stride theory: 1 pad byte per row
+    const stride=W*2+1, total=H*stride, fb=new Uint8Array(total);
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const v=R5((y*W+x)*4); const o=y*stride+x*2; fb[o]=(v>>8)&0xff; fb[o+1]=v&0xff; }
+    return {fb,total,ack:false,gap:2};
+  }
+  const col=(mode==='col'||mode==='colack'); const fb=new Uint8Array(FRAME);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const v=R5((y*W+x)*4);
+    const off=col?(x*H+y)*2:(y*W+x)*2; fb[off]=(v>>8)&0xff; fb[off+1]=v&0xff; }
+  const out=(mode==='row')?swapRows(fb,1):(mode==='roweven')?swapRows(fb,0):fb;
+  return { fb:out, total:FRAME, ack:(mode==='rowack'||mode==='colack'), gap:(mode==='rowslow')?30:2 };
 }
 document.querySelectorAll('[data-mode]').forEach(b=>{ b.onclick=async()=>{
   if(!photoBitmap||!dev) return;
-  try{ log("▶ photo — "+b.dataset.mode); b.disabled=true; await sendBlasted(packPhoto(b.dataset.mode),{rlen:64,gap:2}); log("  sent — upright? clean?"); }
+  try{ log("▶ photo — "+b.dataset.mode); b.disabled=true;
+    const {fb,total,ack,gap}=packPhoto(b.dataset.mode);
+    if(ack) await sendAckGated(fb,{rlen:63,total});
+    else await sendBlasted(fb,{rlen:64,gap,total});
+    log("  sent — upright? clean?"); }
   catch(err){ log("  ERROR: "+(err.message||err)); } finally{ b.disabled=false; }
 }; });
 
