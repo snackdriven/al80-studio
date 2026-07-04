@@ -23,7 +23,7 @@
   </header>
 
   <p id="connectWarn" class="warn" role="note" data-device-chrome>
-    <strong>One opener at a time.</strong> Close the yunzii-game.com tab and VIA before connecting.
+    <strong>Only one app can hold the keyboard at a time.</strong> Close the YUNZII web app (yunzii-game.com) and VIA before you connect.
   </p>
 
   <!-- Top-level sections: live device control vs. offline file tool -->
@@ -39,6 +39,7 @@
          This is a READOUT + shortcuts, not the editor nav (that's .tabs below). -->
     <div class="device-bar" role="group" aria-label="Device state">
       <div class="device-bar-state">
+        <span class="db-live">LIVE</span>
         <span class="db-label">On the LCD now</span>
         <span id="nsState" class="ns-state">unknown</span>
       </div>
@@ -144,7 +145,7 @@
             <div class="image-preview">
               <p class="muted small" id="imagePreviewLabel">Preview (96&times;64 main page)</p>
               <div class="preview-frame">
-                <img id="imagePreview" width="288" height="192" alt="Image preview" />
+                <img id="imagePreview" width="288" height="192" alt="Preview of the image as it will appear on the LCD" />
               </div>
 
               <div class="dest-toggle" role="radiogroup" aria-label="Picture destination">
@@ -345,6 +346,14 @@
   <!-- ============================ LIGHTING ============================ -->
   <div class="section" id="section-lighting" role="tabpanel" data-section-panel="lighting" hidden>
     <section class="panel" id="panel-lighting" role="tabpanel">
+      <div class="lighting-guide">
+        <span class="db-label">Three ways to light the board</span>
+        <ul>
+          <li><strong>Built-in</strong> &mdash; one color, runs on the board, keeps going after you close this.</li>
+          <li><strong>Software</strong> &mdash; two colors, quick strobe / cycle / breathe, from the browser.</li>
+          <li><strong>Palettes</strong> &mdash; two to six colors, save your own presets, from the browser.</li>
+        </ul>
+      </div>
       <div class="panel-head">
         <h2>Built-in effects</h2>
         <p class="muted">The keyboard's own RGB effects &mdash; they run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow). For two or more colors, use <strong>Software effects</strong> below.</p>

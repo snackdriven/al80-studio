@@ -105,6 +105,8 @@ function reflectConnection() {
   $$('.device-action').forEach((el) => {
     el.disabled = !connected;
   });
+  // Mirror connection onto #app so CSS can gate device-only chrome (the live device bar).
+  document.querySelector('#app')?.toggleAttribute('data-connected', connected);
   const gate = $('#lcdGate');
   if (gate) gate.hidden = connected;
   // if we just disconnected, stop clock sync, any running slideshow cycle, and any lighting effect

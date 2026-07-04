@@ -143,6 +143,16 @@ body {
 }
 .device-bar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .db-hint { font-size: 13px; color: var(--muted); }
+.db-live {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
+  color: var(--ok);
+  border: 1px solid rgba(63, 191, 127, 0.4);
+  background: rgba(63, 191, 127, 0.1);
+  border-radius: 999px; padding: 2px 8px;
+}
+/* The device bar is a LIVE readout of the keyboard, meaningless until connected. Hidden while
+   disconnected so the first-run view shows ONE set of view names (the editor tabs), not two. */
+#app:not([data-connected]) .device-bar { display: none; }
 
 .ns-segments {
   display: inline-flex;
@@ -282,6 +292,18 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .btn.block { display: flex; width: 100%; margin-top: 14px; }
 .btn.small { padding: 5px 10px; font-size: 12px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Lighting: a "which one do I use" guide above the three effect areas */
+.lighting-guide {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin: 0 0 20px;
+}
+.lighting-guide ul { margin: 8px 0 0; padding-left: 18px; }
+.lighting-guide li { font-size: 13px; color: var(--muted); margin: 3px 0; }
+.lighting-guide li strong { color: var(--text); }
 
 /* Lighting effects (software-driven strobe / cycle / breathe) */
 .fx-mode {
