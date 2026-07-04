@@ -221,6 +221,36 @@ export function emptyKeymap() {
 }
 
 /**
+ * The AL80 factory default base layer (layer 0), all 90 matrix positions in flat
+ * order. Lets the Keymap editor show a real, editable, exportable layout offline
+ * instead of a blank grid. Reading from the device overwrites it with the board's
+ * actual keys. Source: the factory base of keymaps/al80-lcd-view.json.
+ * @readonly
+ */
+export const AL80_FACTORY_LAYER0 = Object.freeze([
+  'KC_ESC', 'KC_F1', 'KC_F2', 'KC_F3', 'KC_F4', 'KC_F5', 'KC_F6', 'KC_F7', 'KC_F8', 'KC_F9',
+  'KC_F10', 'KC_F11', 'KC_F12', 'KC_DEL', 'KC_MUTE', 'KC_GRV', 'KC_1', 'KC_2', 'KC_3', 'KC_4',
+  'KC_5', 'KC_6', 'KC_7', 'KC_8', 'KC_9', 'KC_0', 'KC_MINS', 'KC_EQL', 'KC_BSPC', 'KC_PGUP',
+  'KC_TAB', 'KC_Q', 'KC_W', 'KC_E', 'KC_R', 'KC_T', 'KC_Y', 'KC_U', 'KC_I', 'KC_O',
+  'KC_P', 'KC_LBRC', 'KC_RBRC', 'KC_BSLS', 'KC_PGDN', 'KC_CAPS', 'KC_A', 'KC_S', 'KC_D', 'KC_F',
+  'KC_G', 'KC_H', 'KC_J', 'KC_K', 'KC_L', 'KC_SCLN', 'KC_QUOT', 'KC_NO', 'KC_ENT', 'KC_NO',
+  'KC_LSFT', 'KC_NO', 'KC_Z', 'KC_X', 'KC_C', 'KC_V', 'KC_B', 'KC_N', 'KC_M', 'KC_COMM',
+  'KC_DOT', 'KC_SLSH', 'KC_RSFT', 'KC_UP', 'KC_NO', 'KC_LCTL', 'KC_LGUI', 'KC_LALT', 'KC_NO', 'KC_NO',
+  'KC_NO', 'KC_SPC', 'KC_NO', 'KC_NO', 'KC_NO', 'MO(1)', 'KC_RCTL', 'KC_LEFT', 'KC_DOWN', 'KC_RGHT',
+]);
+
+/**
+ * Like emptyKeymap(), but layer 0 is seeded with the AL80 factory default so the
+ * offline editor opens on a meaningful base layer. Upper layers stay transparent.
+ * @returns {{name:string, vendorProductId:number, macros:string[], layers:string[][], encoders:string[][][]}}
+ */
+export function factoryKeymap() {
+  const k = emptyKeymap();
+  k.layers[0] = AL80_FACTORY_LAYER0.slice();
+  return k;
+}
+
+/**
  * Normalize a parsed VIA keymap JSON object into editable internal state.
  * Deep-copies arrays so edits don't mutate the source. Missing fields fall
  * back to AL80 defaults so a partial file still yields usable state.

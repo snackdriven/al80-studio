@@ -1575,7 +1575,10 @@ function setupKeymap() {
   const pickerApply = $('#pickerApply');
   const pickerClose = $('#pickerClose');
 
-  let state = keymap.emptyKeymap ? keymap.emptyKeymap() : { layers: [], encoders: [[]], macros: [] };
+  // Seed the offline editor with the factory default (real, editable, exportable) instead of a
+  // blank grid; Read from keyboard overwrites it with the board's actual keys.
+  let state = keymap.factoryKeymap ? keymap.factoryKeymap()
+    : (keymap.emptyKeymap ? keymap.emptyKeymap() : { layers: [], encoders: [[]], macros: [] });
   let currentLayer = 0;
   let pickerTarget = null; // { type:'key', idx, row, col } | { type:'enc', cw:boolean }
   const keyEls = new Map(); // matrix index -> button element

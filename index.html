@@ -289,7 +289,7 @@
     <section class="panel">
       <div class="panel-head">
         <h2>Keymap</h2>
-        <p class="muted">Live VIA keymap editor. Connect the keyboard to read and write keys in real time, or edit offline and export a VIA JSON file. Click a key to remap it.</p>
+        <p class="muted">Live VIA keymap editor. Click a key to remap it. It opens on the AL80 factory layout &mdash; ready to edit and export offline. Connect and <em>Read from keyboard</em> to load your board's actual keys.</p>
       </div>
 
       <div class="row keymap-toolbar">
@@ -346,18 +346,21 @@
   <!-- ============================ LIGHTING ============================ -->
   <div class="section" id="section-lighting" role="tabpanel" data-section-panel="lighting" hidden>
     <section class="panel" id="panel-lighting" role="tabpanel">
+      <div class="panel-head">
+        <h2>Lighting</h2>
+        <p class="muted">Three ways to color the board. Pick by how many colors you want.</p>
+      </div>
       <div class="lighting-guide">
-        <span class="db-label">Three ways to light the board</span>
+        <span class="db-label">Which one?</span>
         <ul>
           <li><strong>Built-in</strong> &mdash; one color, runs on the board, keeps going after you close this.</li>
           <li><strong>Software</strong> &mdash; two colors, quick strobe / cycle / breathe, from the browser.</li>
           <li><strong>Palettes</strong> &mdash; two to six colors, save your own presets, from the browser.</li>
         </ul>
       </div>
-      <div class="panel-head">
-        <h2>Built-in effects</h2>
-        <p class="muted">The keyboard's own RGB effects &mdash; they run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow). For two or more colors, use <strong>Software effects</strong> below.</p>
-      </div>
+
+      <h3>Built-in effects</h3>
+      <p class="muted small">The keyboard's own RGB effects. They run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow).</p>
 
       <div class="row">
         <label>Brightness <output id="lightBrightnessOut">200</output>
