@@ -272,8 +272,8 @@
         <!-- LIGHTING -->
         <section class="panel" data-panel="lighting" id="panel-lighting" role="tabpanel" hidden>
           <div class="panel-head">
-            <h2>Lighting</h2>
-            <p class="muted">keyboard RGB &mdash; same connection as the LCD</p>
+            <h2>Built-in effects</h2>
+            <p class="muted">The keyboard's own RGB effects &mdash; they run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow). For two or more colors, use <strong>Software effects</strong> below.</p>
           </div>
 
           <div class="row">
@@ -319,15 +319,15 @@
             <label>Color
               <input id="lightColor" type="color" value="#5b9dff" class="device-action" disabled />
             </label>
-            <span class="muted small">color = hue + saturation; brightness is the separate slider above</span>
+            <span class="muted small">The single color for the effect above. Reactive effects (Splash, Solid Reactive) ripple in this color; rainbow/cycle effects ignore it.</span>
           </div>
 
           <p id="lightStatus" class="statusline" role="status"></p>
 
-          <h3>Effects</h3>
-          <p class="muted small">Software-driven animations that run from the browser. One plays at a
-            time; Start switches. These stream color live over the connection (no EEPROM writes), so
-            they stop on Stop, on leaving this tab, and on disconnect.</p>
+          <h3>Software effects &mdash; two or more colors</h3>
+          <p class="muted small">These do what the built-in effects can't: <strong>multiple colors</strong>. They run from the
+            browser (not the keyboard), whole-board (not per-key reactive), and stream live &mdash; so they stop on Stop,
+            on leaving this tab, or on disconnect. One plays at a time.</p>
 
           <div class="fx-mode">
             <div class="row">
