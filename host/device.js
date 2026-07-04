@@ -177,15 +177,11 @@ export class Device extends EventEmitter {
     // leaving the OLD frame on screen. Proven order: write, then show.)
     const packets = buildImageTransfer(frame); // validates 30720 bytes (row-major — the AL80 is row-major)
     const r = await this._send(packets, { gate: true });
-    // Force a view CHANGE so the module re-renders the freshly-written buffer. Switching to PICTURE
-    // while already ON picture is a no-op (the old frame stays), so toggle home->picture AFTER the
-    // write (the write already landed; a view switch doesn't clear the buffer).
+    // H4 (see nowplaying-display-debug.md): node-hid writes far faster than WebHID, so the module
+    // may not have committed the 30KB buffer before we switch the view to read it — settle first,
+    // then a plain buildView(PICTURE) to match the browser flow that DID display.
     if (!this.mock && this.dev) {
-      try {
-        await this._send(buildView(VIEW.HOMEPAGE));
-        await sleep(150);
-        await this._send(buildView(VIEW.PICTURE));
-      } catch { /* best effort */ }
+      try { await sleep(300); await this._send(buildView(VIEW.PICTURE)); } catch { /* best effort */ }
     }
     return r;
   }
