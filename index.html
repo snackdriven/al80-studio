@@ -293,12 +293,17 @@
       </div>
 
       <div class="row keymap-toolbar">
-        <div class="layer-select" id="layerSelect" role="tablist" aria-label="Layer"></div>
-        <button id="keymapRead" type="button" class="btn device-action" disabled title="Read the current keymap from the keyboard">Read from keyboard</button>
-        <label class="btn">Import JSON
-          <input id="keymapImport" type="file" accept="application/json,.json" hidden />
-        </label>
-        <button id="keymapExport" type="button" class="btn">Export JSON</button>
+        <div class="toolbar-group">
+          <span class="db-label">Layer</span>
+          <div class="layer-select" id="layerSelect" role="tablist" aria-label="Layer"></div>
+        </div>
+        <div class="toolbar-group toolbar-actions">
+          <button id="keymapRead" type="button" class="btn device-action" disabled title="Read the current keymap from the keyboard">Read from keyboard</button>
+          <label class="btn">Import JSON
+            <input id="keymapImport" type="file" accept="application/json,.json" hidden />
+          </label>
+          <button id="keymapExport" type="button" class="btn">Export JSON</button>
+        </div>
       </div>
       <span id="keymapStatus" class="statusline"></span>
 

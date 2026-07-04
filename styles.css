@@ -681,7 +681,11 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .preset-chip code { color: var(--muted); font-size: 11px; }
 
 /* ---- Live keymap editor -------------------------------------------------- */
+/* Toolbar splits into two groups: the Layer picker (editing context) on the left,
+   the load/save actions (Read / Import / Export) pushed to the right. */
 .keymap-toolbar { align-items: center; }
+.toolbar-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-actions { margin-left: auto; }
 
 .layer-select { display: inline-flex; gap: 4px; padding: 3px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .layer-btn {
