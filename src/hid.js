@@ -256,7 +256,10 @@ export async function sendAckGated(packets, onFraction, { ackTimeout = 140, anno
           // resolve on the block's echo (the module mirrors bytes[0..1]). Do NOT also gate on a
           // "ready" byte — filtering out the busy reply caused spurious retries + sends-during-busy,
           // which made the banding worse, not better.
-          const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1]) done(true); };
+          // match the FULL offset (op + lo + hi). Matching only the low byte let a stale/colliding
+          // echo (blocks 256B apart share a low byte) false-match, drifting the frame out of sync —
+          // which compounds across sends. Full-offset match makes each block's ack unambiguous.
+          const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1] && b[2] === src[2]) done(true); };
           const to = setTimeout(() => done(false), ackTimeout);
           device.addEventListener('inputreport', onRep);
           device.sendReport(0, body).catch(() => done(false));
