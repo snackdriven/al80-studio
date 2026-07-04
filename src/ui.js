@@ -342,8 +342,7 @@ const slideshowVisible = () =>
 // stop() in. lightingVisible() tells the handlers whether the panel is currently showing.
 const lightingFxCtl = { stop() {} };
 const lightingVisible = () =>
-  document.querySelector('#app')?.dataset.section === 'lcd' &&
-  document.querySelector('.panel[data-panel="lighting"]')?.hidden === false;
+  document.querySelector('#app')?.dataset.section === 'lighting';
 
 // The keymap key tester polls the switch-matrix state on an interval. Like the
 // lighting effect, it must stop when the Keymap section is hidden or the device

@@ -30,6 +30,7 @@
   <nav class="sections" role="tablist" aria-label="AL80 Studio sections">
     <button class="section-btn" role="tab" data-section="lcd" aria-selected="true" aria-controls="section-lcd">LCD</button>
     <button class="section-btn" role="tab" data-section="keymap" aria-selected="false" aria-controls="section-keymap">Keymap</button>
+    <button class="section-btn" role="tab" data-section="lighting" aria-selected="false" aria-controls="section-lighting">Lighting</button>
   </nav>
 
   <!-- ============================ LCD ============================ -->
@@ -69,7 +70,6 @@
         <button class="tab" role="tab" data-tab="picture" aria-selected="false" aria-controls="panel-picture">Picture</button>
         <button class="tab" role="tab" data-tab="gif" aria-selected="false" aria-controls="panel-gif">GIF</button>
         <button class="tab" role="tab" data-tab="slideshow" aria-selected="false" aria-controls="panel-slideshow">Slideshow</button>
-        <button class="tab" role="tab" data-tab="lighting" aria-selected="false" aria-controls="panel-lighting">Lighting</button>
       </nav>
 
       <main class="panels">
@@ -269,146 +269,6 @@
           <p id="slideStatus" class="statusline" role="status"></p>
         </section>
 
-        <!-- LIGHTING -->
-        <section class="panel" data-panel="lighting" id="panel-lighting" role="tabpanel" hidden>
-          <div class="panel-head">
-            <h2>Built-in effects</h2>
-            <p class="muted">The keyboard's own RGB effects &mdash; they run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow). For two or more colors, use <strong>Software effects</strong> below.</p>
-          </div>
-
-          <div class="row">
-            <label>Brightness <output id="lightBrightnessOut">200</output>
-              <input id="lightBrightness" type="range" min="0" max="255" value="200" class="device-action" disabled />
-            </label>
-          </div>
-
-          <div class="row">
-            <label>Effect
-              <select id="lightEffect" class="device-action" disabled>
-                <option value="0">All Off</option>
-                <option value="1">Solid Color</option>
-                <option value="2">Breathing</option>
-                <option value="3">Band Val.</option>
-                <option value="4">Cycle All</option>
-                <option value="5">Cycle Left/Right</option>
-                <option value="6">Cycle Up/Down</option>
-                <option value="7">Rainbow Moving Chevron</option>
-                <option value="8">Cycle Out/In</option>
-                <option value="9">Cycle Out/In Dual</option>
-                <option value="10">Cycle Pinwheel</option>
-                <option value="11">Cycle Spiral</option>
-                <option value="12">Dual Beacon</option>
-                <option value="13">Rainbow Beacon</option>
-                <option value="14">Typing Heatmap</option>
-                <option value="15">Digital Rain</option>
-                <option value="16">Solid Reactive Simple</option>
-                <option value="17">Solid Reactive Nexus</option>
-                <option value="18">Splash</option>
-                <option value="19">Solid Splash</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="row">
-            <label>Effect Speed <output id="lightSpeedOut">128</output>
-              <input id="lightSpeed" type="range" min="0" max="255" value="128" class="device-action" disabled />
-            </label>
-          </div>
-
-          <div class="row">
-            <label>Color
-              <input id="lightColor" type="color" value="#5b9dff" class="device-action" disabled />
-            </label>
-            <span class="muted small">The single color for the effect above. Reactive effects (Splash, Solid Reactive) ripple in this color; rainbow/cycle effects ignore it.</span>
-          </div>
-
-          <p id="lightStatus" class="statusline" role="status"></p>
-
-          <h3>Software effects &mdash; two or more colors</h3>
-          <p class="muted small">These do what the built-in effects can't: <strong>multiple colors</strong>. They run from the
-            browser (not the keyboard), whole-board (not per-key reactive), and stream live &mdash; so they stop on Stop,
-            on leaving this tab, or on disconnect. One plays at a time.</p>
-
-          <div class="fx-mode">
-            <div class="row">
-              <strong>Strobe</strong>
-              <label class="inline">A <input id="strobeColorA" type="color" value="#ff0000" class="device-action" disabled /></label>
-              <label class="inline">B <input id="strobeColorB" type="color" value="#0000ff" class="device-action" disabled /></label>
-              <label class="inline">ms/color <output id="strobeSpeedOut">120</output>
-                <input id="strobeSpeed" type="range" min="40" max="500" value="120" class="device-action" disabled />
-              </label>
-              <button id="strobeStart" type="button" class="btn primary small device-action" disabled>Start</button>
-              <button id="strobeStop" type="button" class="btn small device-action" disabled>Stop</button>
-            </div>
-          </div>
-
-          <div class="fx-mode">
-            <div class="row">
-              <strong>Cycle</strong>
-              <span class="muted small">rainbow hue sweep</span>
-              <label class="inline">ms/step <output id="cycleSpeedOut">30</output>
-                <input id="cycleSpeed" type="range" min="10" max="200" value="30" class="device-action" disabled />
-              </label>
-              <button id="cycleStart" type="button" class="btn primary small device-action" disabled>Start</button>
-              <button id="cycleStop" type="button" class="btn small device-action" disabled>Stop</button>
-            </div>
-          </div>
-
-          <div class="fx-mode">
-            <div class="row">
-              <strong>Breathe</strong>
-              <label class="inline">A <input id="breatheColorA" type="color" value="#ff2d95" class="device-action" disabled /></label>
-              <label class="inline">B <input id="breatheColorB" type="color" value="#2d9dff" class="device-action" disabled /></label>
-              <label class="inline">ms/step <output id="breatheSpeedOut">40</output>
-                <input id="breatheSpeed" type="range" min="10" max="200" value="40" class="device-action" disabled />
-              </label>
-              <button id="breatheStart" type="button" class="btn primary small device-action" disabled>Start</button>
-              <button id="breatheStop" type="button" class="btn small device-action" disabled>Stop</button>
-            </div>
-          </div>
-
-          <p id="fxStatus" class="statusline" role="status"></p>
-
-          <h3>Palettes</h3>
-          <p class="muted small">Build a multi-color palette, then animate the whole board through it &mdash;
-            <strong>global</strong>, one color at a time. Save named presets to this browser. Runs live over
-            the connection (no EEPROM writes), so it stops on Stop, on leaving this tab, and on disconnect.</p>
-
-          <div class="palette-editor">
-            <div class="row">
-              <span class="db-label">Stops</span>
-              <div id="paletteStops" class="palette-stops" aria-label="Palette color stops"></div>
-              <button id="paletteAddStop" type="button" class="btn small device-action" disabled>+ Add stop</button>
-              <span class="muted small">2&ndash;6 colors</span>
-            </div>
-
-            <div class="row">
-              <label>Mode
-                <select id="paletteMode" class="device-action" disabled>
-                  <option value="cycle" selected>Cycle (smooth loop)</option>
-                  <option value="breathe">Breathe / Pulse</option>
-                  <option value="strobe">Strobe (hard switch)</option>
-                </select>
-              </label>
-              <label>Speed <output id="paletteSpeedOut">40</output>
-                <input id="paletteSpeed" type="range" min="10" max="300" value="40" class="device-action" disabled />
-              </label>
-              <button id="paletteStart" type="button" class="btn primary small device-action" disabled>Start</button>
-              <button id="paletteStop" type="button" class="btn small device-action" disabled>Stop</button>
-            </div>
-
-            <div class="row palette-presets">
-              <label>Preset
-                <select id="palettePresetSelect"></select>
-              </label>
-              <button id="palettePresetDelete" type="button" class="btn small">Delete</button>
-              <input id="palettePresetName" type="text" class="preset-name-input" placeholder="Preset name" maxlength="32" />
-              <button id="palettePresetSave" type="button" class="btn small">Save</button>
-            </div>
-
-            <p id="paletteStatus" class="statusline" role="status"></p>
-          </div>
-        </section>
       </main>
     </div>
 
@@ -480,6 +340,149 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ============================ LIGHTING ============================ -->
+  <div class="section" id="section-lighting" role="tabpanel" data-section-panel="lighting" hidden>
+    <section class="panel" id="panel-lighting" role="tabpanel">
+      <div class="panel-head">
+        <h2>Built-in effects</h2>
+        <p class="muted">The keyboard's own RGB effects &mdash; they run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow). For two or more colors, use <strong>Software effects</strong> below.</p>
+      </div>
+
+      <div class="row">
+        <label>Brightness <output id="lightBrightnessOut">200</output>
+          <input id="lightBrightness" type="range" min="0" max="255" value="200" class="device-action" disabled />
+        </label>
+      </div>
+
+      <div class="row">
+        <label>Effect
+          <select id="lightEffect" class="device-action" disabled>
+            <option value="0">All Off</option>
+            <option value="1">Solid Color</option>
+            <option value="2">Breathing</option>
+            <option value="3">Band Val.</option>
+            <option value="4">Cycle All</option>
+            <option value="5">Cycle Left/Right</option>
+            <option value="6">Cycle Up/Down</option>
+            <option value="7">Rainbow Moving Chevron</option>
+            <option value="8">Cycle Out/In</option>
+            <option value="9">Cycle Out/In Dual</option>
+            <option value="10">Cycle Pinwheel</option>
+            <option value="11">Cycle Spiral</option>
+            <option value="12">Dual Beacon</option>
+            <option value="13">Rainbow Beacon</option>
+            <option value="14">Typing Heatmap</option>
+            <option value="15">Digital Rain</option>
+            <option value="16">Solid Reactive Simple</option>
+            <option value="17">Solid Reactive Nexus</option>
+            <option value="18">Splash</option>
+            <option value="19">Solid Splash</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="row">
+        <label>Effect Speed <output id="lightSpeedOut">128</output>
+          <input id="lightSpeed" type="range" min="0" max="255" value="128" class="device-action" disabled />
+        </label>
+      </div>
+
+      <div class="row">
+        <label>Color
+          <input id="lightColor" type="color" value="#5b9dff" class="device-action" disabled />
+        </label>
+        <span class="muted small">The single color for the effect above. Reactive effects (Splash, Solid Reactive) ripple in this color; rainbow/cycle effects ignore it.</span>
+      </div>
+
+      <p id="lightStatus" class="statusline" role="status"></p>
+
+      <h3>Software effects &mdash; two or more colors</h3>
+      <p class="muted small">These do what the built-in effects can't: <strong>multiple colors</strong>. They run from the
+        browser (not the keyboard), whole-board (not per-key reactive), and stream live &mdash; so they stop on Stop,
+        on leaving this tab, or on disconnect. One plays at a time.</p>
+
+      <div class="fx-mode">
+        <div class="row">
+          <strong>Strobe</strong>
+          <label class="inline">A <input id="strobeColorA" type="color" value="#ff0000" class="device-action" disabled /></label>
+          <label class="inline">B <input id="strobeColorB" type="color" value="#0000ff" class="device-action" disabled /></label>
+          <label class="inline">ms/color <output id="strobeSpeedOut">120</output>
+            <input id="strobeSpeed" type="range" min="40" max="500" value="120" class="device-action" disabled />
+          </label>
+          <button id="strobeStart" type="button" class="btn primary small device-action" disabled>Start</button>
+          <button id="strobeStop" type="button" class="btn small device-action" disabled>Stop</button>
+        </div>
+      </div>
+
+      <div class="fx-mode">
+        <div class="row">
+          <strong>Cycle</strong>
+          <span class="muted small">rainbow hue sweep</span>
+          <label class="inline">ms/step <output id="cycleSpeedOut">30</output>
+            <input id="cycleSpeed" type="range" min="10" max="200" value="30" class="device-action" disabled />
+          </label>
+          <button id="cycleStart" type="button" class="btn primary small device-action" disabled>Start</button>
+          <button id="cycleStop" type="button" class="btn small device-action" disabled>Stop</button>
+        </div>
+      </div>
+
+      <div class="fx-mode">
+        <div class="row">
+          <strong>Breathe</strong>
+          <label class="inline">A <input id="breatheColorA" type="color" value="#ff2d95" class="device-action" disabled /></label>
+          <label class="inline">B <input id="breatheColorB" type="color" value="#2d9dff" class="device-action" disabled /></label>
+          <label class="inline">ms/step <output id="breatheSpeedOut">40</output>
+            <input id="breatheSpeed" type="range" min="10" max="200" value="40" class="device-action" disabled />
+          </label>
+          <button id="breatheStart" type="button" class="btn primary small device-action" disabled>Start</button>
+          <button id="breatheStop" type="button" class="btn small device-action" disabled>Stop</button>
+        </div>
+      </div>
+
+      <p id="fxStatus" class="statusline" role="status"></p>
+
+      <h3>Palettes</h3>
+      <p class="muted small">Build a multi-color palette, then animate the whole board through it &mdash;
+        <strong>global</strong>, one color at a time. Save named presets to this browser. Runs live over
+        the connection (no EEPROM writes), so it stops on Stop, on leaving this tab, and on disconnect.</p>
+
+      <div class="palette-editor">
+        <div class="row">
+          <span class="db-label">Stops</span>
+          <div id="paletteStops" class="palette-stops" aria-label="Palette color stops"></div>
+          <button id="paletteAddStop" type="button" class="btn small device-action" disabled>+ Add stop</button>
+          <span class="muted small">2&ndash;6 colors</span>
+        </div>
+
+        <div class="row">
+          <label>Mode
+            <select id="paletteMode" class="device-action" disabled>
+              <option value="cycle" selected>Cycle (smooth loop)</option>
+              <option value="breathe">Breathe / Pulse</option>
+              <option value="strobe">Strobe (hard switch)</option>
+            </select>
+          </label>
+          <label>Speed <output id="paletteSpeedOut">40</output>
+            <input id="paletteSpeed" type="range" min="10" max="300" value="40" class="device-action" disabled />
+          </label>
+          <button id="paletteStart" type="button" class="btn primary small device-action" disabled>Start</button>
+          <button id="paletteStop" type="button" class="btn small device-action" disabled>Stop</button>
+        </div>
+
+        <div class="row palette-presets">
+          <label>Preset
+            <select id="palettePresetSelect"></select>
+          </label>
+          <button id="palettePresetDelete" type="button" class="btn small">Delete</button>
+          <input id="palettePresetName" type="text" class="preset-name-input" placeholder="Preset name" maxlength="32" />
+          <button id="palettePresetSave" type="button" class="btn small">Save</button>
+        </div>
+
+        <p id="paletteStatus" class="statusline" role="status"></p>
+      </div>
+    </section>
   </div>
 
   <footer class="app-footer">
