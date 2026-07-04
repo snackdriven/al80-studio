@@ -253,9 +253,10 @@ export async function sendAckGated(packets, onFraction, { ackTimeout = 140, anno
       for (let attempt = 0; attempt < 4 && !acked; attempt++) {
         acked = await new Promise((resolve) => {
           const done = (ok) => { clearTimeout(to); device.removeEventListener('inputreport', onRep); resolve(ok); };
-          // match the echo, but ignore a BUSY reply (byte[6]=0x0f) — wait for a READY ack (0x55).
-          // resolving on a busy echo is what let the last stray block slip through.
-          const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1] && b[6] !== 0x0f) done(true); };
+          // resolve on the block's echo (the module mirrors bytes[0..1]). Do NOT also gate on a
+          // "ready" byte — filtering out the busy reply caused spurious retries + sends-during-busy,
+          // which made the banding worse, not better.
+          const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1]) done(true); };
           const to = setTimeout(() => done(false), ackTimeout);
           device.addEventListener('inputreport', onRep);
           device.sendReport(0, body).catch(() => done(false));
