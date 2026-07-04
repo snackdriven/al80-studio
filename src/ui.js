@@ -611,16 +611,11 @@ function setupImageTab() {
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets…`);
     const onProg = (f) => { bar.style.width = Math.round(f * 100) + '%'; };
-    let ok;
-    if (dest === 'main') {
-      ok = await sendWithProgress('Picture → main page', statusEl, packets, onProg, { gap: 0 });
-    } else {
-      // Reset the module OFF the picture buffer before rewriting it. Without this, frame N+1
-      // inherits frame N's state and bands worse each send (first-clean, rest-band). Switching to
-      // the homepage view stops the module scanning the picture buffer so the rewrite lands clean.
-      try { await hid.send(proto.buildView(proto.VIEW.HOMEPAGE), { gap: 2 }); await new Promise((r) => setTimeout(r, 250)); } catch { /* best effort */ }
-      ok = await sendAckGatedWithProgress('Picture → picture page', statusEl, packets, onProg);
-    }
+    // picture page = ACK-gated (blasting drops bytes); main page = plain send. (No pre-switch to home —
+    // writing the picture buffer while parked on home doesn't land, leaving the old frame on screen.)
+    const ok = dest === 'main'
+      ? await sendWithProgress('Picture → main page', statusEl, packets, onProg, { gap: 0 })
+      : await sendAckGatedWithProgress('Picture → picture page', statusEl, packets, onProg);
     if (ok) {
       if (dest === 'main') {
         setNowShowing('clock'); // main page = clock + your image

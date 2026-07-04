@@ -172,14 +172,11 @@ export class Device extends EventEmitter {
 
   /** Push a full 96x160 row-major RGB565 frame (30720 bytes). ACK-gated per data block. */
   async sendFrame(frame) {
-    // Reset the module OFF the picture buffer first. Without this, repeated frames inherit prior
-    // state and band worse each send (first-clean, rest-band) — critical for now-playing, which
-    // pushes many frames. The homepage view switch stops the module scanning the picture buffer.
-    if (!this.mock && this.dev) { try { await this._send(buildView(VIEW.HOMEPAGE)); await sleep(250); } catch { /* best effort */ } }
+    // Write the frame, then switch the display TO the picture page so it actually shows. (Do NOT
+    // pre-switch to the home page — writing the picture buffer while parked on home doesn't land,
+    // leaving the OLD frame on screen. Proven order: write, then show.)
     const packets = buildImageTransfer(frame); // validates 30720 bytes (row-major — the AL80 is row-major)
     const r = await this._send(packets, { gate: true });
-    // switch the display TO the picture page so the frame actually shows (else it's written but unseen,
-    // and the screen falls back to the home page — the "paused a sec then back to main" symptom).
     if (!this.mock && this.dev) { try { await this._send(buildView(VIEW.PICTURE)); } catch { /* best effort */ } }
     return r;
   }
