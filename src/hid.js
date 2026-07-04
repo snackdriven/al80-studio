@@ -246,13 +246,20 @@ export async function sendAckGated(packets, onFraction, { ackTimeout = 140, anno
     // a 0x41 packet whose payload is NOT an A5 5A control frame is a pixel data block → ACK-gate it.
     const isData = src[0] === 0x41 && !(src[7] === 0xa5 && src[8] === 0x5a);
     if (isData) {
-      await new Promise((resolve) => {
-        const done = () => { clearTimeout(to); device.removeEventListener('inputreport', onRep); resolve(); };
-        const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1]) done(); };
-        const to = setTimeout(done, ackTimeout); // fall through if the echo is missed, so one lost ack can't hang the frame
-        device.addEventListener('inputreport', onRep);
-        device.sendReport(0, body).catch(done);
-      });
+      // Send, wait for the block's echo; if it doesn't come, RESEND (each block carries its own
+      // offset, so resending is idempotent) up to a few times. A missed ack = the block may have
+      // slipped, so retrying is what stops a stray mid-frame band, not just falling through.
+      let acked = false;
+      for (let attempt = 0; attempt < 4 && !acked; attempt++) {
+        acked = await new Promise((resolve) => {
+          const done = (ok) => { clearTimeout(to); device.removeEventListener('inputreport', onRep); resolve(ok); };
+          const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1]) done(true); };
+          const to = setTimeout(() => done(false), ackTimeout);
+          device.addEventListener('inputreport', onRep);
+          device.sendReport(0, body).catch(() => done(false));
+        });
+      }
+      if (!acked) await sleep(15); // exhausted retries — give the module a breath before continuing
     } else {
       try { await device.sendReport(0, body); } catch (err) {
         throw new Error(`Write failed after ${i} packet(s): ${err && err.message ? err.message : err}. Close any other app talking to the keyboard and reconnect.`);
