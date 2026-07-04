@@ -236,7 +236,7 @@ export async function send(packets, { gap = 0 } = {}) {
  * @param {(fraction:number)=>void} [onFraction]
  * @param {{ackTimeout?:number, announceSettle?:number, setupSettle?:number}} [opts]
  */
-export async function sendAckGated(packets, onFraction, { ackTimeout = 140, announceSettle = 300, setupSettle = 120 } = {}) {
+export async function sendAckGated(packets, onFraction, { ackTimeout = 140, announceSettle = 300, setupSettle = 120, floorMs = 3 } = {}) {
   if (!device || !device.opened) throw new Error('Not connected. Call connect() before sendAckGated().');
   const start = (typeof performance !== 'undefined' ? performance : Date).now();
   for (let i = 0; i < packets.length; i++) {
@@ -253,13 +253,16 @@ export async function sendAckGated(packets, onFraction, { ackTimeout = 140, anno
       for (let attempt = 0; attempt < 4 && !acked; attempt++) {
         acked = await new Promise((resolve) => {
           const done = (ok) => { clearTimeout(to); device.removeEventListener('inputreport', onRep); resolve(ok); };
-          const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1]) done(true); };
+          // match the echo, but ignore a BUSY reply (byte[6]=0x0f) — wait for a READY ack (0x55).
+          // resolving on a busy echo is what let the last stray block slip through.
+          const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1] && b[6] !== 0x0f) done(true); };
           const to = setTimeout(() => done(false), ackTimeout);
           device.addEventListener('inputreport', onRep);
           device.sendReport(0, body).catch(() => done(false));
         });
       }
-      if (!acked) await sleep(15); // exhausted retries — give the module a breath before continuing
+      // small floor even after an ack, so the STM32->module UART forward has headroom (kills the last faint band)
+      await sleep(acked ? floorMs : 15);
     } else {
       try { await device.sendReport(0, body); } catch (err) {
         throw new Error(`Write failed after ${i} packet(s): ${err && err.message ? err.message : err}. Close any other app talking to the keyboard and reconnect.`);
