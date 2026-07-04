@@ -15,7 +15,7 @@ import HID from 'node-hid';
 import { EventEmitter } from 'node:events';
 import {
   VID, PID, USAGE_PAGE, USAGE,
-  buildImageTransfer, clockFromDate,
+  buildImageTransfer, clockFromDate, buildView, VIEW,
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor,
 } from '../src/protocol.js';
 
@@ -95,13 +95,15 @@ export class Device extends EventEmitter {
   /** Resolve true when an echo matching this sent report arrives, false on timeout. */
   _waitAck(sent, timeoutMs) {
     return new Promise((resolve) => {
-      const b0 = sent[0], b1 = sent[1];
+      const b0 = sent[0], b1 = sent[1], b2 = sent[2];
       const timer = setTimeout(() => {
         if (this._pending && this._pending.resolve === wrapped) this._pending = null;
         resolve(false);
       }, timeoutMs);
       const wrapped = (v) => { clearTimeout(timer); resolve(v); };
-      this._pending = { match: (e) => e[0] === b0 && e[1] === b1, resolve: wrapped };
+      // match op + FULL offset (lo+hi). Offset-lo alone collides (blocks 256B apart share it), which
+      // false-matches a stale echo and drifts the frame out of sync — worse over repeated sends.
+      this._pending = { match: (e) => e[0] === b0 && e[1] === b1 && e[2] === b2, resolve: wrapped };
     });
   }
 
@@ -149,8 +151,14 @@ export class Device extends EventEmitter {
 
     for (const p of packets) {
       if (gate && isDataBlock(p)) {
-        this._write(p);
-        const ok = await this._waitAck(p, this.ackTimeoutMs);
+        // send, wait for the block's echo; resend (idempotent — carries its own offset) if missed,
+        // so no block silently slips. NO artificial delay between acked blocks — the module wants the
+        // natural ack rhythm; padding gaps desyncs it and makes banding worse (learned on-device).
+        let ok = false;
+        for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+          this._write(p);
+          ok = await this._waitAck(p, this.ackTimeoutMs);
+        }
         if (ok) acked++;
         else { fellBack++; await sleep(this.fallbackDelayMs); }
       } else {
@@ -164,7 +172,11 @@ export class Device extends EventEmitter {
 
   /** Push a full 96x160 row-major RGB565 frame (30720 bytes). ACK-gated per data block. */
   async sendFrame(frame) {
-    const packets = buildImageTransfer(frame); // validates 30720 bytes; transposes to col-major inside
+    // Reset the module OFF the picture buffer first. Without this, repeated frames inherit prior
+    // state and band worse each send (first-clean, rest-band) — critical for now-playing, which
+    // pushes many frames. The homepage view switch stops the module scanning the picture buffer.
+    if (!this.mock && this.dev) { try { await this._send(buildView(VIEW.HOMEPAGE)); await sleep(250); } catch { /* best effort */ } }
+    const packets = buildImageTransfer(frame); // validates 30720 bytes (row-major — the AL80 is row-major)
     return this._send(packets, { gate: true });
   }
 
