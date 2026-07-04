@@ -177,7 +177,11 @@ export class Device extends EventEmitter {
     // pushes many frames. The homepage view switch stops the module scanning the picture buffer.
     if (!this.mock && this.dev) { try { await this._send(buildView(VIEW.HOMEPAGE)); await sleep(250); } catch { /* best effort */ } }
     const packets = buildImageTransfer(frame); // validates 30720 bytes (row-major — the AL80 is row-major)
-    return this._send(packets, { gate: true });
+    const r = await this._send(packets, { gate: true });
+    // switch the display TO the picture page so the frame actually shows (else it's written but unseen,
+    // and the screen falls back to the home page — the "paused a sec then back to main" symptom).
+    if (!this.mock && this.dev) { try { await this._send(buildView(VIEW.PICTURE)); } catch { /* best effort */ } }
+    return r;
   }
 
   /**
