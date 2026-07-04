@@ -73,3 +73,15 @@ writes. Cheap to replicate if H4/H6 don't pan out.
     This is exactly what the firmware-RE subagent is tracing.
   - Note: Fn+9 = main page displays reliably → the 96×64 main page is a proven fallback surface for
     now-playing if the picture-slot targeting turns out to be vendor-only.
+
+## RESOLVED (commit 67eb4eb) — now-playing displays and stays on-device
+Two things, both timing/protocol not pixels:
+1. **The commit needs settles.** The setup packet `A5 5A 0C <len>` IS PK_ADD_PIC (commit+display),
+   but device.js blasted announce+setup with no gap so it never processed. Fix: 300ms after the
+   announce, 30ms after the setup, before the pixel blocks (matches lab.html, which displayed fresh).
+2. **The trailing view-switch undid it.** buildView(PICTURE)=0x0d=PK_TOGGLE_PIC ADVANCES to the next
+   slot, flipping past the just-committed card (the half-second flash). Fix: don't send it — the
+   commit shows the frame and it stays.
+Working sequence: announce(0x10) -> 300ms -> setup/PK_ADD_PIC(0x0c,len) -> 30ms -> data (ack-gated) ->
+finish(0x42). NO trailing view switch. Confirmed live on-device.
+Follow-up: al80-studio browser Picture tab needs the same (drop ui.js's trailing buildView(PICTURE)).
