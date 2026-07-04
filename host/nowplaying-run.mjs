@@ -67,7 +67,11 @@ async function main() {
         }
         const frame = render({ title: np.title, artist: np.artist, artRGB: cached.artRGB, progress: progressOf(np), paused: np.paused });
         console.log(`[nowplaying] ${np.paused ? '⏸' : '▶'} ${np.title} — ${np.artist}`);
-        try { await dev.sendFrame(frame); } catch (e) { console.log('[send]', e.message); }
+        try {
+          const t0 = Date.now();
+          const r = await dev.sendFrame(frame);
+          console.log(`[send] ${r.acked}/${r.dataBlocks} blocks acked, ${r.fellBack} fell back, ${Date.now() - t0}ms`);
+        } catch (e) { console.log('[send]', e.message); }
         if (SYNC_RGB && cached.hueSat && !MOCK_DEVICE) {
           const hue = Math.round((cached.hueSat.hue / 360) * 255), sat = Math.round(cached.hueSat.sat * 255);
           try { await dev.setRGB({ effect: 1 /* Solid Color */, color: { hue, sat } }); } catch { /* best effort */ }
