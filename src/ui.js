@@ -352,6 +352,30 @@ const lightingVisible = () =>
 const keymapTesterCtl = { stop() {} };
 const keymapVisible = () => document.querySelector('#app')?.dataset.section === 'keymap';
 
+// WAI-ARIA tab keyboard support: Left/Right/Up/Down + Home/End move between tabs and
+// activate them; a roving tabindex means Tab enters the tablist at the selected tab
+// (not every tab). Delegated on the container so it survives rebuilt tabs (layers).
+function wireTablistArrows(container) {
+  if (!container) return;
+  container.addEventListener('keydown', (e) => {
+    const tabs = [...container.querySelectorAll('[role="tab"]')];
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    let j;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') j = (i + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') j = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') j = 0;
+    else if (e.key === 'End') j = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    tabs[j].focus();
+    tabs[j].click();
+  });
+}
+function rovingTabindex(tabs) {
+  tabs.forEach((t) => { t.tabIndex = t.getAttribute('aria-selected') === 'true' ? 0 : -1; });
+}
+
 // ---- top-level sections (LCD / Keymap) --------------------------------------
 function setupSections() {
   const app = $('#app');
@@ -362,6 +386,7 @@ function setupSections() {
       const name = b.dataset.section;
       app.dataset.section = name;
       btns.forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+      rovingTabindex(btns);
       panels.forEach((p) => { p.hidden = p.dataset.sectionPanel !== name; });
       if (gifVisible()) gifPreviewCtl.start(); else gifPreviewCtl.stop();
       if (!slideshowVisible()) slideshowCtl.stop();
@@ -369,6 +394,8 @@ function setupSections() {
       if (!keymapVisible()) keymapTesterCtl.stop();
     });
   });
+  rovingTabindex(btns);
+  wireTablistArrows($('.sections'));
 }
 
 // ---- LCD content sub-tabs ----------------------------------------------------
@@ -379,12 +406,15 @@ function setupTabs() {
     tab.addEventListener('click', () => {
       const name = tab.dataset.tab;
       tabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+      rovingTabindex(tabs);
       panels.forEach((p) => { p.hidden = p.dataset.panel !== name; });
       if (name === 'gif') gifPreviewCtl.start(); else gifPreviewCtl.stop();
       if (name !== 'slideshow') slideshowCtl.stop();
       if (name !== 'lighting') lightingFxCtl.stop();
     });
   });
+  rovingTabindex(tabs);
+  wireTablistArrows($('.tabs'));
 }
 
 // ---- Now Showing bar --------------------------------------------------------
@@ -1312,14 +1342,24 @@ function setupLightingTab() {
   function savePresets(obj) {
     try { localStorage.setItem(PRESET_KEY, JSON.stringify(obj)); } catch { /* storage unavailable */ }
   }
+  // Tombstones: names of curated defaults the user deleted, so the merge below doesn't
+  // resurrect them on the next load.
+  const TOMBSTONE_KEY = 'al80.palettePresets.deletedDefaults';
+  function loadTombstones() {
+    try { return new Set(JSON.parse(localStorage.getItem(TOMBSTONE_KEY)) || []); } catch { return new Set(); }
+  }
+  function saveTombstones(set) {
+    try { localStorage.setItem(TOMBSTONE_KEY, JSON.stringify([...set])); } catch { /* storage unavailable */ }
+  }
   // Merge in any curated defaults the browser doesn't have yet: first run gets them all,
   // and existing users pick up newly-added sets without losing their own saved presets.
   {
     const firstRun = localStorage.getItem(PRESET_KEY) == null;
     const have = loadPresets();
+    const tombstoned = loadTombstones();
     let added = false;
     for (const [name, p] of Object.entries(DEFAULT_PRESETS)) {
-      if (!(name in have)) { have[name] = p; added = true; }
+      if (!(name in have) && !tombstoned.has(name)) { have[name] = p; added = true; }
     }
     if (firstRun || added) savePresets(have);
   }
@@ -1445,6 +1485,7 @@ function setupLightingTab() {
     if (name in presets && !confirm(`A preset named "${name}" already exists. Overwrite it?`)) return;
     presets[name] = { stops: paletteStops.slice(), mode: paletteMode.value, speed: +paletteSpeed.value };
     savePresets(presets);
+    { const t = loadTombstones(); if (t.delete(name)) saveTombstones(t); } // un-tombstone a re-created default
     refreshPresetDropdown(name);
     palettePresetName.value = '';
     setStatus(paletteStatus, `Saved "${name}".`, 'ok');
@@ -1457,6 +1498,8 @@ function setupLightingTab() {
     if (!(name in presets)) return;
     delete presets[name];
     savePresets(presets);
+    // If it's a curated default, remember the deletion so it doesn't come back on reload.
+    if (name in DEFAULT_PRESETS) { const t = loadTombstones(); t.add(name); saveTombstones(t); }
     refreshPresetDropdown();
     setStatus(paletteStatus, `Deleted "${name}".`, 'ok');
   });
@@ -1576,6 +1619,7 @@ function setupKeymap() {
 
   const statusEl = $('#keymapStatus');
   const layerSel = $('#layerSelect');
+  wireTablistArrows(layerSel);
   const grid = $('#keyGrid');
   const encCwEl = $('#encCw');
   const encCcwEl = $('#encCcw');
@@ -1664,6 +1708,7 @@ function setupKeymap() {
       b.textContent = 'L' + L;
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', String(L === currentLayer));
+      b.tabIndex = L === currentLayer ? 0 : -1;
       b.addEventListener('click', () => {
         currentLayer = L;
         renderLayerSelect();
