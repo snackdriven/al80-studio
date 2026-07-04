@@ -74,12 +74,22 @@ export function matrixIndex(row, col) {
 
 /** @type {Record<string, Preset[]>} */
 export const PRESETS = {
-  // AL80 firmware custom keycodes. In VIA keymap JSON these are the literal
-  // strings "CUSTOM(n)". Mapping from ../al80-lcd/keymap/community/README.md.
+  // AL80 firmware LCD view-switch keycodes. In VIA keymap JSON these are the
+  // literal strings "CUSTOM(n)". These fire the same on-device view switch as
+  // protocol.js buildView(): homepage=0x0b, picture=0x0d, gif=0x0f.
+  // Mapping evidence (three independent sources agree):
+  //   - @nvoostrom's VIA definition AL80_QMK_V0104-FIX-20250424.json customKeycodes
+  //   - ../al80-lcd/keymap/AL80_QMK_V0106-with-keycodes.json customKeycodes
+  //   - ../al80-lcd/keymap/community/README.md (cross-refs AL80_KNOWLEDGE_BASE.md §7)
+  //   CUSTOM(22)=HOM "Go to Homepage" · CUSTOM(23)=IMG "Change to Image" · CUSTOM(24)=GIF "Change to GIF"
+  'LCD view': [
+    { label: 'Show GIF page', keycode: 'CUSTOM(24)', note: 'LCD GIF view (GIF) — protocol VIEW.GIF 0x0f' },
+    { label: 'Show main page', keycode: 'CUSTOM(22)', note: 'LCD homepage / clock (HOM) — protocol VIEW.HOMEPAGE 0x0b' },
+    { label: 'Show picture page', keycode: 'CUSTOM(23)', note: 'LCD image view (IMG) — protocol VIEW.PICTURE 0x0d' },
+  ],
+
+  // AL80 firmware lighting / backlight custom keycodes (same CUSTOM(n) space).
   'LCD + lighting': [
-    { label: 'Switch to clock view', keycode: 'CUSTOM(22)', note: 'LCD homepage / clock (HOM)' },
-    { label: 'Switch to picture view', keycode: 'CUSTOM(23)', note: 'LCD image view (IMG)' },
-    { label: 'Switch to GIF view', keycode: 'CUSTOM(24)', note: 'LCD GIF view (GIF)' },
     { label: 'Backlight on/off', keycode: 'CUSTOM(10)', note: 'Toggle backlight (BLT)' },
     { label: 'Brightness +', keycode: 'CUSTOM(17)', note: 'LED brightness up (B+)' },
     { label: 'Brightness -', keycode: 'CUSTOM(18)', note: 'LED brightness down (B-)' },
@@ -138,6 +148,38 @@ export const PRESETS = {
     { label: 'No-op', keycode: 'KC_NO', note: 'Disable this key' },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// LCD view-switch keymap preset
+//
+// Binds the three LCD view-switch custom keycodes onto the Fn layer's number
+// keys (layer 1). Matrix row 1 is the number row; flat index = row*15 + col:
+//   Fn+8 -> col 8  -> index 23 -> CUSTOM(23) picture/image view
+//   Fn+9 -> col 9  -> index 24 -> CUSTOM(22) main/homepage (clock) view
+//   Fn+0 -> col 10 -> index 25 -> CUSTOM(24) GIF view
+// A full ready-to-load VIA keymap file lives at keymaps/al80-lcd-view.json
+// (factory base layer + these three bindings) — import it in the Keymap editor.
+// @readonly
+// ---------------------------------------------------------------------------
+export const LCD_VIEW_BINDINGS = Object.freeze([
+  { row: 1, col: 8, index: 23, keycode: 'CUSTOM(23)', label: 'Fn+8 → Show picture page' },
+  { row: 1, col: 9, index: 24, keycode: 'CUSTOM(22)', label: 'Fn+9 → Show main page' },
+  { row: 1, col: 10, index: 25, keycode: 'CUSTOM(24)', label: 'Fn+0 → Show GIF page' },
+]);
+
+/**
+ * Stamp the three LCD view-switch keycodes onto layer 1 (Fn) of a keymap state,
+ * mutating and returning it. Everything else on every layer is left untouched.
+ * @param {{layers:string[][]}} state internal keymap state (from importKeymap/emptyKeymap)
+ * @returns {{layers:string[][]}} the same state, with layer 1's 8/9/0 slots set
+ */
+export function applyLcdViewKeys(state) {
+  if (!state || !Array.isArray(state.layers) || !Array.isArray(state.layers[1])) {
+    throw new TypeError('applyLcdViewKeys: expected keymap state with a layer 1 array');
+  }
+  for (const b of LCD_VIEW_BINDINGS) state.layers[1][b.index] = b.keycode;
+  return state;
+}
 
 // ---------------------------------------------------------------------------
 // Keymap construction / import / export
@@ -570,6 +612,8 @@ export default {
   AL80,
   AL80_LAYOUT,
   PRESETS,
+  LCD_VIEW_BINDINGS,
+  applyLcdViewKeys,
   matrixIndex,
   emptyKeymap,
   importKeymap,
