@@ -615,21 +615,24 @@ function setupImageTab() {
     const onProg = (f) => { bar.style.width = Math.round(f * 100) + '%'; };
     // picture page = ACK-gated (blasting drops bytes); main page = plain send. (No pre-switch to home —
     // writing the picture buffer while parked on home doesn't land, leaving the old frame on screen.)
-    const ok = dest === 'main'
-      ? await sendWithProgress('Picture → main page', statusEl, packets, onProg, { gap: 0 })
-      : await sendAckGatedWithProgress('Picture → picture page', statusEl, packets, onProg);
-    if (ok) {
-      if (dest === 'main') {
-        setNowShowing('clock'); // main page = clock + your image
-        setStatus(statusEl, 'Saved to the main page — it should be showing now.', 'ok');
-      } else {
-        setStatus(statusEl, 'Switching to picture page…');
-        const shown = await guardedSend('View → Picture', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
-        if (shown) setNowShowing('picture');
-        setStatus(statusEl, 'Sent to the picture page (may not display on your firmware).', 'ok');
+    try {
+      const ok = dest === 'main'
+        ? await sendWithProgress('Picture → main page', statusEl, packets, onProg, { gap: 0 })
+        : await sendAckGatedWithProgress('Picture → picture page', statusEl, packets, onProg);
+      if (ok) {
+        if (dest === 'main') {
+          setNowShowing('clock'); // main page = clock + your image
+          setStatus(statusEl, 'Saved to the main page — it should be showing now.', 'ok');
+        } else {
+          setStatus(statusEl, 'Switching to picture page…');
+          const shown = await guardedSend('View → Picture', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+          if (shown) setNowShowing('picture');
+          setStatus(statusEl, 'Sent to the picture page (may not display on your firmware).', 'ok');
+        }
       }
+    } finally {
+      setTimeout(() => { wrap.hidden = true; }, 800);
     }
-    setTimeout(() => { wrap.hidden = true; }, 800);
   });
 }
 
@@ -753,22 +756,25 @@ function setupGifTab() {
     wrap.hidden = false;
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets (${kept} frame${kept === 1 ? '' : 's'} @ ${fps.value} fps) — paced, takes a few seconds…`);
-    const ok = await sendGifWithProgress(dest === 'main' ? 'GIF → main page' : 'GIF → gif page', statusEl, packets, (f) => {
-      bar.style.width = Math.round(f * 100) + '%';
-    });
-    if (ok) {
-      const capNote = total > kept ? ` (kept the first ${kept} of ${total})` : '';
-      if (dest === 'main') {
-        setNowShowing('clock'); // main page = clock + your GIF
-        setStatus(statusEl, `Saved GIF to the main page${capNote} — it should be playing now.`, 'ok');
-      } else {
-        setStatus(statusEl, 'Switching to GIF page…');
-        const shown = await guardedSend('View → GIF', statusEl, proto.buildView(proto.VIEW.GIF), { gap: 1 });
-        if (shown) setNowShowing('gif');
-        setStatus(statusEl, `Sent GIF to the gif page${capNote} (may not display on your firmware).`, 'ok');
+    try {
+      const ok = await sendGifWithProgress(dest === 'main' ? 'GIF → main page' : 'GIF → gif page', statusEl, packets, (f) => {
+        bar.style.width = Math.round(f * 100) + '%';
+      });
+      if (ok) {
+        const capNote = total > kept ? ` (kept the first ${kept} of ${total})` : '';
+        if (dest === 'main') {
+          setNowShowing('clock'); // main page = clock + your GIF
+          setStatus(statusEl, `Saved GIF to the main page${capNote} — it should be playing now.`, 'ok');
+        } else {
+          setStatus(statusEl, 'Switching to GIF page…');
+          const shown = await guardedSend('View → GIF', statusEl, proto.buildView(proto.VIEW.GIF), { gap: 1 });
+          if (shown) setNowShowing('gif');
+          setStatus(statusEl, `Sent GIF to the gif page${capNote} (may not display on your firmware).`, 'ok');
+        }
       }
+    } finally {
+      setTimeout(() => { wrap.hidden = true; }, 800);
     }
-    setTimeout(() => { wrap.hidden = true; }, 800);
   });
 }
 
