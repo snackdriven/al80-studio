@@ -60,4 +60,16 @@ writes. Cheap to replicate if H4/H6 don't pan out.
 ## Log
 - SEND_LEN checked → 64 both → H2 ruled out.
 - Dispatched firmware RE for the display/commit trigger (H6).
-- Applying H4 (settle before view switch, match browser) for the next on-device test.
+- Applied H4 (settle before view switch, match browser).
+- **DECISIVE (user, on-device):** the stock firmware ships with Fn+0/9/8 = switch to gif/main/picture
+  views, and pressing the physical Fn+picture key WORKS — it displays the picture page. But it shows
+  the OLD picture, NOT our freshly-written now-playing frame. So:
+  - **H4 (timing) RULED OUT** — a correct, human-timed view switch still shows the old frame.
+  - **H3/view-command RULED OUT** — the real view-switch (the keycode path) fires and still shows old.
+  - **H6 CONFIRMED as the direction:** our write (549/549 acked) lands in a buffer/SLOT that the
+    picture view does not display. It's a write-TARGET problem — the announce(0x10) write goes to a
+    different slot than the one the picture view (0x0d) reads. Need: how the write-slot and the
+    display-slot relate, and how to target the displayed one (a picture-index byte? a specific slot?).
+    This is exactly what the firmware-RE subagent is tracing.
+  - Note: Fn+9 = main page displays reliably → the 96×64 main page is a proven fallback surface for
+    now-playing if the picture-slot targeting turns out to be vendor-only.
