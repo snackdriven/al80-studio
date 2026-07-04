@@ -30,6 +30,11 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute must always win. Author `display` rules (.picker-overlay,
+   .gate, .device-bar all use flex) otherwise beat the UA `[hidden]{display:none}`,
+   which left the keycode picker and the connect gate stuck visible. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
