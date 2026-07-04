@@ -203,6 +203,23 @@ async function sendGifWithProgress(label, statusEl, packets, onFraction) {
   }
 }
 
+// Still-image send that ACK-gates each pixel block (hid.sendAckGated) — the fix for picture-page
+// banding/white. Blasting drops bytes; waiting for each block's echo doesn't. Separate from
+// sendWithProgress because chunking/gap-0 is exactly what causes the drops.
+async function sendAckGatedWithProgress(label, statusEl, packets, onFraction) {
+  const start = performance.now();
+  try {
+    await hid.sendAckGated(packets, onFraction);
+    devLog(label, { packets: packets.length, ok: true, ms: performance.now() - start });
+    return true;
+  } catch (err) {
+    const msg = (err && err.message) || String(err);
+    devLog(label, { packets: packets.length, error: msg });
+    if (statusEl) setStatus(statusEl, 'Send failed: ' + msg, 'err');
+    return false;
+  }
+}
+
 // ---- init -------------------------------------------------------------------
 function init() {
   if (!hid.isSupported()) {
@@ -594,9 +611,11 @@ function setupImageTab() {
     wrap.hidden = false;
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets…`);
-    const ok = await sendWithProgress(dest === 'main' ? 'Picture → main page' : 'Picture → picture page', statusEl, packets, (f) => {
-      bar.style.width = Math.round(f * 100) + '%';
-    }, { gap: 0 });
+    const onProg = (f) => { bar.style.width = Math.round(f * 100) + '%'; };
+    // picture page = ACK-gated (blasting drops bytes → banding/white); main page = plain send.
+    const ok = dest === 'main'
+      ? await sendWithProgress('Picture → main page', statusEl, packets, onProg, { gap: 0 })
+      : await sendAckGatedWithProgress('Picture → picture page', statusEl, packets, onProg);
     if (ok) {
       if (dest === 'main') {
         setNowShowing('clock'); // main page = clock + your image

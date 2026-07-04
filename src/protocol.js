@@ -142,8 +142,9 @@ function dataBlocks(frame) {
 /** Build the full still-image transfer (picture page, 96x160): announce -> setup -> 548x56 + 1x32 -> finish. */
 export function buildImageTransfer(frame) {
   if (frame.length !== FRAME_BYTES) throw new Error(`frame must be ${FRAME_BYTES} bytes, got ${frame.length}`);
-  const wire = transposeToColMajor(frame, WIDTH, HEIGHT); // column-major on the wire (AttackShark scan order)
-  return [announce(0x10, 0, 0x01, [0x01]), buildImageSetup(), ...dataBlocks(wire), finish()];
+  // AL80 is ROW-MAJOR (on-device: column-major rendered sideways). The banding was never packing —
+  // it's dropped bytes from blasting, fixed by ACK-gating the send, not by reordering pixels.
+  return [announce(0x10, 0, 0x01, [0x01]), buildImageSetup(), ...dataBlocks(frame), finish()];
 }
 
 /**
@@ -305,10 +306,8 @@ function buildModeGif(frames, fps, mode, frameBytes, maxFrames) {
   ];
   frames.forEach((frame, fi) => {
     if (frame.length !== frameBytes) throw new Error(`mode-${mode} frame must be ${frameBytes} bytes, got ${frame.length}`);
-    // 96x160 animation pages scan column-major like the still picture page; the 96x64 main
-    // page is row-major. Transpose to wire order here (unconfirmed on-device for GIF, but
-    // consistent with the confirmed still-image fix — same module, same RGB565 stream).
-    const wire = frameBytes === SA_FRAME_BYTES ? transposeToColMajor(frame, SA_W, SA_H) : frame;
+    // Row-major (the AL80 is row-major — column-major renders sideways on-device).
+    const wire = frame;
     // per-frame header = [0x02, mode, FRAME INDEX] — the frame index is the 10th payload byte
     // (header length byte is 0x0a=10). Dropping it made every frame index 0, so frames overwrote
     // each other and GIFs rendered white. Capture-verified: frame N's header checksum = base + N.

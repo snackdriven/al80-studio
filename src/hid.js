@@ -222,6 +222,51 @@ export async function send(packets, { gap = 0 } = {}) {
 }
 
 /**
+ * ACK-gated still-image send — the fix for the picture-page banding + white.
+ *
+ * Blasting the 549 pixel blocks overruns the display module's UART receive buffer; a dropped
+ * byte flips hi/lo alignment for a stretch and you get a colour-swapped band (or, worse, a
+ * frame that never renders = white). The module echoes each block back (bytes[0..1] mirrored,
+ * byte[6]=0x55 ready), so we wait for that echo before sending the next — the same flow-control
+ * the native spike proved (18/18 acks). Control packets (announce/setup/finish/view) aren't
+ * echoed; they get a settle instead, with a generous pause after the announce + setup so the
+ * module is ready before the first pixels (that's what kills the top-of-frame band).
+ *
+ * @param {(Uint8Array|number[])[]} packets  from buildImageTransfer (row-major)
+ * @param {(fraction:number)=>void} [onFraction]
+ * @param {{ackTimeout?:number, announceSettle?:number, setupSettle?:number}} [opts]
+ */
+export async function sendAckGated(packets, onFraction, { ackTimeout = 140, announceSettle = 300, setupSettle = 120 } = {}) {
+  if (!device || !device.opened) throw new Error('Not connected. Call connect() before sendAckGated().');
+  const start = (typeof performance !== 'undefined' ? performance : Date).now();
+  for (let i = 0; i < packets.length; i++) {
+    const src = packets[i] instanceof Uint8Array ? packets[i] : Uint8Array.from(packets[i]);
+    const body = new Uint8Array(SEND_LEN);
+    body.set(src.subarray(0, SEND_LEN));
+    // a 0x41 packet whose payload is NOT an A5 5A control frame is a pixel data block → ACK-gate it.
+    const isData = src[0] === 0x41 && !(src[7] === 0xa5 && src[8] === 0x5a);
+    if (isData) {
+      await new Promise((resolve) => {
+        const done = () => { clearTimeout(to); device.removeEventListener('inputreport', onRep); resolve(); };
+        const onRep = (e) => { const b = new Uint8Array(e.data.buffer); if (b[0] === src[0] && b[1] === src[1]) done(); };
+        const to = setTimeout(done, ackTimeout); // fall through if the echo is missed, so one lost ack can't hang the frame
+        device.addEventListener('inputreport', onRep);
+        device.sendReport(0, body).catch(done);
+      });
+    } else {
+      try { await device.sendReport(0, body); } catch (err) {
+        throw new Error(`Write failed after ${i} packet(s): ${err && err.message ? err.message : err}. Close any other app talking to the keyboard and reconnect.`);
+      }
+      if (i === 0) await sleep(announceSettle);                 // after the announce
+      else if (src[7] === 0xa5 && src[9] === 0x0c) await sleep(setupSettle); // after the setup descriptor
+      else await sleep(2);
+    }
+    if (onFraction) onFraction((i + 1) / packets.length);
+  }
+  return { sent: packets.length, ms: (typeof performance !== 'undefined' ? performance : Date).now() - start };
+}
+
+/**
  * Send a mode-GIF/animation transfer with the VENDOR'S EXACT PACING. The device needs time to
  * commit each 1024-byte bank; sent back-to-back, banks overwrite each other and the GIF renders
  * as garbage bars (this is why blasting the vendor's own bytes failed). Decoded from `Ur`:
