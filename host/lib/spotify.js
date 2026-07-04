@@ -153,8 +153,11 @@ export async function getAccessToken(env = process.env) {
   if (!clientId || !refreshToken) {
     throw new Error('spotify.js: set SPOTIFY_CLIENT_ID and SPOTIFY_REFRESH_TOKEN (see header for one-time PKCE setup). For a credential-free run use getNowPlayingMock().');
   }
-  const { accessToken, expiresInSec } = await refreshAccessToken({ clientId, refreshToken });
-  return { accessToken, expiresInSec };
+  const t = await refreshAccessToken({ clientId, refreshToken });
+  // Spotify ROTATES the refresh token on use (PKCE) — the response's refresh_token replaces the old
+  // one, and reusing the old one gets it revoked. Surface the new token (fall back to the old if the
+  // response didn't rotate) so the caller can persist it.
+  return { accessToken: t.accessToken, expiresInSec: t.expiresInSec, refreshToken: t.refreshToken || refreshToken };
 }
 
 // ── NOW PLAYING ─────────────────────────────────────────────────────────────────────────────────

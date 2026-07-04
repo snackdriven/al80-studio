@@ -13,6 +13,7 @@ import Device, { MockDevice } from './device.js';
 import { render } from './apps/nowplaying.js';
 import { getAccessToken, getNowPlaying, getNowPlayingMock } from './lib/spotify.js';
 import { decodeToRGB96, dominantColor } from './lib/art.js';
+import { writeFileSync } from 'node:fs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const args = new Set(process.argv.slice(2));
@@ -32,11 +33,40 @@ async function fetchArtRGB(url) {
   } catch (e) { console.log('[art]', e.message); return null; }
 }
 
+const ENV_PATH = new URL('./.env', import.meta.url);
+let tokenCache = null; // { accessToken, expiresAt } — access tokens last ~1h; do NOT refresh every poll
+
+// PKCE rotates the refresh token on every refresh (Spotify docs): the response returns a NEW
+// refresh_token that replaces the old, and reusing the old gets it revoked. So cache the access
+// token, refresh only near expiry, and persist any rotated refresh token immediately.
+async function accessToken() {
+  if (tokenCache && Date.now() < tokenCache.expiresAt - 60_000) return tokenCache.accessToken;
+  const t = await getAccessToken(process.env); // throws on invalid_grant (expired/revoked)
+  tokenCache = { accessToken: t.accessToken, expiresAt: Date.now() + (t.expiresInSec || 3600) * 1000 };
+  if (t.refreshToken && t.refreshToken !== process.env.SPOTIFY_REFRESH_TOKEN) {
+    process.env.SPOTIFY_REFRESH_TOKEN = t.refreshToken;
+    try { writeFileSync(ENV_PATH, `SPOTIFY_CLIENT_ID=${process.env.SPOTIFY_CLIENT_ID}\nSPOTIFY_REFRESH_TOKEN=${t.refreshToken}\n`); }
+    catch (e) { console.log('[spotify] could not persist rotated refresh token:', e.message); }
+  }
+  return tokenCache.accessToken;
+}
+
 async function currentTrack() {
   if (!LIVE) return getNowPlayingMock(Date.now());
-  const token = await getAccessToken(process.env); // reads SPOTIFY_CLIENT_ID + SPOTIFY_REFRESH_TOKEN
-  if (!token) { console.log('[spotify] no token — set SPOTIFY_CLIENT_ID + SPOTIFY_REFRESH_TOKEN (run spotify-auth.mjs)'); return null; }
-  return getNowPlaying(token);
+  let tok;
+  try { tok = await accessToken(); }
+  catch (e) {
+    if (/invalid_grant/i.test(e.message)) {
+      console.log('\n[spotify] refresh token expired or revoked — re-auth with: node spotify-auth.mjs <clientId>\n');
+      process.exit(1); // don't retry-loop on a dead token (they expire at 6 months + rotate per use)
+    }
+    console.log('[spotify]', e.message); return null;
+  }
+  try { return await getNowPlaying(tok); } // tok is the access-token STRING — fixes the bearer 400
+  catch (e) {
+    if (/\b401\b/.test(e.message)) { tokenCache = null; return null; } // expired mid-cache; force one refresh
+    console.log('[spotify]', e.message); return null;
+  }
 }
 
 function progressOf(np) {

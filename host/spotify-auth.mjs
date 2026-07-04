@@ -7,6 +7,7 @@
 //   3. Open the printed URL, approve; this prints your SPOTIFY_REFRESH_TOKEN.
 //   4. Put both values in your environment (or a .env), then:  node nowplaying-run.mjs --live
 import http from 'node:http';
+import { writeFileSync } from 'node:fs';
 import {
   generateCodeVerifier, codeChallenge, buildAuthUrl, exchangeCodeForToken, DEFAULT_SCOPES,
 } from './lib/spotify.js';
@@ -35,11 +36,9 @@ const server = http.createServer(async (req, res) => {
   }
   try {
     const tok = await exchangeCodeForToken({ clientId, code, redirectUri: REDIRECT, codeVerifier: verifier });
-    res.writeHead(200, { 'content-type': 'text/html' }).end('<h2>Done — close this tab and return to your terminal.</h2>');
-    console.log('\n=== SUCCESS — add these to your environment (or a .env), then: node nowplaying-run.mjs --live ===\n');
-    console.log(`SPOTIFY_CLIENT_ID=${clientId}`);
-    console.log(`SPOTIFY_REFRESH_TOKEN=${tok.refresh_token}`);
-    console.log('\n(The refresh token is the sensitive one — never commit it.)');
+    writeFileSync(new URL('./.env', import.meta.url), `SPOTIFY_CLIENT_ID=${clientId}\nSPOTIFY_REFRESH_TOKEN=${tok.refreshToken}\n`);
+    res.writeHead(200, { 'content-type': 'text/html' }).end('<h2>Done &mdash; close this tab and return to your terminal.</h2>');
+    console.log('\n=== SUCCESS — creds written to host/.env (gitignored). Run: node nowplaying-run.mjs --live ===');
     server.close(); process.exit(0);
   } catch (e) {
     res.writeHead(500).end('Token exchange failed: ' + e.message);
@@ -49,6 +48,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(8888, '127.0.0.1', () => {
+  writeFileSync(new URL('./.spotify-auth-url.txt', import.meta.url), url);
   console.log('\nOpen this URL in your browser, approve access, then come back here:\n');
   console.log(url + '\n');
   console.log('(Listening for the redirect on http://127.0.0.1:8888/callback …)');
