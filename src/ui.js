@@ -1980,6 +1980,31 @@ function setupKeymap() {
     testerTimer = setInterval(pollMatrix, 80);
   });
 
+  // ---- device utilities (VIA get/set_keyboard_value + dynamic_keymap_reset) --
+  const deviceStatus = $('#deviceStatus');
+  $('#fwRead').addEventListener('click', async () => {
+    if (!connected) return;
+    setStatus(deviceStatus, 'Reading…');
+    const rep = await viaTransact(proto.buildFirmwareVersion(), (d) => d[0] === 0x02 && d[1] === 0x04, 500);
+    if (!rep) { $('#fwVersion').textContent = 'no reply'; setStatus(deviceStatus, 'No reply from the keyboard.', 'err'); return; }
+    const ver = ((rep[2] << 24) | (rep[3] << 16) | (rep[4] << 8) | rep[5]) >>> 0;
+    $('#fwVersion').textContent = `firmware v${ver}`;
+    setStatus(deviceStatus, '');
+  });
+  $('#identifyBtn').addEventListener('click', async () => {
+    if (!connected) return;
+    if (await guardedSend('Identify', deviceStatus, [proto.buildDeviceIndication()], { gap: 1 }))
+      setStatus(deviceStatus, 'Sent — the board should flash its lights.', 'ok');
+  });
+  $('#keymapResetBtn').addEventListener('click', async () => {
+    if (!connected) return;
+    if (!confirm('Reset the keyboard to its factory keymap? Your remaps on the device will be cleared (re-import your VIA JSON to undo).')) return;
+    if (await guardedSend('Reset keymap', deviceStatus, [proto.buildKeymapReset()], { gap: 1 })) {
+      setStatus(deviceStatus, 'Keymap reset to factory — re-reading…', 'ok');
+      $('#keymapRead').click();
+    }
+  });
+
   // ---- import / export (offline, unchanged behavior) ------------------------
   $('#keymapImport').addEventListener('change', async (e) => {
     const file = e.target.files[0];

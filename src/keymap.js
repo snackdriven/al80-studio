@@ -95,6 +95,17 @@ export const PRESETS = {
     { label: 'Brightness -', keycode: 'CUSTOM(18)', note: 'LED brightness down (B-)' },
   ],
 
+  // AL80 tri-mode wireless / connection custom keycodes (same CUSTOM(n) space). Read off the
+  // factory Fn layer: Fn+1/2/3 = CUSTOM(1/2/3) = Bluetooth 1-3, Fn+4 = CUSTOM(4) = 2.4GHz.
+  // CUSTOM(0) = USB mode — the definition's only labeled customKeycode (KC_USB / USER00).
+  'Wireless & mode': [
+    { label: 'USB (wired)', keycode: 'CUSTOM(0)', note: 'Switch to wired USB mode' },
+    { label: 'Bluetooth 1', keycode: 'CUSTOM(1)', note: 'BT channel 1 (factory Fn+1)' },
+    { label: 'Bluetooth 2', keycode: 'CUSTOM(2)', note: 'BT channel 2 (factory Fn+2)' },
+    { label: 'Bluetooth 3', keycode: 'CUSTOM(3)', note: 'BT channel 3 (factory Fn+3)' },
+    { label: '2.4GHz', keycode: 'CUSTOM(4)', note: '2.4G dongle (factory Fn+4)' },
+  ],
+
   // Taskbar-position launchers: LGUI(1..9) presses Win+<n>, which activates the
   // Nth pinned/running app on the Windows taskbar. Plus macro-driven launchers
   // (Win+R "run" flavor) built by buildAppLauncherMacro().

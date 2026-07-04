@@ -327,6 +327,15 @@
         <button id="testerToggle" type="button" class="btn device-action" disabled title="Poll the switch matrix and light up pressed keys">Start key tester</button>
         <span id="testerStatus" class="muted small"></span>
       </div>
+
+      <h3>Device</h3>
+      <div class="row">
+        <button id="fwRead" type="button" class="btn device-action" disabled title="Read the VIA firmware version from the keyboard">Read firmware version</button>
+        <span id="fwVersion" class="muted small"></span>
+        <button id="identifyBtn" type="button" class="btn device-action" disabled title="Flash the keyboard's lights to identify which board this is">Identify board</button>
+        <button id="keymapResetBtn" type="button" class="btn danger device-action" disabled title="Restore the factory keymap on the device (recoverable — re-import your layout to undo)">Reset keymap</button>
+        <span id="deviceStatus" class="muted small"></span>
+      </div>
     </section>
 
     <!-- Keycode picker: opened when a key or the encoder is clicked -->

@@ -417,7 +417,7 @@ export const VIA_CMD = Object.freeze({
   DYN_GET_ENCODER: 0x14, DYN_SET_ENCODER: 0x15,
 });
 /** get_keyboard_value sub-ids. SWITCH_MATRIX_STATE drives a live key tester. */
-export const VIA_VALUE = Object.freeze({ UPTIME: 0x01, LAYOUT_OPTIONS: 0x02, SWITCH_MATRIX_STATE: 0x03, FIRMWARE_VERSION: 0x04 });
+export const VIA_VALUE = Object.freeze({ UPTIME: 0x01, LAYOUT_OPTIONS: 0x02, SWITCH_MATRIX_STATE: 0x03, FIRMWARE_VERSION: 0x04, DEVICE_INDICATION: 0x05 });
 
 const hi16 = (n) => (n >> 8) & 0xff;
 const lo16 = (n) => n & 0xff;
@@ -440,6 +440,10 @@ export const buildEncoderGet = (layer, idx, clockwise) => viaReport([VIA_CMD.DYN
 export const buildEncoderSet = (layer, idx, clockwise, kc) => viaReport([VIA_CMD.DYN_SET_ENCODER, layer & 0xff, idx & 0xff, clockwise ? 1 : 0, hi16(kc), lo16(kc)]);
 /** get_keyboard_value / SWITCH_MATRIX_STATE (0x02 0x03) → reply is a bit-packed matrix snapshot: a live key tester. */
 export const buildSwitchMatrixState = () => viaReport([VIA_CMD.GET_KEYBOARD_VALUE, VIA_VALUE.SWITCH_MATRIX_STATE]);
+/** get_keyboard_value / FIRMWARE_VERSION (0x02 0x04) → reply [02, 04, v3, v2, v1, v0]: the 32-bit VIA firmware version. */
+export const buildFirmwareVersion = () => viaReport([VIA_CMD.GET_KEYBOARD_VALUE, VIA_VALUE.FIRMWARE_VERSION]);
+/** set_keyboard_value / DEVICE_INDICATION (0x03 0x05): ask the board to flash its LEDs to identify itself. */
+export const buildDeviceIndication = () => viaReport([VIA_CMD.SET_KEYBOARD_VALUE, VIA_VALUE.DEVICE_INDICATION, 0]);
 /** dynamic_keymap_macro_* (0x0c count, 0x0d buffer-size, 0x0e/0x0f get/set buffer, 0x10 reset). */
 export const buildMacroCount = () => viaReport([VIA_CMD.MACRO_GET_COUNT]);
 export const buildMacroBufferSize = () => viaReport([VIA_CMD.MACRO_GET_BUFSIZE]);
