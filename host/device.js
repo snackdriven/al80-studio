@@ -163,6 +163,14 @@ export class Device extends EventEmitter {
         else { fellBack++; await sleep(this.fallbackDelayMs); }
       } else {
         this._write(p);
+        // Control packets in a gated (picture) transfer need a settle — the module must process the
+        // announce + the PK_ADD_PIC setup (A5 5A 0C <len>, the commit) BEFORE the pixels arrive, or the
+        // frame lands in scratch uncommitted. lab.html (which displayed fresh) sleeps 300ms/30ms here;
+        // device.js was blasting them back-to-back → the frame never committed.
+        if (gate) {
+          if (p[0] === 0x40) await sleep(300);                                          // announce
+          else if (p[0] === 0x41 && p[7] === 0xa5 && p[8] === 0x5a && p[9] === 0x0c) await sleep(30); // setup / PK_ADD_PIC
+        }
       }
     }
     return { packets: packets.length, dataBlocks, acked, fellBack };
