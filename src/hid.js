@@ -236,7 +236,7 @@ export async function send(packets, { gap = 0 } = {}) {
  * @param {(fraction:number)=>void} [onFraction]
  * @param {{ackTimeout?:number, announceSettle?:number, setupSettle?:number}} [opts]
  */
-export async function sendAckGated(packets, onFraction, { ackTimeout = 140, announceSettle = 300, setupSettle = 120, floorMs = 3 } = {}) {
+export async function sendAckGated(packets, onFraction, { ackTimeout = 140, announceSettle = 300, setupSettle = 120, floorMs = 10 } = {}) {
   if (!device || !device.opened) throw new Error('Not connected. Call connect() before sendAckGated().');
   const start = (typeof performance !== 'undefined' ? performance : Date).now();
   for (let i = 0; i < packets.length; i++) {
