@@ -12,6 +12,7 @@
   --accent-ink: #0c1017;
   --danger: #e5534b;
   --danger-press: #c9443d;
+  --danger-text: #ea6a63; /* lighter danger for TEXT — hits WCAG AA (4.5:1) on the panel shades; --danger is for fills/borders */
   --ok: #3fbf7f;
   --warn-bg: #3a2f1a;
   --warn-border: #6b5320;
@@ -302,8 +303,8 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn.primary:hover:not(:disabled) { background: var(--accent-press); }
-.btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
-.btn.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.btn.danger { color: var(--danger-text); border-color: var(--danger-text); background: transparent; }
+.btn.danger:hover:not(:disabled) { background: var(--danger-press); color: #fff; }
 .btn.block { display: flex; width: 100%; margin-top: 14px; }
 .btn.small { padding: 5px 10px; font-size: 12px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -380,7 +381,7 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   font-size: 13px;
   cursor: pointer;
 }
-.palette-stop-remove:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.palette-stop-remove:hover:not(:disabled) { background: var(--danger-press); color: #fff; }
 .palette-stop-remove:disabled { opacity: 0.3; cursor: not-allowed; }
 .palette-presets { margin-top: 6px; }
 .preset-name-input {
@@ -397,7 +398,7 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 /* Status lines */
 .statusline { min-height: 18px; font-size: 13px; margin: 12px 0 0; color: var(--muted); }
 .statusline.ok { color: var(--ok); }
-.statusline.err { color: var(--danger); }
+.statusline.err { color: var(--danger-text); }
 
 .experimental {
   display: inline-block;
@@ -425,7 +426,7 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* Picture / GIF editor grid */
@@ -525,7 +526,7 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   font-size: 14px;
   cursor: pointer;
 }
-.slide-remove:hover { background: var(--danger); color: #fff; }
+.slide-remove:hover { background: var(--danger-press); color: #fff; }
 .slide-reorder {
   position: absolute;
   bottom: 0;
@@ -653,7 +654,7 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .log-list li { display: flex; gap: 10px; white-space: nowrap; }
 .log-time { color: var(--muted); flex-shrink: 0; }
 .log-msg { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
-.log-list li.err .log-msg { color: var(--danger); }
+.log-list li.err .log-msg { color: var(--danger-text); }
 .log-list li.ok .log-msg { color: var(--ok); }
 
 /* Footer */

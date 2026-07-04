@@ -933,6 +933,7 @@ function setupSlideshowTab() {
       rm.className = 'slide-remove';
       rm.textContent = '×';
       rm.title = 'Remove';
+      rm.setAttribute('aria-label', `Remove image ${i + 1}`); // accessible name — the "×" glyph isn't one
       rm.addEventListener('click', () => {
         onStripEdit();
         slides.splice(i, 1);
@@ -1451,7 +1452,8 @@ function setupLightingTab() {
 
       const rm = document.createElement('button');
       rm.type = 'button'; rm.className = 'palette-stop-remove'; rm.textContent = '×';
-      rm.title = 'Remove stop'; rm.disabled = paletteStops.length <= PALETTE_MIN;
+      rm.title = 'Remove stop'; rm.setAttribute('aria-label', `Remove color stop ${i + 1}`);
+      rm.disabled = paletteStops.length <= PALETTE_MIN;
       rm.addEventListener('click', () => {
         if (paletteStops.length <= PALETTE_MIN) return;
         paletteStops.splice(i, 1);

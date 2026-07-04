@@ -305,7 +305,7 @@
           <button id="keymapExport" type="button" class="btn">Export JSON</button>
         </div>
       </div>
-      <span id="keymapStatus" class="statusline"></span>
+      <span id="keymapStatus" class="statusline" role="status"></span>
 
       <div id="keyGrid" class="key-grid" role="group" aria-label="Key layout"></div>
 
@@ -325,7 +325,7 @@
       <h3>Key tester</h3>
       <div class="row">
         <button id="testerToggle" type="button" class="btn device-action" disabled title="Poll the switch matrix and light up pressed keys">Start key tester</button>
-        <span id="testerStatus" class="muted small"></span>
+        <span id="testerStatus" class="muted small" role="status"></span>
       </div>
 
       <h3>Device</h3>
@@ -334,7 +334,7 @@
         <span id="fwVersion" class="muted small"></span>
         <button id="identifyBtn" type="button" class="btn device-action" disabled title="Flash the keyboard's lights to identify which board this is">Identify board</button>
         <button id="keymapResetBtn" type="button" class="btn danger device-action" disabled title="Restore the factory keymap on the device (recoverable — re-import your layout to undo)">Reset keymap</button>
-        <span id="deviceStatus" class="muted small"></span>
+        <span id="deviceStatus" class="muted small" role="status"></span>
       </div>
     </section>
 
