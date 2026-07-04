@@ -35,6 +35,16 @@
    which left the keycode picker and the connect gate stuck visible. */
 [hidden] { display: none !important; }
 
+/* Respect reduced-motion: drop decorative CSS transitions/animations. Content motion
+   (the GIF preview canvas, live light effects) is JS-driven and intentionally unaffected. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 body {
   margin: 0;
   background: var(--bg);

@@ -17,6 +17,25 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Persist a control's value to localStorage and restore it on load. Preferences only — this
+// never auto-sends to the device, it just remembers the UI choice across reloads. onRestore
+// lets the caller re-sync a dependent display (e.g. a slider's <output>) after restoring.
+function persist(el, key, onRestore) {
+  if (!el) return;
+  const k = 'al80.pref.' + key;
+  try {
+    const saved = localStorage.getItem(k);
+    if (saved != null) {
+      if (el.type === 'checkbox') el.checked = saved === 'true';
+      else el.value = saved;
+      onRestore?.(el);
+    }
+  } catch { /* storage unavailable */ }
+  el.addEventListener('change', () => {
+    try { localStorage.setItem(k, el.type === 'checkbox' ? String(el.checked) : el.value); } catch { /* ignore */ }
+  });
+}
+
 function setStatus(el, msg, kind = '') {
   el.textContent = msg || '';
   el.className = 'statusline' + (kind ? ' ' + kind : '');
@@ -477,6 +496,7 @@ function setupClockTab() {
   const statusEl = $('#clockStatus');
   const is12 = $('#clock12hr');
   const badge = $('#syncBadge');
+  persist(is12, 'clock12hr');
 
   // default to now — both fields in LOCAL time. toISOString() gives a UTC date that
   // disagrees with the local time field by a day in the evening in the Americas, which
@@ -501,9 +521,9 @@ function setupClockTab() {
 
   $('#clockSendOnce').addEventListener('click', () => sendOnce(false));
 
-  $('#clockSync').addEventListener('change', (e) => {
+  $('#clockSync').addEventListener('change', async (e) => {
     if (e.target.checked) {
-      sendOnce(true);
+      await sendOnce(true);
       clockSyncTimer = setInterval(() => sendOnce(true), 60000);
       if (badge) badge.hidden = false;
       setStatus(statusEl, 'Syncing every 60s…', 'ok');
@@ -590,6 +610,10 @@ function setupImageTab() {
 
   function loadFile(file) {
     if (!file) return;
+    if (file.type && !file.type.startsWith('image/')) {
+      setStatus(statusEl, `Not an image: ${file.name}. Drop a PNG, JPG, GIF, or WebP.`, 'err');
+      return;
+    }
     currentFile = file;
     nameEl.textContent = file.name;
     refreshPreview();
@@ -1124,6 +1148,11 @@ function setupLightingTab() {
   const speed = $('#lightSpeed');
   const speedOut = $('#lightSpeedOut');
   const color = $('#lightColor');
+  // Remember the built-in lighting choices across reloads (UI only; no auto-send on load).
+  persist(brightness, 'lightBrightness', (el) => { brightnessOut.textContent = el.value; });
+  persist(effect, 'lightEffect');
+  persist(speed, 'lightSpeed', (el) => { speedOut.textContent = el.value; });
+  persist(color, 'lightColor');
 
   const debounce = (fn, ms = 120) => {
     let t = null;
