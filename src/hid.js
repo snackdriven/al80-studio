@@ -236,7 +236,7 @@ export async function send(packets, { gap = 0 } = {}) {
  * @param {(fraction:number)=>void} [onFraction]
  * @param {{ackTimeout?:number, announceSettle?:number, setupSettle?:number}} [opts]
  */
-export async function sendAckGated(packets, onFraction, { ackTimeout = 140, announceSettle = 300, setupSettle = 120, floorMs = 10 } = {}) {
+export async function sendAckGated(packets, onFraction, { ackTimeout = 140, announceSettle = 300, setupSettle = 120 } = {}) {
   if (!device || !device.opened) throw new Error('Not connected. Call connect() before sendAckGated().');
   const start = (typeof performance !== 'undefined' ? performance : Date).now();
   for (let i = 0; i < packets.length; i++) {
@@ -262,8 +262,9 @@ export async function sendAckGated(packets, onFraction, { ackTimeout = 140, anno
           device.sendReport(0, body).catch(() => done(false));
         });
       }
-      // small floor even after an ack, so the STM32->module UART forward has headroom (kills the last faint band)
-      await sleep(acked ? floorMs : 15);
+      // NO floor delay between acked blocks — the module wants the natural ack-driven rhythm;
+      // padding delays here throws off its timing and makes banding WORSE (learned the hard way).
+      if (!acked) await sleep(15); // only on exhausted retries, give it a breath before continuing
     } else {
       try { await device.sendReport(0, body); } catch (err) {
         throw new Error(`Write failed after ${i} packet(s): ${err && err.message ? err.message : err}. Close any other app talking to the keyboard and reconnect.`);
