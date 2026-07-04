@@ -448,10 +448,13 @@ function setupClockTab() {
   const is12 = $('#clock12hr');
   const badge = $('#syncBadge');
 
-  // default to now
+  // default to now — both fields in LOCAL time. toISOString() gives a UTC date that
+  // disagrees with the local time field by a day in the evening in the Americas, which
+  // then pushed the wrong calendar day to the keyboard.
   const now = new Date();
+  const pad2 = (n) => String(n).padStart(2, '0');
   $('#clockTime').value = now.toTimeString().slice(0, 8);
-  $('#clockDate').value = now.toISOString().slice(0, 10);
+  $('#clockDate').value = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 
   async function sendOnce(useNow = false) {
     const date = useNow ? new Date() : readClockDate();
@@ -1097,18 +1100,24 @@ function setupLightingTab() {
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   };
 
+  // guardedSend only writes the status line on error; add a success confirmation so the
+  // built-in controls narrate like the software-FX / palette paths do.
+  const sendLight = async (label, packets, okMsg) => {
+    if (await guardedSend(label, statusEl, packets)) setStatus(statusEl, okMsg, 'ok');
+  };
+
   const sendBrightness = debounce(() =>
-    guardedSend('Light brightness', statusEl, proto.buildLightBrightness(+brightness.value)));
+    sendLight('Light brightness', proto.buildLightBrightness(+brightness.value), `Brightness set to ${brightness.value}.`));
   brightness.addEventListener('input', () => {
     brightnessOut.textContent = brightness.value;
     sendBrightness();
   });
 
   effect.addEventListener('change', () =>
-    guardedSend('Light effect', statusEl, proto.buildLightEffect(+effect.value)));
+    sendLight('Light effect', proto.buildLightEffect(+effect.value), `Effect: ${effect.options[effect.selectedIndex].text}.`));
 
   const sendSpeed = debounce(() =>
-    guardedSend('Light speed', statusEl, proto.buildLightSpeed(+speed.value)));
+    sendLight('Light speed', proto.buildLightSpeed(+speed.value), `Effect speed set to ${speed.value}.`));
   speed.addEventListener('input', () => {
     speedOut.textContent = speed.value;
     sendSpeed();
@@ -1116,7 +1125,7 @@ function setupLightingTab() {
 
   const sendColor = debounce(() => {
     const { hue, sat } = rgbToHueSat(color.value);
-    guardedSend('Light color', statusEl, proto.buildLightColor(hue, sat));
+    sendLight('Light color', proto.buildLightColor(hue, sat), `Color set to ${color.value}.`);
   });
   color.addEventListener('input', sendColor);
 
@@ -1433,6 +1442,7 @@ function setupLightingTab() {
     const name = (palettePresetName.value || '').trim();
     if (!name) { setStatus(paletteStatus, 'Enter a name to save.', 'err'); return; }
     const presets = loadPresets();
+    if (name in presets && !confirm(`A preset named "${name}" already exists. Overwrite it?`)) return;
     presets[name] = { stops: paletteStops.slice(), mode: paletteMode.value, speed: +paletteSpeed.value };
     savePresets(presets);
     refreshPresetDropdown(name);
@@ -1702,7 +1712,9 @@ function setupKeymap() {
     });
   }
 
+  let pickerReturnFocus = null; // element to restore focus to when the picker closes (a11y)
   function openPicker(target) {
+    pickerReturnFocus = document.activeElement;
     pickerTarget = target;
     grid.querySelectorAll('.key.selected').forEach((e) => e.classList.remove('selected'));
     if (target.type === 'key') {
@@ -1724,6 +1736,8 @@ function setupKeymap() {
     picker.hidden = true;
     pickerTarget = null;
     grid.querySelectorAll('.key.selected').forEach((e) => e.classList.remove('selected'));
+    if (pickerReturnFocus && typeof pickerReturnFocus.focus === 'function') pickerReturnFocus.focus();
+    pickerReturnFocus = null;
   }
 
   function applyKeycode(kc) {
@@ -1784,6 +1798,16 @@ function setupKeymap() {
     if (e.key === 'Enter') { e.preventDefault(); pickerApply.click(); }
   });
   pickerClose.addEventListener('click', closePicker);
+  // Keep Tab within the modal while it's open (the aria-modal contract).
+  picker.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || picker.hidden) return;
+    const list = [...picker.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])')]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+    if (!list.length) return;
+    const first = list[0], last = list[list.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
   picker.addEventListener('click', (e) => { if (e.target === picker) closePicker(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !picker.hidden) closePicker();
