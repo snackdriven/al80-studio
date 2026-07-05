@@ -30,6 +30,10 @@ export const SEND_LEN = 64;
 
 /** The single open HIDDevice, or null when disconnected. @type {HIDDevice|null} */
 let device = null;
+/** True once the user has connected and hasn't explicitly disconnected — gates auto-reconnect
+ *  so a reflash/replug recovers the link without a manual Connect, but a cold plug-in doesn't
+ *  get auto-grabbed (which would steal the interface from Vial/VIA). */
+let wantConnected = false;
 
 /** Registered status callbacks. @type {Set<(s: {connected: boolean, name?: string}) => void>} */
 const statusCallbacks = new Set();
@@ -97,9 +101,20 @@ function wireDeviceEvents() {
   if (eventsWired || !isSupported()) return;
   eventsWired = true;
 
-  navigator.hid.addEventListener('connect', (e) => {
-    if (isTargetDevice(e.device)) {
+  navigator.hid.addEventListener('connect', async (e) => {
+    if (!isTargetDevice(e.device)) return;
+    // Auto-reconnect: if we HAD a live link (wantConnected) and the device re-appears — a reflash
+    // or replug re-enumerates it — reopen it so the app recovers without a manual Connect. Just
+    // emitting 'connected' here (the old behavior) left `device` null → the next send threw
+    // "not connected" (the stale-flag bug). Don't auto-grab on a cold plug-in — only re-take a
+    // link we already had, so Vial/VIA aren't robbed of the interface.
+    if (!wantConnected || (device && device.opened)) return;
+    try {
+      if (!e.device.opened) await e.device.open();
+      device = e.device;
       emitStatus({ connected: true, name: e.device.productName });
+    } catch {
+      emitStatus({ connected: false, name: e.device.productName });
     }
   });
 
@@ -165,6 +180,7 @@ export async function connect() {
   }
 
   device = target;
+  wantConnected = true; // arm auto-reconnect for reflash/replug recovery
   emitStatus({ connected: true, name: device.productName });
   return device;
 }
@@ -332,6 +348,8 @@ export async function sendGif(packets, onFraction) {
  * @returns {Promise<void>}
  */
 export async function disconnect() {
+  wantConnected = false; // explicit disconnect — stop auto-reconnecting (set before the early return
+  // so it disarms even when the device already dropped and `device` is null)
   if (!device) return;
   const name = device.productName;
   try {
