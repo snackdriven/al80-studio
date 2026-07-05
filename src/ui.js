@@ -1752,7 +1752,9 @@ function setupKeymap() {
 
   function renderEncoder() {
     ensureEncoder(currentLayer);
-    const [cw, ccw] = state.encoders[0][currentLayer];
+    // VIA/QMK store encoders as [ccw, cw] (index 0 = counter-clockwise). Confirmed on-device:
+    // knob right (CW) = volume up = the factory array's index 1 (KC_VOLU).
+    const [ccw, cw] = state.encoders[0][currentLayer];
     encCwEl.textContent = keyCapLabel(cw) || '—';
     encCwEl.title = cw;
     encCcwEl.textContent = keyCapLabel(ccw) || '—';
@@ -1800,7 +1802,7 @@ function setupKeymap() {
     } else {
       pickerTargetEl.textContent = `encoder ${target.cw ? 'CW (turn right)' : 'CCW (turn left)'} · layer ${currentLayer}`;
       ensureEncoder(currentLayer);
-      pickerCustom.value = state.encoders[0][currentLayer][target.cw ? 0 : 1];
+      pickerCustom.value = state.encoders[0][currentLayer][target.cw ? 1 : 0]; // index 1 = cw
     }
     pickerSearch.value = '';
     renderPickerList('');
@@ -1846,7 +1848,7 @@ function setupKeymap() {
 
   async function setEncoder(t, kc) {
     ensureEncoder(currentLayer);
-    state.encoders[0][currentLayer][t.cw ? 0 : 1] = kc;
+    state.encoders[0][currentLayer][t.cw ? 1 : 0] = kc; // index 1 = cw
     renderEncoder();
     const num = keymap.keycodeToNumber(kc);
     if (!connected) {
@@ -1924,7 +1926,7 @@ function setupKeymap() {
         for (const cw of [true, false]) {
           try {
             const r = await viaTransact(proto.buildEncoderGet(L, 0, cw), (d) => d[0] === 0x14);
-            state.encoders[0][L][cw ? 0 : 1] = keymap.numberToKeycode((r[4] << 8) | r[5]);
+            state.encoders[0][L][cw ? 1 : 0] = keymap.numberToKeycode((r[4] << 8) | r[5]); // index 1 = cw
           } catch { /* leave model value */ }
         }
       }

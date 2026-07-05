@@ -60,8 +60,9 @@ page 96×64. See the knowledge base for byte-level detail.
 - **Picture display:** committing a still needs a short settle after the setup packet (the
   `PK_ADD_PIC` commit) and **no** trailing view-toggle, or the frame lands in scratch and the old
   picture stays. GIF is partly source-derived; confirm on-device.
-- **Encoder direction:** the offline label may show CW/CCW swapped vs VIA (a known array-order
-  question); the live device round-trip is correct. Confirm against your knob before trusting an
-  exported JSON's encoder order.
+- **Encoder direction:** fixed 2026-07-04. The array is `[ccw, cw]` (index 0 = counter-clockwise)
+  per VIA/QMK — confirmed on-device (knob right = volume up = cw = the factory array's index 1).
+  Earlier builds read index 0 as cw, so the offline label and exported JSON had the two directions
+  swapped.
 - **Safety:** the builder only ever emits `0x40/0x41/0x42` (+ status). It cannot send the
   `0xB0–0xB7` bootloader/DFU commands.
