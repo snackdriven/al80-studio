@@ -32,6 +32,27 @@ ok('ga = CRC16-MODBUS, big-endian, matches every known announce CRC', () => {
   assert.deepEqual(ga([0x0b, 0, 0x00]), [0x02, 0x00]); // homepage
 });
 
+// The custom firmware (al80.c al80_screen_send_u8) emits homepage status widgets — conn/os/lock/
+// battery — as `A5 5A <op> 00 01 <crcHi> <crcLo> <val>`. This locks that byte layout to the proven
+// announce() encoder so a protocol change can't silently diverge from the firmware. See KB §D10.
+ok('firmware status-packet bytes match announce(op,0,1) + value', () => {
+  for (const [op, val] of [[0x06, 77], [0x07, 0], [0x01, 0], [0x02, 0], [0x03, 1], [0x04, 0], [0x05, 0]]) {
+    const rpt = announce(op, 0, 0x01);
+    const modulePayload = Array.from(rpt.slice(7, 7 + rpt[3])); // exactly what the fw forwards (yne stripped)
+    const crc = ga([op, 0, 0x01]);
+    assert.deepEqual(modulePayload, [0xa5, 0x5a, op, 0, 0x01, crc[0], crc[1]], `op 0x${op.toString(16)}`);
+    const fwPacket = [...modulePayload, val]; // firmware's full 8-byte write
+    assert.equal(fwPacket.length, 8);
+    assert.equal(fwPacket[7], val);
+  }
+});
+
+ok('buildStartupAnimation (mode 0) yields valid 64-byte reports', () => {
+  const packets = buildStartupAnimation([new Uint8Array(SA_FRAME_BYTES)], 30);
+  assert.ok(packets.length > 0);
+  assert.ok(packets.every((p) => p.length === 64));
+});
+
 ok('build enforces the opcode whitelist (DFU impossible)', () => {
   assert.throws(() => build(0xb1, []), /whitelist/); // toBootLoader must never build
   assert.throws(() => build(0xb4, []), /whitelist/);
