@@ -1558,10 +1558,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#2026-07-06-semver-releases-start-v100-v120" class="md-nav__link">
+  <a href="#2026-07-06-semver-releases-start-v100-v130" class="md-nav__link">
     <span class="md-ellipsis">
       
-        📦 2026-07-06 — Semver releases start (v1.0.0 → v1.2.0)
+        📦 2026-07-06 — Semver releases start (v1.0.0 → v1.3.0)
       
     </span>
   </a>
@@ -1720,10 +1720,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#2026-07-06-semver-releases-start-v100-v120" class="md-nav__link">
+  <a href="#2026-07-06-semver-releases-start-v100-v130" class="md-nav__link">
     <span class="md-ellipsis">
       
-        📦 2026-07-06 — Semver releases start (v1.0.0 → v1.2.0)
+        📦 2026-07-06 — Semver releases start (v1.0.0 → v1.3.0)
       
     </span>
   </a>
@@ -1842,14 +1842,14 @@ conflicts with a reference page, the reference page wins.</p>
 <li>Retired theories: <strong>column-major</strong> rendering, the <strong>per-scanline parity-slip</strong> banding cause, and <strong>WS2812</strong> side-bar LEDs (it's aw20216s).</li>
 </ul>
 </div>
-<h2 id="2026-07-06-semver-releases-start-v100-v120">📦 2026-07-06 — Semver releases start (v1.0.0 → v1.2.0)<a class="headerlink" href="#2026-07-06-semver-releases-start-v100-v120" title="Permanent link">&para;</a></h2>
+<h2 id="2026-07-06-semver-releases-start-v100-v130">📦 2026-07-06 — Semver releases start (v1.0.0 → v1.3.0)<a class="headerlink" href="#2026-07-06-semver-releases-start-v100-v130" title="Permanent link">&para;</a></h2>
 <p>Versioning restarted from the messy v2–v21 dev builds into a clean semver line on al80-lcd
 Releases. Each one is a flash-verified <code>release.sh</code> cut:</p>
 <ul>
 <li><strong>v1.0.0</strong> — first stable. Keys + Vial + clean LCD images + battery + <strong>18 RGB effects</strong>. The known-good fallback.</li>
 <li><strong>v1.1.0</strong> — <strong>reactive lighting</strong> (splash/reactive effects that light on keypress).</li>
-<li><strong>v1.2.0</strong> — <strong>independent side LED bar</strong> (matrix LEDs 76–78, opcodes 0x46/47/48; own colour + brightness, separate from the keys). Current latest.</li>
-<li><strong>v1.3.0</strong> <em>(coming)</em> — <strong>per-layer rotary encoder</strong> (done, on-device) + <strong>instant caps/num-lock LCD icons</strong> (a <code>led_update_kb</code> hook; landing once a lag regression is fixed).</li>
+<li><strong>v1.2.0</strong> — <strong>independent side LED bar</strong> (matrix LEDs 76–78, opcodes 0x46/47/48; own colour + brightness, separate from the keys).</li>
+<li><strong>v1.3.0</strong> <em>(latest, shipped 2026-07-06, confirmed on-device)</em> — <strong>per-layer rotary knob</strong> (L0 volume, L1 RGB brightness, L2 RGB hue, L3 media prev/next; hardcoded <code>encoder_update_user</code>) + <strong>instant caps/num-lock LCD icons</strong> (pushed on state change via a gated <code>led_update_kb</code>, no more 30s lag). Also <strong>eager debounce</strong> (<code>DEBOUNCE_TYPE = sym_eager_pk</code>) for snappier keys — this is what finally killed the mushy knob-press "mute lag." Plus a one-time <code>dynamic_keymap</code> fixup that reset the stale mute keycode. v1.0.0 stays the known-good fallback.</li>
 </ul>
 <h2 id="2026-07-06-homepage-widget-protocol-boot-handshake">🔋 2026-07-06 — Homepage widget protocol + boot handshake<a class="headerlink" href="#2026-07-06-homepage-widget-protocol-boot-handshake" title="Permanent link">&para;</a></h2>
 <p>From b75Pro source: the homepage gauges (connection, OS, lock states, <strong>battery</strong>) are fed by the

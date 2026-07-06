@@ -1782,7 +1782,7 @@
 <ul>
 <li><strong>Per-layer encoder</strong> — done and confirmed on-device (v1.3.0). L0 volume, L1 RGB brightness, L2 RGB hue, L3 media. Built as a hardcoded <code>encoder_update_user</code>, not <code>ENCODER_MAP</code> — the encoder isn't in this board's Vial/VIA layout, so <code>ENCODER_MAP</code> was invisible.</li>
 <li><strong>Independent side LED bar</strong> — shipped in v1.2.0 (opcodes 0x46/47/48). The status-meter idea below is the next step on top of it.</li>
-<li><strong>Instant caps/num-lock LCD icons</strong> — in progress via a <code>led_update_kb</code> hook, landing in <strong>v1.3.0</strong> once a lag regression is fixed.</li>
+<li><strong>Instant caps/num-lock LCD icons</strong> — shipped in v1.3.0. Pushed on state change via a gated <code>led_update_kb</code> hook, no more 30s lag. Eager debounce (<code>sym_eager_pk</code>) in the same release killed the knob-press mute lag too.</li>
 </ul>
 </div>
 <h2 id="cheap-firmware-wins">🎛️ Cheap firmware wins<a class="headerlink" href="#cheap-firmware-wins" title="Permanent link">&para;</a></h2>

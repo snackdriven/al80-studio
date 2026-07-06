@@ -1749,8 +1749,9 @@ current). The LCD path is portable from source.</p>
 <li><strong>Per-layer rotary encoder</strong> — L0 volume, L1 RGB brightness, L2 RGB hue, L3 media. Built as a hardcoded <code>encoder_update_user</code>, <strong>not</strong> <code>ENCODER_MAP</code>: the encoder isn't in this board's Vial/VIA layout, so <code>ENCODER_MAP</code> was invisible and never fired.</li>
 <li><strong>Battery telemetry</strong> — ADC1 ch9 (PB1) ratiometric vs internal Vref, median-of-10, piecewise-linear %.</li>
 <li><strong>LCD</strong> — clean still images + clock + GIF over the raw-HID pass-through (C9-high enable).</li>
+<li><strong>Instant caps/num-lock LCD icons</strong> — pushed on state change via a gated <code>led_update_kb</code> hook, no more 30s lag. Shipped in v1.3.0.</li>
 </ul>
-<p>Landing in <strong>v1.3.0</strong>: instant caps/num-lock LCD icons via a <code>led_update_kb</code> hook (a lag regression is being fixed first).</p>
+<p>v1.3.0 also switched to eager debounce (<code>DEBOUNCE_TYPE = sym_eager_pk</code>) for snappier keys — that's what finally killed the mushy knob-press "mute lag."</p>
 <div class="admonition success">
 <p class="admonition-title">LCD-on-custom is portable from source — no logic analyzer (2026-07-04)</p>
 <p>Reading the AL80 factory stub + b75Pro sibling source shows the LCD/screen path can be ported
@@ -1839,12 +1840,12 @@ both are in source) is resolved by <em>flashing and watching the screen</em>, no
 </tr>
 <tr>
 <td><code>v24_locks</code> / <code>v25_locks</code></td>
-<td>instant caps/num-lock LCD icons (<code>led_update_kb</code>) — landing as <strong>v1.3.0</strong></td>
+<td>instant caps/num-lock LCD icons (<code>led_update_kb</code>) + eager debounce (<code>sym_eager_pk</code>) — shipped as <strong>v1.3.0</strong></td>
 </tr>
 </tbody>
 </table>
 <p>The dev bins above fold into the semver releases: <strong>v1.0.0</strong> = keys+Vial+LCD+battery+18 effects,
-<strong>v1.1.0</strong> = reactive, <strong>v1.2.0</strong> = independent LED bar (latest), <strong>v1.3.0</strong> = encoder + lock icons (coming).</p>
+<strong>v1.1.0</strong> = reactive, <strong>v1.2.0</strong> = independent LED bar, <strong>v1.3.0</strong> = encoder + lock icons + eager debounce (latest).</p>
 <div class="admonition danger">
 <p class="admonition-title">Nothing here reflashes silently</p>
 <p>All custom bins are experimental. Flashing replaces the ripple firmware. See
