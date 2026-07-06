@@ -1830,14 +1830,14 @@
 <h2 id="before-you-start">⚠️ Before you start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
 <ul>
 <li>This replaces the stock firmware with a custom <strong>vial-qmk</strong> build. It's reversible (stock <code>.bin</code> is in the release assets), but you're flashing at your own risk.</li>
-<li>You keep: all keys, the LCD, the RGB, and the side bar. You gain: Vial keymapping, VialRGB, and full LCD control from the browser.</li>
+<li>You keep: all keys, the LCD, the RGB, and the side bar. You gain: Vial keymapping, VialRGB (incl. reactive effects), an independently-coloured side bar, a <strong>working per-layer knob</strong> (volume / RGB brightness / RGB hue / media by layer), battery telemetry, and full LCD control from the browser. Instant caps/num-lock LCD icons land in v1.3.0.</li>
 <li>The bootloader is sticky — <strong>ESC + plug</strong> always gets you back to a flashable state, so a bad flash isn't a brick.</li>
 </ul>
 <h2 id="what-you-need">📦 What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h2>
 <ul>
 <li>A <strong>YUNZII AL80</strong> keyboard + its USB cable.</li>
 <li><strong>QMK Toolbox</strong> — <a href="https://github.com/qmk/qmk_toolbox/releases">github.com/qmk/qmk_toolbox/releases</a> (Windows or macOS).</li>
-<li>The firmware <strong><code>.bin</code></strong> — from this project's Releases page (grab the latest, currently <strong>v1.0.0</strong>).</li>
+<li>The firmware <strong><code>.bin</code></strong> — from this project's Releases page (grab the latest, currently <strong>v1.2.0</strong>; <strong>v1.3.0</strong> soon).</li>
 <li><strong>Chrome</strong> (or any Chromium browser) for the control app — WebHID needs it.</li>
 <li><em>(Optional)</em> <strong>Vial</strong> — <a href="https://vial.rocks">vial.rocks</a> — for remapping keys and RGB.</li>
 </ul>
@@ -1871,7 +1871,7 @@
 <h2 id="good-to-know">🧩 Good to know<a class="headerlink" href="#good-to-know" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Chip:</strong> STM32F103x8 — 56 KB app flash, 20 KB RAM. It's tight, which is why firmware features are picked carefully.</li>
-<li><strong>Known-good build:</strong> v1.0.0. If a newer version misbehaves, reflash this one.</li>
+<li><strong>Known-good fallback:</strong> v1.0.0. If a newer version misbehaves, reflash this one — it's the stable baseline the rest build on.</li>
 <li><strong>The screen is a separate smart module</strong> — the keyboard forwards your images to it over an internal serial link. That's why the LCD keeps working on custom firmware.</li>
 </ul>
 

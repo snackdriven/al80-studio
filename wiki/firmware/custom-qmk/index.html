@@ -1016,6 +1016,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#what-works-on-device-now" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ✅ What works on-device now
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-lcd-enable-is-c9-not-b7" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1664,6 +1675,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#what-works-on-device-now" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ✅ What works on-device now
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-lcd-enable-is-c9-not-b7" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1716,7 +1738,19 @@
 <h1 id="custom-qmk">Custom QMK<a class="headerlink" href="#custom-qmk" title="Permanent link">&para;</a></h1>
 <p>A custom vial-qmk build (aw20216s matrix, VialRGB per-key + live keymap/macros, a
 user-recolorable <code>PALETTE_CYCLE</code> effect, LCD raw-HID pass-through). Bins live in <code>firmware/</code>
-(<code>AL80_CUSTOM_QMK_*.bin</code>). On-device: keys + RGB work. The LCD path is portable from source.</p>
+(<code>AL80_CUSTOM_QMK_*.bin</code>); clean semver releases are on the al80-lcd Releases page (v1.0.0 →
+current). The LCD path is portable from source.</p>
+<h2 id="what-works-on-device-now">✅ What works on-device now<a class="headerlink" href="#what-works-on-device-now" title="Permanent link">&para;</a></h2>
+<p>Confirmed on the physical AL80, not just source:</p>
+<ul>
+<li><strong>Keys + Vial</strong> — live keymap, layers, macros, no reflashing.</li>
+<li><strong>VialRGB per-key lighting</strong> — 18 matrix effects incl. <strong>reactive/splash</strong> effects that light on keypress.</li>
+<li><strong>Independent side LED bar</strong> — matrix LEDs 76–78, opcodes 0x46/47/48. Own colour + brightness, driven separately from the keys.</li>
+<li><strong>Per-layer rotary encoder</strong> — L0 volume, L1 RGB brightness, L2 RGB hue, L3 media. Built as a hardcoded <code>encoder_update_user</code>, <strong>not</strong> <code>ENCODER_MAP</code>: the encoder isn't in this board's Vial/VIA layout, so <code>ENCODER_MAP</code> was invisible and never fired.</li>
+<li><strong>Battery telemetry</strong> — ADC1 ch9 (PB1) ratiometric vs internal Vref, median-of-10, piecewise-linear %.</li>
+<li><strong>LCD</strong> — clean still images + clock + GIF over the raw-HID pass-through (C9-high enable).</li>
+</ul>
+<p>Landing in <strong>v1.3.0</strong>: instant caps/num-lock LCD icons via a <code>led_update_kb</code> hook (a lag regression is being fixed first).</p>
 <div class="admonition success">
 <p class="admonition-title">LCD-on-custom is portable from source — no logic analyzer (2026-07-04)</p>
 <p>Reading the AL80 factory stub + b75Pro sibling source shows the LCD/screen path can be ported
@@ -1787,8 +1821,30 @@ both are in source) is resolved by <em>flashing and watching the screen</em>, no
 <td><code>v17_battfix</code></td>
 <td>battery gauge fix</td>
 </tr>
+<tr>
+<td><code>v18_rgbfx</code> / <code>v19_rgbfx2</code></td>
+<td>RGB matrix effects → <strong>18 total</strong> (Digital Rain, Pixel Rain, …). v19 was the last dev known-good.</td>
+</tr>
+<tr>
+<td><code>v20_reactive</code></td>
+<td>reactive/splash effects (dropped unused tap-dance/combos/key-overrides to fit)</td>
+</tr>
+<tr>
+<td><code>v21_ledbar</code></td>
+<td><strong>independent side LED bar</strong> colour control (0x46/47/48)</td>
+</tr>
+<tr>
+<td><code>v23_encoder</code></td>
+<td><strong>per-layer rotary encoder</strong> (hardcoded <code>encoder_update_user</code>)</td>
+</tr>
+<tr>
+<td><code>v24_locks</code> / <code>v25_locks</code></td>
+<td>instant caps/num-lock LCD icons (<code>led_update_kb</code>) — landing as <strong>v1.3.0</strong></td>
+</tr>
 </tbody>
 </table>
+<p>The dev bins above fold into the semver releases: <strong>v1.0.0</strong> = keys+Vial+LCD+battery+18 effects,
+<strong>v1.1.0</strong> = reactive, <strong>v1.2.0</strong> = independent LED bar (latest), <strong>v1.3.0</strong> = encoder + lock icons (coming).</p>
 <div class="admonition danger">
 <p class="admonition-title">Nothing here reflashes silently</p>
 <p>All custom bins are experimental. Flashing replaces the ripple firmware. See

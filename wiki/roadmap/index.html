@@ -1777,6 +1777,14 @@
 </ul>
 </div>
 <p>Mined 2026-07-06 from the b75Pro sibling source, <code>RIPPLE.bin</code>, and this KB. Every item cites where it came from, so it's checkable, not invented.</p>
+<div class="admonition success">
+<p class="admonition-title">Shipped since this survey</p>
+<ul>
+<li><strong>Per-layer encoder</strong> — done and confirmed on-device (v1.3.0). L0 volume, L1 RGB brightness, L2 RGB hue, L3 media. Built as a hardcoded <code>encoder_update_user</code>, not <code>ENCODER_MAP</code> — the encoder isn't in this board's Vial/VIA layout, so <code>ENCODER_MAP</code> was invisible.</li>
+<li><strong>Independent side LED bar</strong> — shipped in v1.2.0 (opcodes 0x46/47/48). The status-meter idea below is the next step on top of it.</li>
+<li><strong>Instant caps/num-lock LCD icons</strong> — in progress via a <code>led_update_kb</code> hook, landing in <strong>v1.3.0</strong> once a lag regression is fixed.</li>
+</ul>
+</div>
 <h2 id="cheap-firmware-wins">🎛️ Cheap firmware wins<a class="headerlink" href="#cheap-firmware-wins" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1789,22 +1797,10 @@
 </thead>
 <tbody>
 <tr>
-<td><strong>Per-layer encoder</strong> — the knob is Volume on all 4 layers, but <code>ENCODER_MAP</code> is already on. Give each layer its own turn (brightness / hue / scroll / media).</td>
-<td>~tens of B</td>
-<td>high</td>
-<td><code>keymaps/vial/keymap.c:7</code></td>
-</tr>
-<tr>
 <td><strong>Screen power-off key</strong> — toggle the C9 enable pin to blank the LCD. This is the "sleep" the KB said didn't exist (it's a GPIO, not an opcode).</td>
 <td>~100 B</td>
 <td>high</td>
 <td><code>al80.c:347</code></td>
-</tr>
-<tr>
-<td><strong>Instant caps/lock + connection status</strong> — push from a <code>led_update_kb()</code> hook. Caps lags up to 30s today.</td>
-<td>~150 B</td>
-<td>med-high</td>
-<td><code>keyboard_screen.c:253</code></td>
 </tr>
 <tr>
 <td><strong>RGB layer indicator</strong> — tint a row per active layer via <code>rgb_matrix_indicators_advanced_kb()</code>.</td>
@@ -1854,9 +1850,10 @@
 <li><strong>More framebuffer RGB effects</strong> — each one is exactly the flash you're reclaiming.</li>
 </ul>
 <h2 id="top-3">⭐ Top 3<a class="headerlink" href="#top-3" title="Permanent link">&para;</a></h2>
+<p>Per-layer encoder shipped (v1.3.0), so the next-best value-per-byte:</p>
 <ol>
-<li><strong>Per-layer encoder</strong> — highest value-per-byte on the list, and it fixes the most wasted input (knob = volume ×4 today). Ship first.</li>
-<li><strong>Screen power-off key + instant status push</strong> — ~250 B together, both reuse infra already in <code>al80.c</code>, and they close two things the KB wrongly concluded were impossible.</li>
+<li><strong>Screen power-off key</strong> — ~100 B, reuses the C9 enable already in <code>al80.c</code>, and closes something the KB wrongly concluded was impossible (it's a GPIO, not an opcode).</li>
+<li><strong>Side bar as a status meter</strong> — the independent bar colour is already shipped (v1.2.0); the remaining step is driving those three LEDs off battery / caps / layer state (~150 B).</li>
 <li><strong>Probe the undocumented PK opcodes</strong> — a 30-minute send-and-watch, not a build. Highest upside in the survey at near-zero cost; tells you which native features are real before you spend flash.</li>
 </ol>
 
