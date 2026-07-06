@@ -402,6 +402,35 @@ export const buildLightColor = (hue, sat) => [buildLightSet(LIGHT.COLOR, [hue, s
  */
 export const buildLightColorLive = (hue, sat) => buildLightSet(LIGHT.COLOR, [hue, sat]);
 
+// ---- VialRGB (custom vial-qmk firmware) — a DIFFERENT protocol from the stock channel-3 lighting ----
+// Read from vial-qmk quantum/vialrgb.c: with VIALRGB_ENABLE, VIA id_custom_set_value (0x07) routes
+// straight to vialrgb_set_value — there is NO channel byte, so the stock "07 03 …" is ignored. Instead
+// data[1] is the vialrgb sub-command, and set_mode sets the WHOLE mode in one report:
+//   set:  07 41 <effLo> <effHi> <speed> <hue> <sat> <val>   (effect id is 16-bit little-endian)
+//   save: 09           (vialrgb_save flushes rgb_matrix to EEPROM; ignores the rest)
+// Effect ids are the VIALRGB_EFFECT_* enum (quantum/vialrgb_effects.inc). PALETTE_CYCLE (0x0100) is
+// the al80's own custom effect (config.h AL80_VIALRGB_PALETTE_CYCLE_ID).
+export const VIALRGB_EFFECT = {
+  OFF: 0, SOLID: 2, BREATHING: 6, BAND_VAL: 8, CYCLE_ALL: 13, CYCLE_LR: 14, CYCLE_UD: 15,
+  RAINBOW_CHEVRON: 16, CYCLE_OUT_IN: 17, CYCLE_PINWHEEL: 19, CYCLE_SPIRAL: 20, DUAL_BEACON: 21,
+  RAINBOW_BEACON: 22, RAINDROPS: 24, HUE_BREATHING: 26, HUE_WAVE: 28, DIGITAL_RAIN: 30,
+  PIXEL_RAIN: 44, PALETTE_CYCLE: 0x0100,
+};
+const VIALRGB_SET_MODE = 0x41;
+
+/** VialRGB set_mode — one report setting effect + speed + HSV together (live, noeeprom). */
+export function buildVialRGBMode(effect, { speed = 128, hue = 0, sat = 255, val = 255 } = {}) {
+  return viaReport([0x07, VIALRGB_SET_MODE,
+    effect & 0xff, (effect >> 8) & 0xff, clamp8(speed), clamp8(hue), clamp8(sat), clamp8(val)]);
+}
+/** Persist current VialRGB state to EEPROM (id_custom_save 0x09). */
+export function buildVialRGBSave() { return viaReport([0x09]); }
+/** [modeReport, saveReport] — set the mode and persist it. */
+export const buildVialRGB = (effect, opts) => [buildVialRGBMode(effect, opts), buildVialRGBSave()];
+/** SAVE-LESS solid-color mode for host-driven FX streaming (no EEPROM write). One report. */
+export const buildVialRGBColorLive = (hue, sat, val = 255) =>
+  buildVialRGBMode(VIALRGB_EFFECT.SOLID, { hue, sat, val });
+
 // ---- VIA keymap / macros / encoder — live editing on ripple, same 0xFF60/0x61 channel, 64-byte reports ----
 // Standard VIA command IDs (the-via/app + qmk quantum/via.c). Ripple implements VIA (usevia drives it),
 // so these work on the stock firmware — no custom flash. Each builds a REQUEST report; the device replies

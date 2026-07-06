@@ -9,6 +9,7 @@ import {
   buildGifPage, buildStartupAnimation, GP_FRAME_BYTES, SA_FRAME_BYTES,
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightSave, buildLightGet,
   buildLightColorLive, transposeToColMajor,
+  buildVialRGBMode, buildVialRGBSave, buildVialRGB, buildVialRGBColorLive, VIALRGB_EFFECT,
   buildKeymapGet, buildKeymapSet, buildEncoderSet, buildSwitchMatrixState, buildViaLayerCount,
   buildMacroSetBuffer, VIA_CMD,
 } from '../src/protocol.js';
@@ -235,6 +236,21 @@ ok('RGB lighting builders match the live usevia capture (VIA RGB-matrix channel 
   // clamps to 0..255, no negative/overflow leakage
   assert.equal(buildLightBrightness(999)[0][3], 0xff);
   assert.equal(buildLightBrightness(-5)[0][3], 0x00);
+});
+
+// VialRGB (custom vial-qmk firmware) — read from quantum/vialrgb.c: set_mode is
+//   07 41 <effLo> <effHi> <speed> <hue> <sat> <val>  (effect id 16-bit LE); save is 09.
+ok('VialRGB set_mode packs effect(16-bit LE) + speed + HSV; save is 0x09', () => {
+  const m = buildVialRGBMode(VIALRGB_EFFECT.SOLID, { speed: 0x80, hue: 0x2a, sat: 0xff, val: 0xc8 });
+  assert.equal(hex(m).startsWith('07 41 02 00 80 2a ff c8'), true); // SOLID=2 -> 02 00
+  // 16-bit effect id, little-endian: PALETTE_CYCLE = 0x0100 -> 00 01
+  assert.equal(hex(buildVialRGBMode(VIALRGB_EFFECT.PALETTE_CYCLE, {})).startsWith('07 41 00 01'), true);
+  assert.deepEqual(Array.from(buildVialRGBSave().slice(0, 1)), [0x09]);
+  // convenience helpers
+  assert.equal(buildVialRGB(VIALRGB_EFFECT.OFF, {}).length, 2);          // [mode, save]
+  assert.equal(hex(buildVialRGBColorLive(0x10, 0x20)).startsWith('07 41 02 00'), true); // solid, live
+  // clamps
+  assert.equal(buildVialRGBMode(2, { val: 999 })[7], 0xff);
 });
 
 ok('buildLightColorLive is a single save-less color report (for real-time animation)', () => {

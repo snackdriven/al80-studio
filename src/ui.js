@@ -1177,27 +1177,35 @@ function setupLightingTab() {
     if (await guardedSend(label, statusEl, packets)) setStatus(statusEl, okMsg, 'ok');
   };
 
-  const sendBrightness = debounce(() =>
-    sendLight('Light brightness', proto.buildLightBrightness(+brightness.value), `Brightness set to ${brightness.value}.`));
+  // VialRGB (custom firmware) sets the WHOLE mode in one report — effect + speed + HSV — so we track
+  // the controls' state client-side and push the full mode on any change. The stock per-value builders
+  // (buildLightEffect/Color/…) are for the stock firmware's channel-3 protocol and are ignored by the
+  // custom firmware's VialRGB. brightness = HSV value.
+  const lightState = () => {
+    const { hue, sat } = rgbToHueSat(color.value);
+    return { effect: +effect.value, speed: +speed.value, hue, sat, val: +brightness.value };
+  };
+  const pushLight = (okMsg) => {
+    const s = lightState();
+    return sendLight('Lighting', proto.buildVialRGB(s.effect, s), okMsg);
+  };
+
+  const sendBrightness = debounce(() => pushLight(`Brightness set to ${brightness.value}.`));
   brightness.addEventListener('input', () => {
     brightnessOut.textContent = brightness.value;
     sendBrightness();
   });
 
   effect.addEventListener('change', () =>
-    sendLight('Light effect', proto.buildLightEffect(+effect.value), `Effect: ${effect.options[effect.selectedIndex].text}.`));
+    pushLight(`Effect: ${effect.options[effect.selectedIndex].text}.`));
 
-  const sendSpeed = debounce(() =>
-    sendLight('Light speed', proto.buildLightSpeed(+speed.value), `Effect speed set to ${speed.value}.`));
+  const sendSpeed = debounce(() => pushLight(`Effect speed set to ${speed.value}.`));
   speed.addEventListener('input', () => {
     speedOut.textContent = speed.value;
     sendSpeed();
   });
 
-  const sendColor = debounce(() => {
-    const { hue, sat } = rgbToHueSat(color.value);
-    sendLight('Light color', proto.buildLightColor(hue, sat), `Color set to ${color.value}.`);
-  });
+  const sendColor = debounce(() => pushLight(`Color set to ${color.value}.`));
   color.addEventListener('input', sendColor);
 
   // ---- software effects (host-driven color animation) -----------------------
@@ -1205,7 +1213,7 @@ function setupLightingTab() {
   // only the one-time effect=Solid Color at the start of a run is persisted. Exactly one effect runs
   // at a time — Start stops any other. A setTimeout chain (not rAF) drives the per-step delay; a
   // generation token + running flag cancel it cleanly on Stop, tab-switch, or disconnect.
-  const SOLID_COLOR_EFFECT = 1; // matches the "Solid Color" option in #lightEffect
+  const SOLID_COLOR_EFFECT = 2; // VialRGB VIALRGB_EFFECT_SOLID_COLOR (the FX stream sets this + a live color)
   const fxStatus = $('#fxStatus');
   const strobeColorA = $('#strobeColorA');
   const strobeColorB = $('#strobeColorB');
@@ -1247,7 +1255,7 @@ function setupLightingTab() {
   async function restTo(colorInput) {
     if (!connected) return;
     const { hue, sat } = rgbToHueSat(colorInput.value);
-    await sendFrame(proto.buildLightColorLive(hue, sat));
+    await sendFrame(proto.buildVialRGBColorLive(hue, sat));
   }
 
   // frameFn(i) -> {hue, sat} for step i; delayFn() -> ms until the next step.
@@ -1259,7 +1267,7 @@ function setupLightingTab() {
     fxRunning = true;
     setStatus(sEl, `${name} — starting…`);
     // The ONLY EEPROM write: pin the base effect to Solid Color so live color reports show through.
-    const ok = await guardedSend('FX effect → Solid Color', sEl, proto.buildLightEffect(SOLID_COLOR_EFFECT));
+    const ok = await guardedSend('FX effect → Solid Color', sEl, proto.buildVialRGB(SOLID_COLOR_EFFECT, { val: 255 }));
     if (!ok) { stopFx(); return; }
     if (token !== fxToken || !fxRunning) return;  // Stop pressed during the await
     setStatus(sEl, `${name} running — press Stop to end.`, 'ok');
@@ -1267,7 +1275,7 @@ function setupLightingTab() {
     const tick = async () => {
       if (token !== fxToken || !fxRunning) return;
       const { hue, sat } = frameFn(i);
-      const sent = await sendFrame(proto.buildLightColorLive(hue, sat));
+      const sent = await sendFrame(proto.buildVialRGBColorLive(hue, sat));
       if (!sent) { stopFx(); return; }            // sendFrame already surfaced the error
       if (token !== fxToken || !fxRunning) return; // Stop pressed while the frame was in flight
       i++;
