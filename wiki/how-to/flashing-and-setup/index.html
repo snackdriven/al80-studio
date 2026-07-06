@@ -12,13 +12,13 @@
         <meta name="author" content="snackdriven">
       
       
-        <link rel="canonical" href="https://snackdriven.github.io/al80-studio/wiki/reference/safety/">
+        <link rel="canonical" href="https://snackdriven.github.io/al80-studio/wiki/how-to/flashing-and-setup/">
       
       
-        <link rel="prev" href="../glossary/">
+        <link rel="prev" href="../../hardware/">
       
       
-        <link rel="next" href="../../roadmap/">
+        <link rel="next" href="../render-a-frame/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Safety / do-not-touch - YUNZII AL80 Reverse-Engineering Wiki</title>
+        <title>Flashing & setup - YUNZII AL80 Reverse-Engineering Wiki</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#safety-do-not-touch" class="md-skip">
+        <a href="#flashing-setup" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Safety / do-not-touch
+              Flashing & setup
             
           </span>
         </div>
@@ -322,11 +322,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../how-to/flashing-and-setup/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
           
   
   
@@ -344,13 +346,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../quick-reference/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../reference/quick-reference/" class="md-tabs__link">
           
   
   
@@ -1080,8 +1080,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -1097,19 +1099,22 @@
     
     
       
+        
+        
+      
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
             
   
   
@@ -1127,7 +1132,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1142,10 +1147,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../how-to/flashing-and-setup/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flashing & setup
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1161,6 +1193,114 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚠️ Before you start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 What you need
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-enter-the-bootloader-dfu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔌 Step 1 — Enter the bootloader (DFU)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-flash-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚡ Step 2 — Flash it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-drive-the-screen-lighting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🖥️ Step 3 — Drive the screen + lighting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-optional-remap-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⌨️ Step 4 (optional) — Remap keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery-back-to-stock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ↩️ Recovery — back to stock
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#good-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Good to know
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1173,7 +1313,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../how-to/render-a-frame/" class="md-nav__link">
+      <a href="../render-a-frame/" class="md-nav__link">
         
   
   
@@ -1208,7 +1348,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../how-to/tooling-and-clock/" class="md-nav__link">
+      <a href="../tooling-and-clock/" class="md-nav__link">
         
   
   
@@ -1243,7 +1383,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../how-to/now-playing/" class="md-nav__link">
+      <a href="../now-playing/" class="md-nav__link">
         
   
   
@@ -1282,10 +1422,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -1299,22 +1437,19 @@
     
     
       
-        
-        
-      
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   
@@ -1332,7 +1467,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1350,7 +1485,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../quick-reference/" class="md-nav__link">
+      <a href="../../reference/quick-reference/" class="md-nav__link">
         
   
   
@@ -1385,7 +1520,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../glossary/" class="md-nav__link">
+      <a href="../../reference/glossary/" class="md-nav__link">
         
   
   
@@ -1417,44 +1552,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Safety / do-not-touch
-  
-
-    
-  </span>
-  
-  
-    
-  
-  
-    <span class="md-status md-status--reference"></span>
-  
-
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../reference/safety/" class="md-nav__link">
         
   
   
@@ -1477,48 +1578,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#rules" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ⚠️ Rules
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-exact-dfu-sequence-to-avoid" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ❌ The exact DFU sequence to avoid
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1653,10 +1712,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#rules" class="md-nav__link">
+  <a href="#before-you-start" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ⚠️ Rules
+        ⚠️ Before you start
       
     </span>
   </a>
@@ -1664,10 +1723,76 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-exact-dfu-sequence-to-avoid" class="md-nav__link">
+  <a href="#what-you-need" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ❌ The exact DFU sequence to avoid
+        📦 What you need
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-enter-the-bootloader-dfu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔌 Step 1 — Enter the bootloader (DFU)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-flash-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚡ Step 2 — Flash it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-drive-the-screen-lighting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🖥️ Step 3 — Drive the screen + lighting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-optional-remap-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⌨️ Step 4 (optional) — Remap keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery-back-to-stock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ↩️ Recovery — back to stock
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#good-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Good to know
       
     </span>
   </a>
@@ -1691,42 +1816,70 @@
 
 
 
-<h1 id="safety-do-not-touch">Safety / do-not-touch<a class="headerlink" href="#safety-do-not-touch" title="Permanent link">&para;</a></h1>
-<p>Brick risks, the DFU sequence to avoid, and the single-opener rule.</p>
-<div class="admonition danger">
-<p class="admonition-title">Never send 0xB0–0xB7</p>
-<p><code>0xB0–0xB7</code> are bootloader / firmware-upgrade (DFU) commands. Do <strong>not</strong> experiment with them —
-risk of bricking or wiping firmware. Stick to <code>0x40/0x41/0x42</code>.</p>
-</div>
-<h2 id="rules">⚠️ Rules<a class="headerlink" href="#rules" title="Permanent link">&para;</a></h2>
+<h1 id="flashing-setup">Flashing &amp; setup<a class="headerlink" href="#flashing-setup" title="Permanent link">&para;</a></h1>
+<div class="admonition tip">
+<p class="admonition-title">TL;DR</p>
 <ul>
-<li><strong>Never reflash carelessly.</strong> The ripple lighting firmware is the whole reason for the VIA-only
-  and HID-script approach. Custom-QMK bins in <code>firmware/</code> replace it, so treat every flash as
-  deliberate (see <a href="../../firmware/custom-qmk/">Custom QMK</a>).</li>
-<li><strong>Only one opener</strong> of the <code>0xFF60</code> interface at a time: close the browser tab (and VIA) before
-  running scripts.</li>
+<li>Download <strong>QMK Toolbox</strong> + the firmware <strong><code>.bin</code></strong> from Releases.</li>
+<li>Enter the bootloader: <strong>hold ESC, plug in USB</strong>.</li>
+<li>Flash the <code>.bin</code> in QMK Toolbox, then drive the screen/lighting from <strong>al80-studio</strong> in Chrome.</li>
+<li>To undo it all: flash the stock <code>RIPPLE.bin</code> back the same way.</li>
 </ul>
-<h2 id="the-exact-dfu-sequence-to-avoid">❌ The exact DFU sequence to avoid<a class="headerlink" href="#the-exact-dfu-sequence-to-avoid" title="Permanent link">&para;</a></h2>
-<p>Decoded from source. This is what a firmware update does, so never send it manually:</p>
-<div class="language-text highlight"><pre><span></span><code>0xB1 toBootLoader
-  → poll 0xB2 getBootLoaderStatus   (every 200 ms, ≤20 tries)
-  → 0xB3 confirmFirmwareInfo         (56-byte header: bytes[6..9]=file size LE, bytes[10..13]=CRC32 LE)
-  → 0xB4 startUpgrade
-  → 0xB5 transferUpgradeData         (chunked)
-  → 0xB6 upgradeComplete
-  → 0xB7 endUpgrade
-</code></pre></div>
-<p>A second, colliding <code>mechanicalKeyboard*</code> DFU set (opcodes <code>0x00–0x04</code>/<code>0x10</code>/<code>0x20</code>/<code>0x55</code>) exists
-for a different device family, irrelevant to the AL80, just don't confuse the two.</p>
+</div>
+<p>A from-scratch walkthrough for putting the custom firmware on a YUNZII AL80 and driving it. No prior QMK experience assumed.</p>
+<h2 id="before-you-start">⚠️ Before you start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
+<ul>
+<li>This replaces the stock firmware with a custom <strong>vial-qmk</strong> build. It's reversible (stock <code>.bin</code> is in the release assets), but you're flashing at your own risk.</li>
+<li>You keep: all keys, the LCD, the RGB, and the side bar. You gain: Vial keymapping, VialRGB, and full LCD control from the browser.</li>
+<li>The bootloader is sticky — <strong>ESC + plug</strong> always gets you back to a flashable state, so a bad flash isn't a brick.</li>
+</ul>
+<h2 id="what-you-need">📦 What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h2>
+<ul>
+<li>A <strong>YUNZII AL80</strong> keyboard + its USB cable.</li>
+<li><strong>QMK Toolbox</strong> — <a href="https://github.com/qmk/qmk_toolbox/releases">github.com/qmk/qmk_toolbox/releases</a> (Windows or macOS).</li>
+<li>The firmware <strong><code>.bin</code></strong> — from this project's Releases page (grab the latest, currently <strong>v1.0.0</strong>).</li>
+<li><strong>Chrome</strong> (or any Chromium browser) for the control app — WebHID needs it.</li>
+<li><em>(Optional)</em> <strong>Vial</strong> — <a href="https://vial.rocks">vial.rocks</a> — for remapping keys and RGB.</li>
+</ul>
+<h2 id="step-1-enter-the-bootloader-dfu">🔌 Step 1 — Enter the bootloader (DFU)<a class="headerlink" href="#step-1-enter-the-bootloader-dfu" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Unplug the keyboard.</li>
+<li><strong>Hold the ESC key</strong> (top-left) and, while holding, <strong>plug in the USB cable</strong>.</li>
+<li>Let go. The board is now in <strong>stm32duino DFU</strong> mode — no lights, no LCD, that's normal.</li>
+</ol>
+<p><em>(Windows only: if QMK Toolbox doesn't see a DFU device, install the WinUSB driver for it with <a href="https://zadig.akeo.ie/">Zadig</a> — pick the "STM32 BOOTLOADER" device, install WinUSB.)</em></p>
+<h2 id="step-2-flash-it">⚡ Step 2 — Flash it<a class="headerlink" href="#step-2-flash-it" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Open <strong>QMK Toolbox</strong>.</li>
+<li>Click <strong>Open</strong>, choose the firmware <code>.bin</code>.</li>
+<li>Leave the microcontroller on auto (it's an STM32F103).</li>
+<li>Click <strong>Flash</strong>. You'll see it erase + write; wait for <strong>"Flash complete."</strong></li>
+<li>Unplug and replug normally. Lights and the LCD come back — you're on the custom firmware.</li>
+</ol>
+<h2 id="step-3-drive-the-screen-lighting">🖥️ Step 3 — Drive the screen + lighting<a class="headerlink" href="#step-3-drive-the-screen-lighting" title="Permanent link">&para;</a></h2>
+<p>The keyboard is controlled from <strong>al80-studio</strong>, a browser app (no install):</p>
+<ol>
+<li>Open al80-studio in Chrome. Close the YUNZII web app and VIA first — <strong>only one app can hold the keyboard at a time</strong>.</li>
+<li>Click <strong>Connect</strong> and pick the AL80.</li>
+<li><strong>LCD tab</strong> — push a clock, a still image, or a GIF to the screen.</li>
+<li><strong>Lighting tab</strong> — pick an RGB effect, colour, brightness, speed (this speaks VialRGB, the custom firmware's lighting).</li>
+</ol>
+<h2 id="step-4-optional-remap-keys">⌨️ Step 4 (optional) — Remap keys<a class="headerlink" href="#step-4-optional-remap-keys" title="Permanent link">&para;</a></h2>
+<p>For keymap, layers, macros, and per-key RGB, open <strong><a href="https://vial.rocks">vial.rocks</a></strong> in Chrome and connect. Changes are live — no reflashing.</p>
+<h2 id="recovery-back-to-stock">↩️ Recovery — back to stock<a class="headerlink" href="#recovery-back-to-stock" title="Permanent link">&para;</a></h2>
+<p>Want the original firmware back? Enter the bootloader the same way (<strong>ESC + plug</strong>) and flash the stock <strong><code>RIPPLE.bin</code></strong> (in the release assets), or use YUNZII's official updater. Same steps, different <code>.bin</code>.</p>
+<h2 id="good-to-know">🧩 Good to know<a class="headerlink" href="#good-to-know" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Chip:</strong> STM32F103x8 — 56 KB app flash, 20 KB RAM. It's tight, which is why firmware features are picked carefully.</li>
+<li><strong>Known-good build:</strong> v1.0.0. If a newer version misbehaves, reflash this one.</li>
+<li><strong>The screen is a separate smart module</strong> — the keyboard forwards your images to it over an internal serial link. That's why the LCD keeps working on custom firmware.</li>
+</ul>
 
 
 
 
 
 
-
-  
-  
 
 
 
