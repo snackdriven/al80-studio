@@ -437,6 +437,37 @@ export const buildVialRGB = (effect, opts) => [buildVialRGBMode(effect, opts), b
 export const buildVialRGBColorLive = (hue, sat, val = 255) =>
   buildVialRGBMode(VIALRGB_EFFECT.SOLID, { hue, sat, val });
 
+// ---- side LED bar (custom firmware) — independent color for RGB-matrix indices 76-78 ----
+// The al80's own raw-HID KB opcodes 0x46/0x47/0x48, mirroring the palette protocol (0x43/0x44/0x45).
+// They ride the SAME 0xFF60/0x61 channel and 64-byte report as the LCD + VIA families, and reach
+// raw_hid_receive_kb() because they're above VIA's command range (VIA tops out at 0x13). Firmware:
+//   SET  0x47: data[1]=hue data[2]=sat data[3]=val data[4]=independent  -> writes RAM, ACK 0x55
+//   SAVE 0x48: flush RAM state to a dedicated EEPROM sub-block
+//   GET  0x46: reply [0x46, hue, sat, val, independent]
+// When independent, the firmware paints indices 76-78 with this HSV every frame; else they follow
+// the keys. These are NOT part of build()'s LCD whitelist (40/41/42/55) — they're a plain KB report.
+export const AP_BAR = Object.freeze({ GET: 0x46, SET: 0x47, SAVE: 0x48 });
+
+/** Pad a raw KB-opcode report to 64 bytes (same wire shape as viaReport, no VIA-command guard). */
+function kbReport(bytes) {
+  const out = new Uint8Array(REPORT);
+  out.set(bytes.slice(0, REPORT));
+  return out;
+}
+
+/** 0x47 set: [0x47, hue, sat, val, independent]. independent=false makes the bar follow the keys. */
+export function buildBarColor(hue, sat, val, independent = true) {
+  return kbReport([AP_BAR.SET, clamp8(hue), clamp8(sat), clamp8(val), independent ? 1 : 0]);
+}
+/** 0x48 save: persist the current bar color/mode to EEPROM. */
+export function buildBarSave() {
+  return kbReport([AP_BAR.SAVE]);
+}
+/** 0x46 get: device replies [0x46, hue, sat, val, independent] on an inputreport. */
+export function buildBarGet() {
+  return kbReport([AP_BAR.GET]);
+}
+
 // ---- VIA keymap / macros / encoder — live editing on ripple, same 0xFF60/0x61 channel, 64-byte reports ----
 // Standard VIA command IDs (the-via/app + qmk quantum/via.c). Ripple implements VIA (usevia drives it),
 // so these work on the stock firmware — no custom flash. Each builds a REQUEST report; the device replies

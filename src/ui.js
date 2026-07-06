@@ -1208,6 +1208,35 @@ function setupLightingTab() {
   const sendColor = debounce(() => pushLight(`Color set to ${color.value}.`));
   color.addEventListener('input', sendColor);
 
+  // ---- side LED bar (independent color for the three bar LEDs, indices 76-78) ----
+  // Custom firmware raw-HID 0x47 (set color/mode) + 0x48 (save). Sends both so the choice sticks
+  // across reboots — same guardedSend path as the built-in controls. When "independent" is off the
+  // firmware lets the bar follow the key effect; we still send the color so it's remembered.
+  const barStatusEl = $('#barStatus');
+  const barColor = $('#barColor');
+  const barBrightness = $('#barBrightness');
+  const barBrightnessOut = $('#barBrightnessOut');
+  const barIndependent = $('#barIndependent');
+  persist(barColor, 'barColor');
+  persist(barBrightness, 'barBrightness', (el) => { barBrightnessOut.textContent = el.value; });
+  persist(barIndependent, 'barIndependent');
+
+  const sendBar = async () => {
+    const { hue, sat } = rgbToHueSat(barColor.value);
+    const val = +barBrightness.value;
+    const indep = barIndependent.checked;
+    const packets = [proto.buildBarColor(hue, sat, val, indep), proto.buildBarSave()];
+    const okMsg = indep ? `Side bar set to ${barColor.value}.` : 'Side bar following the keys.';
+    if (await guardedSend('Side LED bar', barStatusEl, packets)) setStatus(barStatusEl, okMsg, 'ok');
+  };
+  const sendBarDebounced = debounce(sendBar);
+  barColor.addEventListener('input', sendBarDebounced);
+  barBrightness.addEventListener('input', () => {
+    barBrightnessOut.textContent = barBrightness.value;
+    sendBarDebounced();
+  });
+  barIndependent.addEventListener('change', sendBar);
+
   // ---- software effects (host-driven color animation) -----------------------
   // These stream SAVE-LESS color reports (proto.buildLightColorLive) so they never touch the EEPROM;
   // only the one-time effect=Solid Color at the start of a run is persisted. Exactly one effect runs

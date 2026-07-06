@@ -436,6 +436,28 @@
 
       <p id="lightStatus" class="statusline" role="status"></p>
 
+      <h3>Side LED bar</h3>
+      <p class="muted small">The three LEDs in the side light bar. Give them their own color, independent of the key
+        effect above &mdash; or untick to let them follow the keys. Saved to the keyboard.</p>
+
+      <div class="row">
+        <label>
+          <input id="barIndependent" type="checkbox" class="device-action" checked disabled />
+          Independent color (unticked = follow keys)
+        </label>
+      </div>
+
+      <div class="row">
+        <label>Color
+          <input id="barColor" type="color" value="#1fe0d4" class="device-action" disabled />
+        </label>
+        <label>Brightness <output id="barBrightnessOut">255</output>
+          <input id="barBrightness" type="range" min="0" max="255" value="255" class="device-action" disabled />
+        </label>
+      </div>
+
+      <p id="barStatus" class="statusline" role="status"></p>
+
       <h3>Software effects &mdash; two or more colors</h3>
       <p class="muted small">These do what the built-in effects can't: <strong>multiple colors</strong>. They run from the
         browser (not the keyboard), whole-board (not per-key reactive), and stream live &mdash; so they stop on Stop,

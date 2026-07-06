@@ -10,6 +10,7 @@ import {
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightSave, buildLightGet,
   buildLightColorLive, transposeToColMajor,
   buildVialRGBMode, buildVialRGBSave, buildVialRGB, buildVialRGBColorLive, VIALRGB_EFFECT,
+  buildBarColor, buildBarSave, buildBarGet, AP_BAR,
   buildKeymapGet, buildKeymapSet, buildEncoderSet, buildSwitchMatrixState, buildViaLayerCount,
   buildMacroSetBuffer, VIA_CMD,
 } from '../src/protocol.js';
@@ -263,6 +264,34 @@ ok('buildLightColorLive is a single save-less color report (for real-time animat
   assert.equal(paired.length, 2);
   assert.equal(hex(paired[1]).startsWith('09 03'), true);  // the paired builder DOES save
   assert.deepEqual(Array.from(r), Array.from(paired[0]));   // live == the set half, sans save
+});
+
+// Side LED bar (custom firmware raw-HID 0x46/0x47/0x48) — must match al80.c's raw_hid_receive_kb:
+//   SET  0x47: data[1]=hue data[2]=sat data[3]=val data[4]=independent
+//   SAVE 0x48
+ok('buildBarColor emits 47 <h> <s> <v> <independent>; buildBarSave emits 48', () => {
+  const set = buildBarColor(0x2a, 0xc0, 0x80);
+  assert.equal(hex(set).startsWith('47 2a c0 80 01'), true, hex(set)); // independent defaults to on -> 01
+  assert.equal(set.length, 64);                                        // padded to the 64-byte report
+  assert.equal(AP_BAR.SET, 0x47);
+
+  // independent=false rides in data[4]
+  const follow = buildBarColor(0x10, 0x20, 0x30, false);
+  assert.equal(hex(follow).startsWith('47 10 20 30 00'), true, hex(follow));
+
+  const save = buildBarSave();
+  assert.equal(hex(save).startsWith('48'), true, hex(save));
+  assert.equal(save.length, 64);
+  assert.equal(AP_BAR.SAVE, 0x48);
+
+  // GET is a bare 0x46 request; device replies on an inputreport
+  assert.equal(hex(buildBarGet()).startsWith('46'), true);
+  assert.equal(AP_BAR.GET, 0x46);
+
+  // clamps to 0..255 like the other builders (no negative/overflow leakage into the report)
+  assert.equal(buildBarColor(999, -5, 300)[1], 0xff);
+  assert.equal(buildBarColor(999, -5, 300)[2], 0x00);
+  assert.equal(buildBarColor(999, -5, 300)[3], 0xff);
 });
 
 console.log(`\n${pass} checks passed.`);
