@@ -713,9 +713,12 @@ function setupGifTab() {
 
   const readDest = () => document.querySelector('input[name="gifDest"]:checked')?.value || 'main';
   // Destination drives decode resolution, frame cap, and preview box size.
-  const dims = () => readDest() === 'main'
-    ? { w: proto.MP_W, h: proto.MP_H, max: proto.MP_MAX_FRAMES, disp: [288, 192] }
-    : { w: proto.GP_W, h: proto.GP_H, max: proto.GP_MAX_FRAMES, disp: [144, 240] }; // gif page: 96x160
+  const dims = () => {
+    const dst = readDest();
+    if (dst === 'main') return { w: proto.MP_W, h: proto.MP_H, max: proto.MP_MAX_FRAMES, disp: [288, 192] };
+    if (dst === 'startup') return { w: proto.SA_W, h: proto.SA_H, max: proto.SA_MAX_FRAMES, disp: [144, 240] }; // 96x160, cap 64
+    return { w: proto.GP_W, h: proto.GP_H, max: proto.GP_MAX_FRAMES, disp: [144, 240] }; // gif page: 96x160
+  };
 
   function stopPreview() {
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
@@ -764,8 +767,11 @@ function setupGifTab() {
   }
 
   function applyDest() {
-    destNote.textContent = readDest() === 'main'
+    const dst = readDest();
+    destNote.textContent = dst === 'main'
       ? 'Plays on the home screen — the display path this firmware renders (96×64, up to 42 frames).'
+      : dst === 'startup'
+      ? 'Plays once when the keyboard powers on (96×160, up to 64 frames).'
       : 'Separate GIF page (96×160, up to 160 frames) — a full-screen animated GIF view.';
     if (currentFile) decodeAndPreview(); // re-decode at the new resolution
   }
@@ -803,7 +809,9 @@ function setupGifTab() {
     }
     let packets;
     try {
-      packets = dest === 'main' ? proto.buildMainPageGif(frames, +fps.value) : proto.buildGifPage(frames, +fps.value);
+      packets = dest === 'main' ? proto.buildMainPageGif(frames, +fps.value)
+              : dest === 'startup' ? proto.buildStartupAnimation(frames, +fps.value)
+              : proto.buildGifPage(frames, +fps.value);
     } catch (err) {
       setStatus(statusEl, 'Build failed: ' + ((err && err.message) || err), 'err');
       return;
@@ -814,7 +822,8 @@ function setupGifTab() {
     bar.style.width = '0%';
     setStatus(statusEl, `Sending ${packets.length} packets (${kept} frame${kept === 1 ? '' : 's'} @ ${fps.value} fps) — paced, takes a few seconds…`);
     try {
-      const ok = await sendGifWithProgress(dest === 'main' ? 'GIF → main page' : 'GIF → gif page', statusEl, packets, (f) => {
+      const label = dest === 'main' ? 'GIF → main page' : dest === 'startup' ? 'GIF → startup animation' : 'GIF → gif page';
+      const ok = await sendGifWithProgress(label, statusEl, packets, (f) => {
         bar.style.width = Math.round(f * 100) + '%';
       });
       if (ok) {
@@ -822,6 +831,8 @@ function setupGifTab() {
         if (dest === 'main') {
           setNowShowing('clock'); // main page = clock + your GIF
           setStatus(statusEl, `Saved GIF to the main page${capNote} — it should be playing now.`, 'ok');
+        } else if (dest === 'startup') {
+          setStatus(statusEl, `Saved startup animation${capNote} — it'll play next time the keyboard powers on.`, 'ok');
         } else {
           setStatus(statusEl, 'Switching to GIF page…');
           const shown = await guardedSend('View → GIF', statusEl, proto.buildView(proto.VIEW.GIF), { gap: 1 });
