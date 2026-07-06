@@ -674,7 +674,7 @@ function setupImageTab() {
     // writing the picture buffer while parked on home doesn't land, leaving the old frame on screen.)
     try {
       const ok = dest === 'main'
-        ? await sendWithProgress('Picture → main page', statusEl, packets, onProg, { gap: 0 })
+        ? await sendGifWithProgress('Picture → main page', statusEl, packets, onProg)
         : await sendAckGatedWithProgress('Picture → picture page', statusEl, packets, onProg);
       if (ok) {
         if (dest === 'main') {
