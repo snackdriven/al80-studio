@@ -71,6 +71,7 @@
         <button class="tab" role="tab" data-tab="picture" aria-selected="false" aria-controls="panel-picture">Picture</button>
         <button class="tab" role="tab" data-tab="gif" aria-selected="false" aria-controls="panel-gif">GIF</button>
         <button class="tab" role="tab" data-tab="slideshow" aria-selected="false" aria-controls="panel-slideshow">Slideshow</button>
+        <button class="tab" role="tab" data-tab="nowplaying" aria-selected="false" aria-controls="panel-nowplaying">Now Playing</button>
       </nav>
 
       <main class="panels">
@@ -277,6 +278,48 @@
             <div class="progress-bar" id="slideProgress"></div>
           </div>
           <p id="slideStatus" class="statusline" role="status"></p>
+        </section>
+
+        <!-- Now Playing -->
+        <section class="panel" id="panel-nowplaying" role="tabpanel" data-panel="nowplaying" hidden>
+          <div class="panel-head">
+            <h2>Now Playing</h2>
+            <p class="muted">Push a live Spotify track card (cover art + title + artist) to the LCD. Runs in this tab over WebHID — close the Node host first, only one app can own the keyboard.</p>
+          </div>
+
+          <div class="image-grid">
+            <div class="image-controls">
+              <div class="np-auth">
+                <button id="npConnectSpotify" type="button" class="btn">Connect Spotify</button>
+                <p id="npAuthStatus" class="statusline" role="status">Not connected to Spotify.</p>
+                <p class="muted small">Redirect URI to register in your Spotify app dashboard:</p>
+                <code id="npRedirectUri" class="np-redirect small"></code>
+                <p class="muted small">Add it under your app's Redirect URIs (must match exactly). Spotify requires https or a 127.0.0.1 loopback.</p>
+                <p><button id="npForgetSpotify" type="button" class="btn small" hidden>Forget Spotify</button></p>
+              </div>
+            </div>
+
+            <div class="image-preview">
+              <p class="muted small">Current track</p>
+              <div class="np-track">
+                <img id="npArtThumb" class="np-art" width="96" height="96" alt="Album art of the current track" hidden />
+                <div class="np-meta">
+                  <p id="npTrackTitle" class="np-title">—</p>
+                  <p id="npTrackArtist" class="muted small">Nothing playing</p>
+                </div>
+              </div>
+
+              <div class="row np-transport">
+                <button id="npStart" type="button" class="btn primary device-action" disabled>Start live push</button>
+                <button id="npStop" type="button" class="btn device-action" disabled>Stop</button>
+              </div>
+
+              <div class="progress" id="npProgressWrap" hidden>
+                <div class="progress-bar" id="npProgress"></div>
+              </div>
+              <p id="npStatus" class="statusline" role="status"></p>
+            </div>
+          </div>
         </section>
 
       </main>
@@ -557,6 +600,7 @@
     <span class="muted small">AL80 Studio &middot; drives the LCD over WebHID</span>
     <nav class="footer-links">
       <a class="footer-link" href="wiki/" target="_blank" rel="noopener">Wiki &amp; docs</a>
+      <a class="footer-link" href="wiki/how-to/now-playing/" target="_blank" rel="noopener">Now Playing</a>
       <a class="experimental" href="lab.html">Lab &middot; picture-page banding tests</a>
     </nav>
   </footer>

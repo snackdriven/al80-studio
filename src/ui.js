@@ -11,6 +11,9 @@ import * as hid from './hid.js';
 import * as image from './image.js';
 import * as gif from './gif.js';
 import * as keymap from './keymap.js';
+import * as spotify from './nowplaying/spotify.js';
+import { render as renderNowPlayingCard } from './nowplaying/card.js';
+import { loadArtRGB } from './nowplaying/albumart.js';
 
 // ---- tiny DOM helpers -------------------------------------------------------
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -134,7 +137,9 @@ function reflectConnection() {
     slideshowCtl.stop();
     lightingFxCtl.stop();
     keymapTesterCtl.stop();
+    nowPlayingCtl.stop();
   }
+  nowPlayingCtl.sync?.(); // refresh Now Playing button gating on every connection change
 }
 
 // Wrap a device action: catch errors (incl. the single-opener one), log, surface.
@@ -256,6 +261,7 @@ function init() {
   setupImageTab();
   setupGifTab();
   setupSlideshowTab();
+  setupNowPlayingTab();
   setupLightingTab();
   setupClearActions();
   setupKeymap();
@@ -430,11 +436,20 @@ function setupTabs() {
       if (name === 'gif') gifPreviewCtl.start(); else gifPreviewCtl.stop();
       if (name !== 'slideshow') slideshowCtl.stop();
       if (name !== 'lighting') lightingFxCtl.stop();
+      if (name !== 'nowplaying') nowPlayingCtl.stop();
     });
   });
   rovingTabindex(tabs);
   wireTablistArrows($('.tabs'));
 }
+
+// The Now Playing live push is a host-driven poll loop that re-renders + pushes the card when the
+// Spotify track (or play/pause) changes. Like the lighting effect, it must stop when the tab is left
+// or the device disconnects; setupNowPlayingTab fills stop() in.
+const nowPlayingCtl = { stop() {} };
+const nowPlayingVisible = () =>
+  document.querySelector('#app')?.dataset.section === 'lcd' &&
+  document.querySelector('.panel[data-panel="nowplaying"]')?.hidden === false;
 
 // ---- Now Showing bar --------------------------------------------------------
 // Tracks the last view THIS app set. 'unknown' on fresh connect (write-only device).
@@ -1141,6 +1156,245 @@ function setupSlideshowTab() {
   intervalOut.textContent = intervalEl.value + 's';
   updateCounter();
   updateCurrent();
+}
+
+// ---- now playing (Spotify -> live card on the LCD, over WebHID) --------------
+// Ports host/nowplaying-run.mjs into the app: PKCE auth in the browser, a 5s poll of Spotify's
+// currently-playing, and — when the track or play/pause changes — render the 96x160 card
+// (nowplaying/card.js) and push it via the same ACK-gated picture path the Picture tab uses.
+// The proven display path is buildImageTransfer() ALONE: its PK_ADD_PIC setup commits AND shows the
+// frame. We do NOT send buildView(PICTURE) after — that's PK_TOGGLE_PIC, which advances to the next
+// slot and flips past the card (host/device.js sendFrame learned this on-device).
+function setupNowPlayingTab() {
+  const POLL_MS = 5000;
+  const PROGRESS_REFRESH_MS = 15000; // re-push while playing to advance the progress bar, even mid-track
+
+  const connectBtn = $('#npConnectSpotify');
+  const forgetBtn = $('#npForgetSpotify');
+  const authStatus = $('#npAuthStatus');
+  const redirectEl = $('#npRedirectUri');
+  const startBtn = $('#npStart');
+  const stopBtn = $('#npStop');
+  const statusEl = $('#npStatus');
+  const artThumb = $('#npArtThumb');
+  const titleEl = $('#npTrackTitle');
+  const artistEl = $('#npTrackArtist');
+  const progWrap = $('#npProgressWrap');
+  const progBar = $('#npProgress');
+  if (!connectBtn) return;
+
+  const REDIRECT_URI = spotify.redirectUri();
+  redirectEl.textContent = REDIRECT_URI;
+  // Log it so the user can copy the EXACT string to register in the Spotify dashboard.
+  console.log('[nowplaying] Spotify redirect URI to register:', REDIRECT_URI);
+
+  const spotifyConnected = () => !!spotify.loadRefreshToken();
+
+  // ---- access-token cache (refresh only near expiry / on 401; PKCE rotates the refresh token) ----
+  let tokenState = { accessToken: null, expiresAt: 0 };
+  async function accessToken() {
+    if (!spotify.needsRefresh(tokenState, Date.now())) return tokenState.accessToken;
+    const refreshToken = spotify.loadRefreshToken();
+    if (!refreshToken) throw new Error('Not connected to Spotify — click Connect Spotify.');
+    const t = await spotify.refreshAccessToken({ clientId: spotify.CLIENT_ID, refreshToken });
+    tokenState = { accessToken: t.accessToken, expiresAt: Date.now() + (t.expiresInSec || 3600) * 1000 };
+    if (t.refreshToken && t.refreshToken !== refreshToken) spotify.saveRefreshToken(t.refreshToken); // persist rotation
+    return tokenState.accessToken;
+  }
+
+  async function currentTrack() {
+    let tok = await accessToken();
+    try { return await spotify.getNowPlaying(tok); }
+    catch (e) {
+      if (e && e.status === 401) { // expired mid-cache — force one refresh + retry
+        tokenState = { accessToken: null, expiresAt: 0 };
+        tok = await accessToken();
+        return await spotify.getNowPlaying(tok);
+      }
+      throw e;
+    }
+  }
+
+  // ---- track readout (title / artist / art thumbnail) ----
+  function showTrack(np) {
+    if (np && np.title) {
+      titleEl.textContent = np.title;
+      artistEl.textContent = (np.isPlaying ? '' : '(paused) ') + (np.artist || '');
+      if (np.artUrl && artThumb.src !== np.artUrl) artThumb.src = np.artUrl; // display-only, no CORS needed
+      artThumb.hidden = !np.artUrl;
+    } else {
+      titleEl.textContent = '—';
+      artistEl.textContent = 'Nothing playing';
+      artThumb.removeAttribute('src');
+      artThumb.hidden = true;
+    }
+  }
+
+  // ---- auth ----
+  function reflectAuth() {
+    const authed = spotifyConnected();
+    connectBtn.textContent = authed ? 'Reconnect Spotify' : 'Connect Spotify';
+    forgetBtn.hidden = !authed;
+    if (authed && authStatus.dataset.state !== 'busy') setStatus(authStatus, 'Connected to Spotify.', 'ok');
+    else if (!authed) setStatus(authStatus, 'Not connected to Spotify.');
+    updateButtons();
+  }
+
+  async function beginAuth() {
+    try {
+      const verifier = spotify.generateCodeVerifier();
+      const challenge = await spotify.codeChallenge(verifier);
+      const state = spotify.generateCodeVerifier().slice(0, 16);
+      spotify.savePendingAuth(verifier, state);
+      const url = spotify.buildAuthUrl({
+        clientId: spotify.CLIENT_ID, redirectUri: REDIRECT_URI, codeChallenge: challenge, state,
+      });
+      setStatus(authStatus, 'Redirecting to Spotify…');
+      window.location.assign(url); // full-page redirect; we come back to ?code=...
+    } catch (e) {
+      setStatus(authStatus, 'Auth failed: ' + ((e && e.message) || e), 'err');
+    }
+  }
+
+  // Complete the redirect: if we came back with ?code=, exchange it for tokens. Verifies state,
+  // persists the refresh token, and scrubs the code from the URL so a reload can't replay it.
+  async function completeAuthFromRedirect() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const err = params.get('error');
+    if (!code && !err) return;
+    const { verifier, state: savedState } = spotify.loadPendingAuth();
+    const returnedState = params.get('state');
+    // scrub the query either way so we don't loop on reload
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, '', cleanUrl);
+    if (err) { setStatus(authStatus, 'Spotify denied access: ' + err, 'err'); spotify.clearPendingAuth(); return; }
+    if (!verifier || (savedState && returnedState && savedState !== returnedState)) {
+      setStatus(authStatus, 'Auth state mismatch — try Connect Spotify again.', 'err');
+      spotify.clearPendingAuth();
+      return;
+    }
+    authStatus.dataset.state = 'busy';
+    setStatus(authStatus, 'Finishing Spotify sign-in…');
+    try {
+      const tok = await spotify.exchangeCodeForToken({
+        clientId: spotify.CLIENT_ID, code, redirectUri: REDIRECT_URI, codeVerifier: verifier,
+      });
+      spotify.saveRefreshToken(tok.refreshToken);
+      if (tok.accessToken) tokenState = { accessToken: tok.accessToken, expiresAt: Date.now() + (tok.expiresInSec || 3600) * 1000 };
+    } catch (e) {
+      setStatus(authStatus, 'Token exchange failed: ' + ((e && e.message) || e), 'err');
+    } finally {
+      delete authStatus.dataset.state;
+      spotify.clearPendingAuth();
+      reflectAuth();
+    }
+  }
+
+  connectBtn.addEventListener('click', beginAuth);
+  forgetBtn.addEventListener('click', () => {
+    stopNP();
+    spotify.clearRefreshToken();
+    tokenState = { accessToken: null, expiresAt: 0 };
+    reflectAuth();
+    setStatus(statusEl, '');
+  });
+
+  // ---- live push loop (setTimeout chain + generation token, like the lighting FX) ----
+  let npToken = 0, npTimer = null, npRunning = false, sending = false;
+  let lastKey = null, lastSentAt = 0;
+  const artCache = new Map(); // trackId -> Uint8Array|null (null = art failed/tainted, use placeholder)
+
+  function stopNP() {
+    npRunning = false;
+    npToken++;                                     // invalidate any in-flight loop iteration
+    if (npTimer) { clearTimeout(npTimer); npTimer = null; }
+    updateButtons();
+  }
+  nowPlayingCtl.stop = stopNP;
+
+  function updateButtons() {
+    startBtn.disabled = !connected || !spotifyConnected() || npRunning;
+    stopBtn.disabled = !npRunning;
+  }
+  nowPlayingCtl.sync = updateButtons;
+
+  async function pushTrack(np) {
+    if (sending) return;
+    sending = true;
+    progWrap.hidden = false;
+    progBar.style.width = '0%';
+    try {
+      if (!artCache.has(np.trackId)) artCache.set(np.trackId, await loadArtRGB(np.artUrl));
+      const artRGB = artCache.get(np.trackId);
+      const frame = renderNowPlayingCard({
+        title: np.title, artist: np.artist, artRGB,
+        progress: np.progress, paused: !np.isPlaying,
+        elapsedMs: np.elapsedMs, durationMs: np.durationMs,
+      });
+      let packets;
+      try { packets = proto.buildImageTransfer(frame); }
+      catch (e) { setStatus(statusEl, 'Build failed: ' + ((e && e.message) || e), 'err'); return; }
+      const onProg = (f) => { progBar.style.width = Math.round(f * 100) + '%'; };
+      const ok = await sendAckGatedWithProgress('Now Playing → card', statusEl, packets, onProg);
+      if (ok) {
+        setNowShowing('picture'); // the card lives on the picture page
+        setStatus(statusEl, `${np.isPlaying ? '▶' : '⏸'} ${np.title} — ${np.artist}`, 'ok');
+      }
+    } finally {
+      sending = false;
+      setTimeout(() => { progWrap.hidden = true; }, 600);
+    }
+  }
+
+  async function tick(token) {
+    if (token !== npToken || !npRunning) return;
+    let np = null;
+    try { np = await currentTrack(); }
+    catch (e) {
+      const msg = (e && e.message) || String(e);
+      setStatus(statusEl, 'Spotify error: ' + msg, 'err');
+      if (/Not connected to Spotify/i.test(msg)) { stopNP(); return; } // refresh token gone/revoked
+    }
+    if (token !== npToken || !npRunning) return;
+
+    if (np && np.title) {
+      showTrack(np);
+      const key = `${np.trackId}|${np.isPlaying ? 'r' : 'p'}`;
+      const trackChanged = key !== lastKey;
+      const progressDue = np.isPlaying && Date.now() - lastSentAt >= PROGRESS_REFRESH_MS;
+      if ((trackChanged || progressDue) && !sending) {
+        await pushTrack(np);
+        lastKey = key;
+        lastSentAt = Date.now();
+      }
+    } else {
+      showTrack(null);
+      if (lastKey !== 'idle') { setStatus(statusEl, 'Nothing playing on Spotify.'); lastKey = 'idle'; }
+    }
+    if (token !== npToken || !npRunning) return;
+    npTimer = setTimeout(() => tick(token), POLL_MS);
+  }
+
+  startBtn.addEventListener('click', () => {
+    if (!connected) { setStatus(statusEl, 'Connect the keyboard first.', 'err'); return; }
+    if (!spotifyConnected()) { setStatus(statusEl, 'Connect Spotify first.', 'err'); return; }
+    stopNP();                                      // clean any prior run
+    npRunning = true;
+    const token = ++npToken;
+    lastKey = null; lastSentAt = 0;
+    updateButtons();
+    setStatus(statusEl, 'Live push running — press Stop to end.', 'ok');
+    tick(token);
+  });
+  stopBtn.addEventListener('click', () => {
+    stopNP();
+    setStatus(statusEl, 'Stopped.');
+  });
+
+  // On load: finish an in-flight redirect (if any), then reflect state.
+  completeAuthFromRedirect().finally(reflectAuth);
+  reflectAuth();
 }
 
 // ---- lighting (keyboard RGB — VIA RGB-matrix over the same HID interface) ----

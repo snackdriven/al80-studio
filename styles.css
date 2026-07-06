@@ -549,6 +549,34 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .slide-move:disabled { opacity: 0.3; cursor: not-allowed; }
 .slide-transport { margin-top: 18px; }
 
+/* ---- now playing ---- */
+.np-auth { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.np-redirect {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+  color: var(--muted);
+}
+.np-track { display: flex; gap: 12px; align-items: center; text-align: left; margin: 6px 0 14px; }
+.np-art {
+  width: 96px; height: 96px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--panel-2);
+  flex: none;
+}
+.np-art[hidden] { display: none; }
+.np-meta { min-width: 0; }
+.np-title { margin: 0 0 4px; font-weight: 600; overflow-wrap: anywhere; }
+.np-transport { margin-top: 12px; gap: 10px; }
+
 /* Destination toggle → segmented control (main page vs separate view) */
 .dest-toggle {
   display: flex;
