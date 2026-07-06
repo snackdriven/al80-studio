@@ -668,6 +668,19 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
+.footer-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.footer-link {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: color .12s, border-color .12s;
+}
+.footer-link:hover { color: var(--accent); border-color: var(--accent); }
 
 /* Keymap */
 .shortcuts-grid { display: grid; grid-template-columns: 260px 1fr; gap: 28px; margin-top: 16px; align-items: start; }
