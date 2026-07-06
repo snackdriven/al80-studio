@@ -9,6 +9,7 @@
 // available in Firefox or Safari as of mid-2026. When absent we throw a clear error.
 
 import { WIDTH, HEIGHT, rgb565BE } from './protocol.js';
+import { fitDraw } from './image.js';
 
 const BROWSER_REQ =
   'ImageDecoder (WebCodecs) is unavailable. Animated GIF import needs a Chromium-based ' +
@@ -53,19 +54,18 @@ async function openDecoder(file) {
 }
 
 /**
- * Centre-fit (cover) draw a decoded VideoFrame onto the 112x137 context.
+ * Draw a decoded VideoFrame onto the `w`x`h` context using the chosen fit rule.
+ * Delegates to the SAME fitDraw the Picture tab uses, so GIF and still-image framing
+ * can't diverge (a VideoFrame reports its size via displayWidth/Height, which srcDims reads).
  * @param {CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D} ctx
  * @param {VideoFrame} frame
+ * @param {number} w
+ * @param {number} h
+ * @param {'cover'|'contain'|'stretch'} fit
+ * @param {string} padColor  used only for 'contain'
  */
-function coverDrawVideoFrame(ctx, frame, w, h) {
-  const sw = frame.displayWidth || frame.codedWidth || w;
-  const sh = frame.displayHeight || frame.codedHeight || h;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  const scale = Math.max(w / sw, h / sh);
-  const dw = sw * scale;
-  const dh = sh * scale;
-  ctx.drawImage(frame, (w - dw) / 2, (h - dh) / 2, dw, dh);
+function drawVideoFrame(ctx, frame, w, h, fit, padColor) {
+  fitDraw(ctx, frame, w, h, fit, padColor);
 }
 
 /**
@@ -94,7 +94,7 @@ export async function gifFrameCount(file) {
  * @param {{maxFrames?: number}} [opts]
  * @returns {Promise<Uint8Array[] & {frameCount:number, truncated:boolean, note:string}>}
  */
-export async function gifToFrames(file, { maxFrames = 64, width = WIDTH, height = HEIGHT } = {}) {
+export async function gifToFrames(file, { maxFrames = 64, width = WIDTH, height = HEIGHT, fit = 'cover', padColor = '#000000' } = {}) {
   const decoder = await openDecoder(file);
   const canvas = makeCanvas(width, height);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -111,7 +111,7 @@ export async function gifToFrames(file, { maxFrames = 64, width = WIDTH, height 
     for (let i = 0; i < n; i++) {
       const { image } = await decoder.decode({ frameIndex: i });
       try {
-        coverDrawVideoFrame(ctx, image, width, height);
+        drawVideoFrame(ctx, image, width, height, fit, padColor);
         const rgba = ctx.getImageData(0, 0, width, height).data;
         const frame = rgb565BE(rgba);
         if (frame.length !== expectBytes) {

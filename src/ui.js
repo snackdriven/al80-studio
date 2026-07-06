@@ -668,6 +668,12 @@ function setupImageTab() {
     }
     wrap.hidden = false;
     bar.style.width = '0%';
+    // Main-page still = a 1-frame mode-2 GIF, so a previously-stored multi-frame GIF can tail under it.
+    // Wipe it first (same fix as the GIF tab). Best-effort: silence + ignore so a clear failure can't block.
+    if (dest === 'main') {
+      setStatus(statusEl, 'Clearing the old GIF…');
+      await guardedSend('Clear GIF (pre-upload)', null, proto.buildClearGif(), { gap: 2 });
+    }
     setStatus(statusEl, `Sending ${packets.length} packets…`);
     const onProg = (f) => { bar.style.width = Math.round(f * 100) + '%'; };
     // picture page = ACK-gated (blasting drops bytes); main page = plain send. (No pre-switch to home —
@@ -701,6 +707,7 @@ function setupGifTab() {
   const countEl = $('#gifCount');
   const fps = $('#gifFps');
   const fpsOut = $('#gifFpsOut');
+  const fitEl = $('#gifFit');
   const previewCanvas = $('#gifPreview');
   const pctx = previewCanvas.getContext('2d');
   const destNote = $('#gifDestNote');
@@ -750,7 +757,7 @@ function setupGifTab() {
     currentFrames = null;
     previewImages = null;
     try {
-      const frames = await gif.gifToFrames(currentFile, { maxFrames: d.max, width: d.w, height: d.h });
+      const frames = await gif.gifToFrames(currentFile, { maxFrames: d.max, width: d.w, height: d.h, fit: fitEl.value });
       if (token !== loadToken) return; // superseded by a newer decode
       currentFrames = frames;
       previewImages = frames.map((f) => new ImageData(image.frameToRGBA(f), d.w, d.h));
@@ -783,6 +790,9 @@ function setupGifTab() {
     if (previewImages && previewImages.length > 1) startPreview(false); // re-time, keep position
   });
 
+  // Changing the fit re-frames the source, so re-decode at the current resolution.
+  fitEl.addEventListener('change', () => { if (currentFile) decodeAndPreview(); });
+
   fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -801,7 +811,7 @@ function setupGifTab() {
     if (!frames) {
       setStatus(statusEl, 'Decoding GIF…');
       try {
-        frames = await gif.gifToFrames(currentFile, { maxFrames: d.max, width: d.w, height: d.h });
+        frames = await gif.gifToFrames(currentFile, { maxFrames: d.max, width: d.w, height: d.h, fit: fitEl.value });
       } catch (err) {
         setStatus(statusEl, 'Decode failed: ' + ((err && err.message) || err), 'err');
         return;
@@ -820,6 +830,11 @@ function setupGifTab() {
     const kept = frames.length;
     wrap.hidden = false;
     bar.style.width = '0%';
+    // Wipe the previously-stored GIF FIRST so a new, shorter GIF can't leave stale frames tailing
+    // (buildClearGif is only otherwise wired to the manual "Clear GIF" button). Best-effort: a clear
+    // failure shouldn't block the upload, so its status is silenced and its result ignored.
+    setStatus(statusEl, 'Clearing the old GIF…');
+    await guardedSend('Clear GIF (pre-upload)', null, proto.buildClearGif(), { gap: 2 });
     setStatus(statusEl, `Sending ${packets.length} packets (${kept} frame${kept === 1 ? '' : 's'} @ ${fps.value} fps) — paced, takes a few seconds…`);
     try {
       const label = dest === 'main' ? 'GIF → main page' : dest === 'startup' ? 'GIF → startup animation' : 'GIF → gif page';
