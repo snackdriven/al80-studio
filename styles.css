@@ -824,6 +824,162 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .unsupported h1 { font-size: 20px; margin: 0 0 12px; }
 .unsupported p { color: var(--muted); }
 
+/* ============================ Slot cache + recents ============================ */
+/* Studio's client-side memory of what it PUSHED to each LCD area. Every surface here is
+   labelled "last pushed from Studio", never "on the device now" — the LCD is write-only. */
+
+/* Live-track meta on the device bar (shown while Now Playing runs). */
+.ns-track-meta {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ns-state.is-live { color: var(--ok); }
+
+/* Device-bar overview strip: the 4 area thumbnails, wraps to its own row. */
+.db-overview {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.db-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.db-thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+}
+.db-thumb:hover { color: var(--text); border-color: var(--border-2); }
+.db-thumb img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  background: #000;
+  border-radius: 4px;
+  image-rendering: pixelated;
+}
+.db-thumb .db-thumb-area { text-transform: capitalize; font-weight: 600; }
+.db-thumb.is-live { color: var(--ok); border-color: rgba(63,191,127,0.4); }
+.db-thumb.is-live .db-thumb-live { color: var(--ok); }
+
+/* Per-tab "Currently on <area>" cards. */
+.slot-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.slot-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  min-width: 260px;
+  flex: 1 1 260px;
+}
+.slot-card-thumb {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  object-fit: contain;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  image-rendering: pixelated;
+}
+.slot-card.is-live .slot-card-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ok);
+  font-size: 22px;
+}
+.slot-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.slot-card-area { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.slot-card-name {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.slot-card-when { font-size: 12px; color: var(--muted); }
+.slot-card.is-live .slot-card-name { color: var(--ok); }
+.slot-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.slot-card-actions .btn { padding: 4px 10px; font-size: 12px; }
+.slot-card-status { font-size: 12px; margin: 4px 0 0; min-height: 0; }
+
+/* Recents drawer + gallery (mirrors the device-log <details>). */
+.recents-drawer {
+  margin-top: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.recents-drawer > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  list-style: none;
+}
+.recents-drawer > summary::-webkit-details-marker { display: none; }
+.recents-drawer[open] > summary { margin-bottom: 10px; }
+.recents-toolbar { margin-bottom: 10px; }
+.recents-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+.recents-gallery:empty::before {
+  content: "Nothing pushed yet — send an image, GIF, or slideshow and it lands here.";
+  color: var(--muted);
+  font-size: 13px;
+}
+.recent-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.recent-card.pinned { border-color: var(--accent); }
+.recent-thumb {
+  width: 100%;
+  height: 96px;
+  object-fit: contain;
+  background: #000;
+  border-radius: 6px;
+  image-rendering: pixelated;
+  cursor: pointer;
+}
+.recent-name {
+  font-size: 12px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-meta { font-size: 11px; color: var(--muted); }
+.recent-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.recent-actions .btn { padding: 3px 8px; font-size: 11px; }
+.recent-pin { position: absolute; top: 6px; right: 6px; }
+.recent-pin.on { color: var(--accent); }
+
 @media (max-width: 860px) {
   #app { padding: 20px 16px 48px; }
   .image-grid, .shortcuts-grid { grid-template-columns: 1fr; }

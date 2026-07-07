@@ -4,5 +4,5 @@
   "private": true,
   "type": "module",
   "description": "WebHID control panel for the YUNZII AL80 — LCD (clock, picture, GIF, slideshow), RGB lighting, and a live VIA keymap editor.",
-  "scripts": { "test": "node test/protocol.test.mjs && node test/keymap.test.mjs && node test/nowplaying.test.mjs && node host/test/nowplaying.test.mjs && node host/test/device.dryrun.test.mjs && node host/test/roundtrip.test.mjs && node host/test/scheduler.test.mjs" }
+  "scripts": { "test": "node test/protocol.test.mjs && node test/keymap.test.mjs && node test/nowplaying.test.mjs && node test/slots.test.mjs && node host/test/nowplaying.test.mjs && node host/test/device.dryrun.test.mjs && node host/test/roundtrip.test.mjs && node host/test/scheduler.test.mjs" }
 }

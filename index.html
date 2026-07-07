@@ -42,6 +42,7 @@
         <span class="db-live">LIVE</span>
         <span class="db-label">On the LCD now</span>
         <span id="nsState" class="ns-state">unknown</span>
+        <span id="nsTrack" class="ns-track-meta" hidden></span>
       </div>
       <div class="device-bar-actions">
         <span class="db-hint">Show:</span>
@@ -51,6 +52,13 @@
           <button id="nsGif" type="button" class="ns-seg device-action" data-view="gif" aria-pressed="false" title="Switch the LCD to the GIF view" disabled>GIF</button>
         </div>
         <span id="syncBadge" class="sync-badge" hidden>Syncing &middot; every 60s</span>
+      </div>
+
+      <!-- Overview strip: what Studio last PUSHED to each area (client-side memory, not a device
+           read). Filled by JS from the slot cache; click a thumb to jump to that tab. -->
+      <div class="db-overview" id="dbOverview" hidden>
+        <span class="db-label">Studio pushed</span>
+        <div class="db-thumbs" id="dbThumbs"></div>
       </div>
     </div>
 
@@ -109,6 +117,7 @@
             <h2>Picture</h2>
             <p class="muted">Send a single still to the LCD.</p>
           </div>
+          <div class="slot-cards" id="cardsPicture" hidden></div>
           <div class="image-grid">
             <div class="image-controls">
               <div id="imageDrop" class="dropzone">
@@ -179,6 +188,7 @@
             <h2>GIF</h2>
             <p class="muted">Send an animated GIF to the LCD.</p>
           </div>
+          <div class="slot-cards" id="cardsGif" hidden></div>
           <div class="image-grid">
             <div class="image-controls">
               <div class="row">
@@ -239,6 +249,7 @@
             <h2>Slideshow</h2>
             <p class="muted">Upload up to 16 stills to the picture slots and auto-cycle them on the LCD.</p>
           </div>
+          <div class="slot-cards" id="cardsSlideshow" hidden></div>
 
           <div id="slideDrop" class="dropzone">
             <p>Drop images here, or</p>
@@ -324,6 +335,16 @@
 
       </main>
     </div>
+
+    <!-- Recents — Studio's library of past pushes (client-side memory, not a device read).
+         Click a thumb to load it into its tab or re-push; pin to keep it past the cap. -->
+    <details id="recentsDrawer" class="recents-drawer">
+      <summary>Recents <span id="recentsCount" class="log-count">0</span></summary>
+      <div class="recents-toolbar">
+        <span class="muted small">Thumbnails of what Studio last pushed &mdash; not a read of the panel. Click one to load it into its tab, re-push it, or pin it so the cap can't evict it.</span>
+      </div>
+      <div id="recentsGallery" class="recents-gallery" aria-live="polite"></div>
+    </details>
 
     <!-- Device log — collapsed by default, logs every command sent -->
     <details id="deviceLog" class="device-log">

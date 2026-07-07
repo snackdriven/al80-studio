@@ -14,6 +14,7 @@ import * as keymap from './keymap.js';
 import * as spotify from './nowplaying/spotify.js';
 import { render as renderNowPlayingCard } from './nowplaying/card.js';
 import { loadArtRGB } from './nowplaying/albumart.js';
+import * as slots from './slots.js';
 
 // ---- tiny DOM helpers -------------------------------------------------------
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -265,6 +266,7 @@ function init() {
   setupLightingTab();
   setupClearActions();
   setupKeymap();
+  setupSlots();
   setupEasterEgg();
   reflectConnection();
 }
@@ -451,9 +453,19 @@ const nowPlayingVisible = () =>
   document.querySelector('#app')?.dataset.section === 'lcd' &&
   document.querySelector('.panel[data-panel="nowplaying"]')?.hidden === false;
 
+// Per-tab file loaders, registered by each setup*Tab so the Recents "Load into tab" action can drop
+// a cached source back into the editor. Keyed by tab name ('picture' | 'gif'). Assigned at init.
+const tabLoaders = {};
+
 // ---- Now Showing bar --------------------------------------------------------
 // Tracks the last view THIS app set. 'unknown' on fresh connect (write-only device).
 let lastView = 'unknown';
+
+// Now-Playing live ownership of the picture/main slot. While npLive is true the device bar reads
+// "▶ Now Playing" + the track, and the picture/main slot cards show a live badge instead of a stale
+// thumbnail. Set by slotsLive() from the Now Playing loop; read by setNowShowing + the card render.
+let npLive = false;
+let npTrack = null;
 
 const NS_SEGMENTS = {
   clock: { view: proto.VIEW.HOMEPAGE, label: 'Clock' },
@@ -467,7 +479,9 @@ function setNowShowing(which) {
     seg.setAttribute('aria-pressed', String(seg.dataset.view === which));
   });
   const stateEl = $('#nsState');
-  if (stateEl) stateEl.textContent = which === 'unknown' ? 'unknown' : NS_SEGMENTS[which].label;
+  // While Now Playing owns the bar (npLive), don't clobber the "▶ Now Playing" readout — a push
+  // still calls setNowShowing('picture') to track the view, but the live label must win.
+  if (stateEl && !npLive) stateEl.textContent = which === 'unknown' ? 'unknown' : NS_SEGMENTS[which].label;
 }
 
 function setupNowShowing() {
@@ -636,6 +650,15 @@ function setupImageTab() {
 
   fileInput.addEventListener('change', (e) => loadFile(e.target.files[0]));
 
+  // Recents "Load into tab": set the destination to match the cached area, then load the source
+  // File so the editor's controls apply on the next preview/send.
+  tabLoaders.picture = (file, dest) => {
+    const val = dest === 'main' ? 'main' : 'page';
+    const r = document.querySelector(`input[name="picDest"][value="${val}"]`);
+    if (r && !r.checked) { r.checked = true; applyDest(); }
+    loadFile(file);
+  };
+
   // drag + drop
   ['dragenter', 'dragover'].forEach((ev) =>
     drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('dragover'); }));
@@ -707,6 +730,14 @@ function setupImageTab() {
           if (shown) setNowShowing('picture');
           setStatus(statusEl, 'Sent to the picture page (may not display on your firmware).', 'ok');
         }
+        // Remember what Studio just pushed (client-side slot cache).
+        const area = dest === 'main' ? 'main' : 'picture';
+        const [tw, th] = dest === 'main' ? [proto.MP_W, proto.MP_H] : [proto.WIDTH, proto.HEIGHT];
+        const thumbBlob = await thumbFromFrame(frame, tw, th);
+        await capturePush({
+          area, name: currentFile.name || 'Picture', kind: 'image',
+          sourceBlob: currentFile, settings: { ...readOpts(), dest }, thumbBlob,
+        });
       }
     } finally {
       setTimeout(() => { wrap.hidden = true; }, 800);
@@ -816,6 +847,15 @@ function setupGifTab() {
     decodeAndPreview();
   });
 
+  // Recents "Load into tab": set the destination to match the cached area, then decode the source.
+  tabLoaders.gif = (file, dest) => {
+    const r = dest && document.querySelector(`input[name="gifDest"][value="${dest}"]`);
+    if (r && !r.checked) r.checked = true;
+    currentFile = file;
+    nameEl.textContent = file.name;
+    applyDest(); // re-notes + re-decodes at the (possibly new) destination resolution
+  };
+
   const wrap = $('#gifProgressWrap');
   const bar = $('#gifProgress');
   $('#gifSend').addEventListener('click', async () => {
@@ -869,6 +909,14 @@ function setupGifTab() {
           if (shown) setNowShowing('gif');
           setStatus(statusEl, `Sent GIF to the gif page${capNote} (may not display on your firmware).`, 'ok');
         }
+        // Remember what Studio just pushed (client-side slot cache).
+        const area = dest === 'main' ? 'main' : dest === 'startup' ? 'startup' : 'gif';
+        const thumbBlob = await thumbFromFrame(frames[0], d.w, d.h);
+        await capturePush({
+          area, name: currentFile.name || 'GIF', kind: 'gif',
+          sourceBlob: currentFile, settings: { fit: fitEl.value, fps: +fps.value, dest },
+          thumbBlob, frameCount: kept, fps: +fps.value,
+        });
       }
     } finally {
       setTimeout(() => { wrap.hidden = true; }, 800);
@@ -1127,6 +1175,14 @@ function setupSlideshowTab() {
       setBusy(false); // re-enable before starting the cycle
       startCycle();
       setStatus(statusEl, `Slideshow running — ${n} slide${n === 1 ? '' : 's'}, ${intervalEl.value}s each.`, 'ok');
+      // Remember what Studio just pushed (client-side slot cache). Keeps the whole file list so
+      // Re-push can replay the ring; the thumbnail is slide 1.
+      const thumbBlob = await slots.thumbFromSource(slides[0].url).catch(() => null);
+      await capturePush({
+        area: 'picture', name: `Slideshow · ${n} slide${n === 1 ? '' : 's'}`, kind: 'slideshow',
+        sources: slides.map((s) => s.file), settings: { ...opts, interval: +intervalEl.value },
+        thumbBlob, frameCount: n,
+      });
     } finally {
       setBusy(false);
       setTimeout(() => { wrap.hidden = true; }, 800);
@@ -1309,6 +1365,7 @@ function setupNowPlayingTab() {
     npRunning = false;
     npToken++;                                     // invalidate any in-flight loop iteration
     if (npTimer) { clearTimeout(npTimer); npTimer = null; }
+    slotsLive(false);                              // hand the picture/main slot back to its cached thumb
     updateButtons();
   }
   nowPlayingCtl.stop = stopNP;
@@ -1349,31 +1406,51 @@ function setupNowPlayingTab() {
 
   async function tick(token) {
     if (token !== npToken || !npRunning) return;
-    let np = null;
-    try { np = await currentTrack(); }
-    catch (e) {
-      const msg = (e && e.message) || String(e);
-      setStatus(statusEl, 'Spotify error: ' + msg, 'err');
-      if (/Not connected to Spotify/i.test(msg)) { stopNP(); return; } // refresh token gone/revoked
-    }
-    if (token !== npToken || !npRunning) return;
-
-    if (np && np.title) {
-      showTrack(np);
-      const key = `${np.trackId}|${np.isPlaying ? 'r' : 'p'}`;
-      const trackChanged = key !== lastKey;
-      const progressDue = np.isPlaying && Date.now() - lastSentAt >= PROGRESS_REFRESH_MS;
-      if ((trackChanged || progressDue) && !sending) {
-        await pushTrack(np);
-        lastKey = key;
-        lastSentAt = Date.now();
+    // The whole body is wrapped so a throw ANYWHERE (a failed art fetch, a build error, a mid-cache
+    // 401) can never skip the re-arm below. The old loop awaited pushTrack() unguarded, so one bad
+    // push killed the poll — the card would show the FIRST song and never update again. Now the next
+    // poll is scheduled in `finally`, and lastKey only advances after a push actually succeeds.
+    try {
+      let np = null;
+      try {
+        np = await currentTrack();
+      } catch (e) {
+        const msg = (e && e.message) || String(e);
+        console.warn('[nowplaying] poll — Spotify error:', msg);
+        setStatus(statusEl, 'Spotify error: ' + msg, 'err');
+        if (/Not connected to Spotify/i.test(msg)) { stopNP(); return; } // refresh token gone/revoked
       }
-    } else {
-      showTrack(null);
-      if (lastKey !== 'idle') { setStatus(statusEl, 'Nothing playing on Spotify.'); lastKey = 'idle'; }
+      if (token !== npToken || !npRunning) return;
+
+      if (np && np.title) {
+        showTrack(np);
+        slotsLive(true, np); // keep the device-bar live readout in step with the track
+        const key = `${np.trackId}|${np.isPlaying ? 'r' : 'p'}`;
+        const trackChanged = key !== lastKey;
+        const progressDue = np.isPlaying && Date.now() - lastSentAt >= PROGRESS_REFRESH_MS;
+        const willPush = (trackChanged || progressDue) && !sending;
+        console.log('[nowplaying] poll', np.trackId, np.isPlaying ? 'playing' : 'paused',
+          willPush ? (trackChanged ? 'PUSH (changed)' : 'PUSH (progress)') : (sending ? 'busy' : 'unchanged'));
+        if (willPush) {
+          try {
+            await pushTrack(np);
+            lastKey = key;            // advance the change-key ONLY after a successful render+push
+            lastSentAt = Date.now();
+          } catch (e) {
+            // A push failure (art load / build / send) must not kill the loop or advance lastKey —
+            // leave it stale so the very next poll retries this exact track.
+            console.warn('[nowplaying] push failed, retrying next poll:', (e && e.message) || e);
+            setStatus(statusEl, 'Push failed: ' + ((e && e.message) || e), 'err');
+          }
+        }
+      } else {
+        showTrack(null);
+        if (lastKey !== 'idle') { setStatus(statusEl, 'Nothing playing on Spotify.'); lastKey = 'idle'; }
+      }
+    } finally {
+      // Always re-arm while running — this is the fix for "only the first song updates".
+      if (token === npToken && npRunning) npTimer = setTimeout(() => tick(token), POLL_MS);
     }
-    if (token !== npToken || !npRunning) return;
-    npTimer = setTimeout(() => tick(token), POLL_MS);
   }
 
   startBtn.addEventListener('click', () => {
@@ -1383,6 +1460,7 @@ function setupNowPlayingTab() {
     npRunning = true;
     const token = ++npToken;
     lastKey = null; lastSentAt = 0;
+    slotsLive(true, null); // claim the picture/main slot as live immediately (track fills in on first poll)
     updateButtons();
     setStatus(statusEl, 'Live push running — press Stop to end.', 'ok');
     tick(token);
@@ -1395,6 +1473,377 @@ function setupNowPlayingTab() {
   // On load: finish an in-flight redirect (if any), then reflect state.
   completeAuthFromRedirect().finally(reflectAuth);
   reflectAuth();
+}
+
+// ---- slot cache + recents (client-side memory of what Studio pushed) ---------
+// Honest by construction: the LCD is write-only, so these surfaces say "last pushed from Studio",
+// never "on the device now". Cards + the device-bar overview + a recents gallery all read the same
+// IndexedDB store (src/slots.js); Re-push re-derives frames from the cached source + settings.
+
+const AREA_LABEL = { main: 'Main page', picture: 'Picture page', gif: 'GIF page', startup: 'Startup' };
+const AREA_LABEL_SHORT = { main: 'Main', picture: 'Picture', gif: 'GIF', startup: 'Startup' };
+const AREA_TAB = { main: 'picture', picture: 'picture', gif: 'gif', startup: 'gif' };
+const KIND_TAB = { image: 'picture', gif: 'gif', slideshow: 'slideshow' };
+const KIND_FILE = { image: '#imageFile', gif: '#gifFile', slideshow: '#slideFile' };
+// Which area cards render in which tab. 'main' appears in both editors that write it — each mirrors
+// the same slot record, which is fine (one source of truth in IDB).
+const CARD_CONTAINERS = [
+  { id: 'cardsPicture', areas: ['main', 'picture'] },
+  { id: 'cardsGif', areas: ['main', 'gif', 'startup'] },
+  { id: 'cardsSlideshow', areas: ['picture'] },
+];
+
+// Now Playing pushes via the picture-page path (buildImageTransfer), so it owns the 'picture' area
+// while live. The device-bar's global live readout covers the "main" reading of it.
+const isLiveArea = (area) => npLive && area === 'picture';
+
+// ---- tiny DOM + time helpers ----
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+function mkBtn(label, cls, onClick) {
+  const b = el('button', 'btn ' + (cls || ''), label);
+  b.type = 'button';
+  b.addEventListener('click', onClick);
+  return b;
+}
+function relTime(ts) {
+  const s = Math.max(0, Math.round((Date.now() - (ts || 0)) / 1000));
+  if (s < 45) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.round(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+function asFile(blob, name) {
+  if (!blob) return null;
+  if (typeof File !== 'undefined' && blob instanceof File) return blob;
+  try { return new File([blob], name || 'file', { type: blob.type || 'application/octet-stream' }); }
+  catch { return blob; }
+}
+function goToTab(name) {
+  const sec = document.querySelector('.section-btn[data-section="lcd"]');
+  if (sec) sec.click();
+  const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (tab) tab.click();
+}
+
+// Object-URL bookkeeping so thumbnails don't leak. Full re-render revokes the previous batch.
+const objectURLs = new Set();
+function objURL(blob) { const u = URL.createObjectURL(blob); objectURLs.add(u); return u; }
+function revokeObjURLs() { for (const u of objectURLs) URL.revokeObjectURL(u); objectURLs.clear(); }
+
+// GIF cards animate the ORIGINAL source on hover (the thumb is a static frame-0 PNG).
+function wireGifHover(img, rec) {
+  let hoverURL = null;
+  img.addEventListener('mouseenter', () => {
+    if (hoverURL || !rec.sourceBlob) return;
+    hoverURL = URL.createObjectURL(rec.sourceBlob);
+    img.dataset.staticSrc = img.src;
+    img.src = hoverURL;
+  });
+  img.addEventListener('mouseleave', () => {
+    if (hoverURL) { URL.revokeObjectURL(hoverURL); hoverURL = null; }
+    if (img.dataset.staticSrc) img.src = img.dataset.staticSrc;
+  });
+}
+
+// ---- capture (called from each Send handler after a successful push) ----
+async function thumbFromFrame(frame, w, h) {
+  try { return await slots.thumbFromImageData(new ImageData(image.frameToRGBA(frame), w, h)); }
+  catch (e) { console.warn('[slots] thumb failed:', e); return null; }
+}
+async function capturePush({ area, name, kind, sourceBlob = null, sources = null, settings = {}, thumbBlob = null, frameCount = 1, fps = 0, pushedAt = Date.now() }) {
+  try {
+    const payload = { area, name, kind, sourceBlob, sources, settings, thumbBlob, frameCount, fps, pushedAt };
+    await slots.saveSlot(area, payload);
+    await slots.addRecent(payload);
+    refreshSlotsUI();
+  } catch (e) { console.warn('[slots] capture failed:', e); }
+}
+
+// ---- re-push (re-derive frames from cached source + settings, same pipeline as Send) ----
+async function rePushSlot(slot, { onStatus = () => {}, onProgress = () => {} } = {}) {
+  if (!connected) throw new Error('Connect the keyboard first.');
+  if (slot.kind === 'slideshow') return rePushSlideshow(slot, { onStatus, onProgress });
+  if (!slot.sourceBlob) throw new Error('Source not cached — use Replace to pick the file again.');
+  const s = slot.settings || {};
+  const area = slot.area;
+  const src = slot.sourceBlob;
+
+  if (slot.kind === 'gif') {
+    const d = area === 'main' ? { w: proto.MP_W, h: proto.MP_H, max: proto.MP_MAX_FRAMES }
+      : area === 'startup' ? { w: proto.SA_W, h: proto.SA_H, max: proto.SA_MAX_FRAMES }
+      : { w: proto.GP_W, h: proto.GP_H, max: proto.GP_MAX_FRAMES };
+    onStatus('Decoding GIF…');
+    const frames = await gif.gifToFrames(src, { maxFrames: d.max, width: d.w, height: d.h, fit: s.fit || 'cover' });
+    const fps = s.fps || slot.fps || 30;
+    const packets = area === 'main' ? proto.buildMainPageGif(frames, fps)
+      : area === 'startup' ? proto.buildStartupAnimation(frames, fps)
+      : proto.buildGifPage(frames, fps);
+    onStatus('Clearing the old GIF…');
+    await guardedSend('Clear GIF (pre-upload)', null, proto.buildClearGif(), { gap: 2 });
+    onStatus('Sending…');
+    const ok = await sendGifWithProgress('Re-push GIF → ' + area, null, packets, onProgress);
+    if (!ok) throw new Error('Send failed.');
+    if (area === 'main') setNowShowing('clock');
+    else if (area === 'gif') { await guardedSend('View → GIF', null, proto.buildView(proto.VIEW.GIF), { gap: 1 }); setNowShowing('gif'); }
+    return;
+  }
+
+  // still image
+  if (area === 'main') {
+    onStatus('Rendering…');
+    const frame = await image.imageToMainPageFrame(src, s);
+    const packets = proto.buildMainPageImage(frame);
+    onStatus('Clearing the old GIF…');
+    await guardedSend('Clear GIF (pre-upload)', null, proto.buildClearGif(), { gap: 2 });
+    onStatus('Sending…');
+    const ok = await sendGifWithProgress('Re-push Picture → main page', null, packets, onProgress);
+    if (!ok) throw new Error('Send failed.');
+    setNowShowing('clock');
+  } else {
+    onStatus('Rendering…');
+    const frame = await image.imageToFrame(src, s);
+    const packets = proto.buildImageTransfer(frame);
+    onStatus('Sending…');
+    const ok = await sendAckGatedWithProgress('Re-push Picture → picture page', null, packets, onProgress);
+    if (!ok) throw new Error('Send failed.');
+    await guardedSend('View → Picture', null, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+    setNowShowing('picture');
+  }
+}
+
+async function rePushSlideshow(slot, { onStatus = () => {}, onProgress = () => {} } = {}) {
+  const files = slot.sources;
+  if (!Array.isArray(files) || !files.length) throw new Error('Slides not cached — re-add them in the Slideshow tab.');
+  const s = slot.settings || {};
+  onStatus('Clearing picture slots…');
+  if (!(await guardedSend('Clear pictures', null, proto.buildClearPicture(), { gap: 2 }))) throw new Error('Clear failed.');
+  const n = files.length;
+  for (let i = 0; i < n; i++) {
+    onStatus(`Uploading slide ${i + 1} of ${n}…`);
+    const frame = await image.imageToFrame(files[i], s);
+    const packets = proto.buildImageTransfer(frame);
+    const ok = await sendWithProgress(`Re-push slide ${i + 1}/${n}`, null, packets, (f) => onProgress((i + f) / n), { gap: 0 });
+    if (!ok) throw new Error('Send failed on slide ' + (i + 1));
+    if (i < n - 1) await sleep(200);
+  }
+  await guardedSend('Slideshow → show', null, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+  setNowShowing('picture');
+  // Note: re-push uploads the ring + shows slide 1, but the auto-cycle lives in the Slideshow tab —
+  // open it and press Play to cycle.
+}
+
+// ---- card actions ----
+async function doRePush(rec, statusEl) {
+  if (!connected) { setStatus(statusEl, 'Connect the keyboard first.', 'err'); return; }
+  setStatus(statusEl, 'Re-pushing…');
+  try {
+    await rePushSlot(rec, { onStatus: (m) => setStatus(statusEl, m) });
+    setStatus(statusEl, 'Re-pushed.', 'ok');
+    // Bump the slot's timestamp so the card reads fresh.
+    if (rec.area) await slots.saveSlot(rec.area, { ...rec, pushedAt: Date.now() });
+    refreshSlotsUI();
+  } catch (e) { setStatus(statusEl, 'Re-push failed: ' + ((e && e.message) || e), 'err'); }
+}
+function doReplace(rec) {
+  const tab = KIND_TAB[rec.kind] || 'picture';
+  goToTab(tab);
+  const input = document.querySelector(KIND_FILE[rec.kind] || '#imageFile');
+  if (input) input.click();
+}
+async function doClear(area) {
+  await slots.clearSlot(area);
+  if (connected && confirm(`Cleared Studio's record of the ${AREA_LABEL[area]}. Also erase this area on the keyboard now?`)) {
+    const packets = area === 'picture' ? proto.buildClearPicture() : proto.buildClearGif();
+    await guardedSend('Clear ' + AREA_LABEL[area], null, packets, { gap: 2 });
+  }
+  refreshSlotsUI();
+}
+function loadRecentIntoTab(rec) {
+  const tab = KIND_TAB[rec.kind] || 'picture';
+  goToTab(tab);
+  const loader = tabLoaders[tab];
+  if (loader && rec.sourceBlob) loader(asFile(rec.sourceBlob, rec.name), rec.settings && rec.settings.dest);
+}
+
+// ---- render: per-tab cards ----
+function createSlotCard(area, slot) {
+  const live = isLiveArea(area);
+  const card = el('div', 'slot-card' + (live ? ' is-live' : ''));
+
+  if (live) {
+    card.appendChild(el('div', 'slot-card-thumb', '▶'));
+  } else {
+    const img = el('img', 'slot-card-thumb');
+    img.alt = `Last pushed to ${AREA_LABEL[area]}`;
+    if (slot.thumbBlob) img.src = objURL(slot.thumbBlob);
+    if (slot.kind === 'gif' && slot.sourceBlob) wireGifHover(img, slot);
+    card.appendChild(img);
+  }
+
+  const body = el('div', 'slot-card-body');
+  body.appendChild(el('div', 'slot-card-area', AREA_LABEL[area]));
+  if (live) {
+    body.appendChild(el('div', 'slot-card-name', '▶ Now Playing (live)'));
+    body.appendChild(el('div', 'slot-card-when',
+      npTrack && npTrack.title ? `${npTrack.title} — ${npTrack.artist || ''}`.replace(/ — $/, '') : 'streaming from Spotify'));
+  } else {
+    body.appendChild(el('div', 'slot-card-name', slot.name || AREA_LABEL[area]));
+    const when = el('div', 'slot-card-when', `Last pushed from Studio · ${relTime(slot.pushedAt)}`);
+    when.title = new Date(slot.pushedAt).toLocaleString();
+    body.appendChild(when);
+    if (slot.sourceDropped) body.appendChild(el('div', 'slot-card-when', 'source not cached (low storage) — use Replace'));
+
+    const actions = el('div', 'slot-card-actions');
+    const status = el('p', 'slot-card-status statusline');
+    const repush = mkBtn('Re-push', 'primary small', () => doRePush(slot, status));
+    if (slot.sourceDropped) repush.disabled = true;
+    actions.append(repush, mkBtn('Replace', 'small', () => doReplace(slot)), mkBtn('Clear', 'danger small', () => doClear(area)));
+    body.append(actions, status);
+  }
+  card.appendChild(body);
+  return card;
+}
+
+async function renderAllCards(map) {
+  const slotMap = map || await slots.allSlots();
+  for (const { id, areas } of CARD_CONTAINERS) {
+    const container = document.getElementById(id);
+    if (!container) continue;
+    container.innerHTML = '';
+    let count = 0;
+    for (const area of areas) {
+      const slot = slotMap[area];
+      if (!slot && !isLiveArea(area)) continue;
+      container.appendChild(createSlotCard(area, slot || { area, name: AREA_LABEL[area] }));
+      count++;
+    }
+    container.hidden = count === 0;
+  }
+  renderBarOverview(slotMap);
+}
+
+// ---- render: device-bar overview strip ----
+function renderBarOverview(map) {
+  const wrap = document.getElementById('dbOverview');
+  const thumbs = document.getElementById('dbThumbs');
+  if (!wrap || !thumbs) return;
+  thumbs.innerHTML = '';
+  let count = 0;
+  for (const area of slots.SLOT_AREAS) {
+    const live = isLiveArea(area);
+    const slot = map[area];
+    if (!slot && !live) continue;
+    const b = el('button', 'db-thumb' + (live ? ' is-live' : ''));
+    b.type = 'button';
+    b.title = live ? '▶ Now Playing (live)' : `${slot.name} — last pushed from Studio ${relTime(slot.pushedAt)}`;
+    if (live) {
+      b.appendChild(el('span', 'db-thumb-live', '▶'));
+    } else if (slot.thumbBlob) {
+      const img = el('img'); img.src = objURL(slot.thumbBlob); img.alt = '';
+      if (slot.kind === 'gif' && slot.sourceBlob) wireGifHover(img, slot);
+      b.appendChild(img);
+    }
+    b.appendChild(el('span', 'db-thumb-area', AREA_LABEL_SHORT[area]));
+    b.addEventListener('click', () => goToTab(AREA_TAB[area]));
+    thumbs.appendChild(b);
+    count++;
+  }
+  wrap.hidden = count === 0;
+}
+
+// ---- render: device-bar live readout (Now Playing) ----
+function renderBarLive() {
+  const stateEl = document.getElementById('nsState');
+  const trackEl = document.getElementById('nsTrack');
+  if (!stateEl || !trackEl) return;
+  if (npLive) {
+    stateEl.textContent = '▶ Now Playing';
+    stateEl.classList.add('is-live');
+    if (npTrack && npTrack.title) {
+      trackEl.textContent = `${npTrack.title} — ${npTrack.artist || ''}`.replace(/ — $/, '');
+      trackEl.hidden = false;
+    } else { trackEl.hidden = true; }
+  } else {
+    stateEl.classList.remove('is-live');
+    trackEl.hidden = true;
+    setNowShowing(lastView); // restore the normal view label
+  }
+}
+
+// Called by the Now Playing loop: claim/release the live slot + keep the bar readout in step.
+function slotsLive(on, np) {
+  const newTrack = on && np ? { title: np.title, artist: np.artist } : (on ? npTrack : null);
+  const changed = on !== npLive || JSON.stringify(newTrack) !== JSON.stringify(npTrack);
+  npLive = on;
+  npTrack = newTrack;
+  renderBarLive();
+  if (changed) refreshSlotsUI(); // only rebuild cards/overview when the live state actually moved
+}
+
+// ---- render: recents gallery ----
+function createRecentCard(rec) {
+  const card = el('div', 'recent-card' + (rec.pinned ? ' pinned' : ''));
+  const img = el('img', 'recent-thumb');
+  img.alt = rec.name;
+  img.title = 'Load into tab';
+  if (rec.thumbBlob) img.src = objURL(rec.thumbBlob);
+  img.addEventListener('click', () => loadRecentIntoTab(rec));
+  if (rec.kind === 'gif' && rec.sourceBlob) wireGifHover(img, rec);
+  card.appendChild(img);
+
+  const pin = mkBtn(rec.pinned ? '★' : '☆', 'small recent-pin' + (rec.pinned ? ' on' : ''), async () => {
+    await slots.pinRecent(rec.id, !rec.pinned);
+    refreshSlotsUI();
+  });
+  pin.title = rec.pinned ? 'Unpin' : 'Pin so the cap can’t evict it';
+  card.appendChild(pin);
+
+  card.appendChild(el('div', 'recent-name', rec.name));
+  const meta = el('div', 'recent-meta', `${AREA_LABEL_SHORT[rec.area] || rec.area} · ${relTime(rec.pushedAt)}`);
+  meta.title = `Last pushed from Studio · ${new Date(rec.pushedAt).toLocaleString()}`;
+  card.appendChild(meta);
+
+  const actions = el('div', 'recent-actions');
+  const status = el('p', 'slot-card-status statusline');
+  actions.append(
+    mkBtn('Re-push', 'primary small', () => doRePush(rec, status)),
+    mkBtn('Load', 'small', () => loadRecentIntoTab(rec)),
+    mkBtn('Remove', 'small', async () => { await slots.removeRecent(rec.id); refreshSlotsUI(); }),
+  );
+  card.append(actions, status);
+  return card;
+}
+
+async function renderRecents() {
+  const gallery = document.getElementById('recentsGallery');
+  const countEl = document.getElementById('recentsCount');
+  if (!gallery) return;
+  const list = await slots.listRecents();
+  gallery.innerHTML = '';
+  for (const rec of list) gallery.appendChild(createRecentCard(rec));
+  if (countEl) countEl.textContent = String(list.length);
+}
+
+// One entry point that rebuilds every slot surface from IDB. Revokes the previous object-URL batch
+// first so thumbnails don't leak across refreshes.
+async function refreshSlotsUI() {
+  revokeObjURLs();
+  const map = await slots.allSlots();
+  await renderAllCards(map);
+  await renderRecents();
+}
+
+// Restore all cards + recents on load.
+function setupSlots() {
+  refreshSlotsUI();
 }
 
 // ---- lighting (keyboard RGB — VIA RGB-matrix over the same HID interface) ----
