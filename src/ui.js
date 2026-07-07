@@ -495,19 +495,28 @@ const NS_SEGMENTS = {
 
 function setNowShowing(which) {
   lastView = which;
+  // While Now Playing owns the bar (npLive), don't clobber its label or its pressed segment — a push
+  // still calls setNowShowing('picture') to track the view, but the live state must win. lastView is
+  // recorded above so renderBarLive can restore the normal readout when NP stops.
+  if (npLive) return;
   $$('.ns-seg').forEach((seg) => {
     seg.setAttribute('aria-pressed', String(seg.dataset.view === which));
   });
   const stateEl = $('#nsState');
-  // While Now Playing owns the bar (npLive), don't clobber the "▶ Now Playing" readout — a push
-  // still calls setNowShowing('picture') to track the view, but the live label must win.
-  if (stateEl && !npLive) stateEl.textContent = which === 'unknown' ? 'unknown' : NS_SEGMENTS[which].label;
+  if (stateEl) stateEl.textContent = which === 'unknown' ? 'unknown' : NS_SEGMENTS[which].label;
 }
 
 function setupNowShowing() {
   $$('.ns-seg').forEach((seg) => {
     seg.addEventListener('click', async () => {
       const key = seg.dataset.view;
+      // Now Playing isn't a device VIEW — it's the live push loop. Selecting it jumps to the tab
+      // and starts the push (npStart validates device + Spotify and surfaces its own errors).
+      if (key === 'nowplaying') {
+        goToTab('nowplaying');
+        if (!npLive) { const start = $('#npStart'); if (start && !start.disabled) start.click(); }
+        return;
+      }
       const spec = NS_SEGMENTS[key];
       if (!spec) return;
       const ok = await guardedSend(`View → ${spec.label}`, null, proto.buildView(spec.view), { gap: 1 });
@@ -1806,8 +1815,12 @@ function renderBarOverview(map) {
 function renderBarLive() {
   const stateEl = document.getElementById('nsState');
   const trackEl = document.getElementById('nsTrack');
+  const npSeg = document.getElementById('nsNowPlaying');
   if (!stateEl || !trackEl) return;
+  if (npSeg) npSeg.setAttribute('aria-pressed', String(npLive));
   if (npLive) {
+    // NP owns the screen — light its segment and clear the view segments' pressed state.
+    ['nsClock', 'nsPicture', 'nsGif'].forEach((id) => document.getElementById(id)?.setAttribute('aria-pressed', 'false'));
     stateEl.textContent = '▶ Now Playing';
     stateEl.classList.add('is-live');
     if (npTrack && npTrack.title) {
@@ -1817,7 +1830,7 @@ function renderBarLive() {
   } else {
     stateEl.classList.remove('is-live');
     trackEl.hidden = true;
-    setNowShowing(lastView); // restore the normal view label
+    setNowShowing(lastView); // restore the normal view label + segment pressed state
   }
 }
 

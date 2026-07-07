@@ -50,6 +50,7 @@
           <button id="nsClock" type="button" class="ns-seg device-action" data-view="clock" aria-pressed="false" title="Switch the LCD to the clock view" disabled>Clock</button>
           <button id="nsPicture" type="button" class="ns-seg device-action" data-view="picture" aria-pressed="false" title="Switch the LCD to the picture view" disabled>Picture</button>
           <button id="nsGif" type="button" class="ns-seg device-action" data-view="gif" aria-pressed="false" title="Switch the LCD to the GIF view" disabled>GIF</button>
+          <button id="nsNowPlaying" type="button" class="ns-seg device-action" data-view="nowplaying" aria-pressed="false" title="Open the Now Playing tab and start the live Spotify push" disabled>Now Playing</button>
         </div>
         <span id="syncBadge" class="sync-badge" hidden>Syncing &middot; every 60s</span>
       </div>
@@ -607,5 +608,11 @@
 </div>
 
 <script type="module" src="src/ui.js"></script>
+<script>
+  // Cache-busting SW: network-first, so a plain reload always gets the freshest JS/CSS after a deploy.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
 </body>
 </html>
