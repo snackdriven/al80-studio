@@ -136,13 +136,13 @@
                 </select>
               </label>
 
-              <label>Brightness <output id="imageBrightnessOut">100%</output>
+              <label class="slider"><span class="slider-head">Brightness <output id="imageBrightnessOut">100%</output></span>
                 <input id="imageBrightness" type="range" min="0" max="200" value="100" />
               </label>
-              <label>Contrast <output id="imageContrastOut">100%</output>
+              <label class="slider"><span class="slider-head">Contrast <output id="imageContrastOut">100%</output></span>
                 <input id="imageContrast" type="range" min="0" max="200" value="100" />
               </label>
-              <label>Saturation <output id="imageSaturationOut">100%</output>
+              <label class="slider"><span class="slider-head">Saturation <output id="imageSaturationOut">100%</output></span>
                 <input id="imageSaturation" type="range" min="0" max="200" value="100" />
               </label>
 
@@ -199,7 +199,7 @@
               </div>
               <p id="gifCount" class="muted"></p>
 
-              <label>FPS <output id="gifFpsOut">30</output>
+              <label class="slider"><span class="slider-head">FPS <output id="gifFpsOut">30</output></span>
                 <input id="gifFps" type="range" min="1" max="60" value="30" />
               </label>
 
@@ -269,11 +269,11 @@
                 <option value="stretch">Stretch</option>
               </select>
             </label>
-            <label>Brightness <output id="slideBrightnessOut">100%</output>
+            <label class="slider"><span class="slider-head">Brightness <output id="slideBrightnessOut">100%</output></span>
               <input id="slideBrightness" type="range" min="0" max="200" value="100" />
             </label>
             <label class="inline"><input id="slideGray" type="checkbox" /> Grayscale</label>
-            <label>Interval <output id="slideIntervalOut">5s</output>
+            <label class="slider"><span class="slider-head">Interval <output id="slideIntervalOut">5s</output></span>
               <input id="slideInterval" type="range" min="1" max="30" value="5" />
             </label>
           </div>
@@ -470,10 +470,10 @@
       </details>
 
       <div class="row">
-        <label>Brightness <output id="lightBrightnessOut">200</output>
+        <label class="slider"><span class="slider-head">Brightness <output id="lightBrightnessOut">200</output></span>
           <input id="lightBrightness" type="range" min="0" max="255" value="200" class="device-action" disabled />
         </label>
-        <label>Effect Speed <output id="lightSpeedOut">128</output>
+        <label class="slider"><span class="slider-head">Effect Speed <output id="lightSpeedOut">128</output></span>
           <input id="lightSpeed" type="range" min="0" max="255" value="128" class="device-action" disabled />
         </label>
       </div>
@@ -502,7 +502,7 @@
         <label>Color
           <input id="barColor" type="color" value="#1fe0d4" class="device-action" disabled />
         </label>
-        <label>Brightness <output id="barBrightnessOut">255</output>
+        <label class="slider"><span class="slider-head">Brightness <output id="barBrightnessOut">255</output></span>
           <input id="barBrightness" type="range" min="0" max="255" value="255" class="device-action" disabled />
         </label>
       </div>
@@ -575,7 +575,7 @@
               <option value="strobe">Strobe (hard switch)</option>
             </select>
           </label>
-          <label>Speed <output id="paletteSpeedOut">40</output>
+          <label class="slider"><span class="slider-head">Speed <output id="paletteSpeedOut">40</output></span>
             <input id="paletteSpeed" type="range" min="10" max="300" value="40" class="device-action" disabled />
           </label>
           <button id="paletteStart" type="button" class="btn primary small device-action" disabled>Start</button>
