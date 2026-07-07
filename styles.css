@@ -309,6 +309,24 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .btn.small { padding: 5px 10px; font-size: 12px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Shared disclosure (<details>) pattern — one summary + expand triangle for
+   "Customize effects", "Recents", and "Device log". Container styling stays
+   per-element (inset vs. top-level card); only the interaction reads the same. */
+.disclosure > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 14px;
+  color: var(--muted);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.disclosure > summary:hover { color: var(--text); }
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::before { content: "\25B8"; display: inline-block; transition: transform 0.15s; }
+.disclosure[open] > summary::before { transform: rotate(90deg); }
+
 /* Lighting: a "which one do I use" guide above the three effect areas */
 .lighting-guide {
   background: var(--panel-2);
@@ -337,22 +355,9 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 4px 14px;
+  padding: 4px 16px;
   margin: 6px 0 14px;
 }
-.effect-customize > summary {
-  cursor: pointer;
-  padding: 10px 0;
-  font-size: 13px;
-  color: var(--muted);
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.effect-customize > summary::-webkit-details-marker { display: none; }
-.effect-customize > summary::before { content: "\25B8"; display: inline-block; transition: transform 0.15s; }
-.effect-customize[open] > summary::before { transform: rotate(90deg); }
 .ec-toolbar {
   display: flex;
   align-items: center;
@@ -685,19 +690,6 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   border-radius: var(--radius);
   padding: 4px 16px;
 }
-.device-log summary {
-  cursor: pointer;
-  padding: 10px 0;
-  font-size: 14px;
-  color: var(--muted);
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.device-log summary::-webkit-details-marker { display: none; }
-.device-log summary::before { content: "\25B8"; display: inline-block; transition: transform 0.15s; }
-.device-log[open] summary::before { transform: rotate(90deg); }
 .log-count {
   font-variant-numeric: tabular-nums;
   background: var(--panel-2);
@@ -974,20 +966,13 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* Recents drawer + gallery (mirrors the device-log <details>). */
 .recents-drawer {
-  margin-top: 18px;
+  margin-top: 20px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 14px;
+  padding: 4px 16px;
 }
-.recents-drawer > summary {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--muted);
-  list-style: none;
-}
-.recents-drawer > summary::-webkit-details-marker { display: none; }
-.recents-drawer[open] > summary { margin-bottom: 10px; }
+.recents-drawer[open] > summary { margin-bottom: 6px; }
 .recents-toolbar { margin-bottom: 10px; }
 .recents-gallery {
   display: grid;

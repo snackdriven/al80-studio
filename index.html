@@ -338,7 +338,7 @@
 
     <!-- Recents — Studio's library of past pushes (client-side memory, not a device read).
          Click a thumb to load it into its tab or re-push; pin to keep it past the cap. -->
-    <details id="recentsDrawer" class="recents-drawer">
+    <details id="recentsDrawer" class="recents-drawer disclosure">
       <summary>Recents <span id="recentsCount" class="log-count">0</span></summary>
       <div class="recents-toolbar">
         <span class="muted small">Thumbnails of what Studio last pushed &mdash; not a read of the panel. Click one to load it into its tab, re-push it, or pin it so the cap can't evict it.</span>
@@ -347,7 +347,7 @@
     </details>
 
     <!-- Device log — collapsed by default, logs every command sent -->
-    <details id="deviceLog" class="device-log">
+    <details id="deviceLog" class="device-log disclosure">
       <summary>Device log <span id="logCount" class="log-count">0</span></summary>
       <div class="log-toolbar">
         <span class="muted small">Every command this app sends. The device is write-only, so there are no replies to show.</span>
@@ -450,12 +450,6 @@
       <p class="muted small">The keyboard's own RGB effects. They run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow).</p>
 
       <div class="row">
-        <label>Brightness <output id="lightBrightnessOut">200</output>
-          <input id="lightBrightness" type="range" min="0" max="255" value="200" class="device-action" disabled />
-        </label>
-      </div>
-
-      <div class="row">
         <label>Effect
           <!-- Options are generated from the effect catalog (src/effects.js) at runtime, filtered
                to the user's enabled set. Curate the list in "Customize effects" below. -->
@@ -463,7 +457,7 @@
         </label>
       </div>
 
-      <details id="effectCustomize" class="effect-customize">
+      <details id="effectCustomize" class="effect-customize disclosure">
         <summary>Customize effects <span id="effectCount" class="log-count"></span></summary>
         <div class="ec-toolbar">
           <span class="muted small">Pick which effects show in the dropdown above. Firmware still supports all of them &mdash; this only tidies the list.</span>
@@ -476,6 +470,9 @@
       </details>
 
       <div class="row">
+        <label>Brightness <output id="lightBrightnessOut">200</output>
+          <input id="lightBrightness" type="range" min="0" max="255" value="200" class="device-action" disabled />
+        </label>
         <label>Effect Speed <output id="lightSpeedOut">128</output>
           <input id="lightSpeed" type="range" min="0" max="255" value="128" class="device-action" disabled />
         </label>
