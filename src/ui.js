@@ -41,6 +41,25 @@ function persist(el, key, onRestore) {
   });
 }
 
+// Same idea as persist(), but for a radio GROUP (a set of inputs sharing a name). Restores the
+// checked radio by value on load and saves on change. onRestore lets the caller re-run whatever the
+// radios drive (e.g. applyDest) so dependent display isn't stale — restore does NOT fire a change.
+function persistRadio(name, key, onRestore) {
+  const radios = $$(`input[name="${name}"]`);
+  if (!radios.length) return;
+  const k = 'al80.pref.' + key;
+  try {
+    const saved = localStorage.getItem(k);
+    if (saved != null) {
+      const match = radios.find((r) => r.value === saved);
+      if (match && !match.checked) { match.checked = true; onRestore?.(); }
+    }
+  } catch { /* storage unavailable */ }
+  radios.forEach((r) => r.addEventListener('change', () => {
+    if (r.checked) { try { localStorage.setItem(k, r.value); } catch { /* ignore */ } }
+  }));
+}
+
 function setStatus(el, msg, kind = '') {
   el.textContent = msg || '';
   el.className = 'statusline' + (kind ? ' ' + kind : '');
@@ -589,6 +608,15 @@ function setupImageTab() {
     saturation: $('#imageSaturationOut'),
   };
 
+  // Remember the editor settings across reloads (UI only — never auto-sends; readOpts reads the
+  // restored values at send time). Sliders re-sync their <output> via onRestore so it isn't stale.
+  persist(controls.fit, 'imageFit');
+  persist(controls.brightness, 'imageBrightness', (el) => { outs.brightness.textContent = el.value + '%'; });
+  persist(controls.contrast, 'imageContrast', (el) => { outs.contrast.textContent = el.value + '%'; });
+  persist(controls.saturation, 'imageSaturation', (el) => { outs.saturation.textContent = el.value + '%'; });
+  persist(controls.gray, 'imageGray');
+  persist(controls.dither, 'imageDither');
+
   // opts: sliders are percentages where 100 = neutral, passed as factors (1.0 = neutral).
   function readOpts() {
     return {
@@ -636,6 +664,7 @@ function setupImageTab() {
     previewTimer = setTimeout(refreshPreview, 120);
   }
   $$('input[name="picDest"]').forEach((r) => r.addEventListener('change', applyDest));
+  persistRadio('picDest', 'picDest'); // restore the chosen destination (applyDest below reflects it)
   applyDest(); // set the initial label/note
 
   function loadFile(file) {
@@ -830,7 +859,13 @@ function setupGifTab() {
     if (currentFile) decodeAndPreview(); // re-decode at the new resolution
   }
   $$('input[name="gifDest"]').forEach((r) => r.addEventListener('change', applyDest));
+  persistRadio('gifDest', 'gifDest'); // restore the chosen destination (applyDest below reflects it)
   applyDest(); // initial note
+
+  // Remember GIF editor settings across reloads (UI only; no auto-send, no decode on restore since
+  // no file is loaded yet). fps re-syncs its <output> via onRestore so it isn't stale.
+  persist(fps, 'gifFps', (el) => { fpsOut.textContent = el.value; });
+  persist(fitEl, 'gifFit');
 
   fps.addEventListener('input', () => {
     fpsOut.textContent = fps.value;
@@ -949,6 +984,13 @@ function setupSlideshowTab() {
     brightness: $('#slideBrightness'),
     gray: $('#slideGray'),
   };
+
+  // Remember slideshow editor settings across reloads (UI only; never auto-sends). The brightness +
+  // interval sliders re-sync their <output> via onRestore so the readout matches the restored value.
+  persist(controls.fit, 'slideFit');
+  persist(controls.brightness, 'slideBrightness', (el) => { brightnessOut.textContent = el.value + '%'; });
+  persist(controls.gray, 'slideGray');
+  persist(intervalEl, 'slideInterval', (el) => { intervalOut.textContent = el.value + 's'; });
 
   let slides = [];       // [{ file, url }] — url is a 96x160 device-accurate thumbnail
   let cycleTimer = null; // setInterval handle; non-null == playing
