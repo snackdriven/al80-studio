@@ -519,6 +519,9 @@ function setupNowShowing() {
       }
       const spec = NS_SEGMENTS[key];
       if (!spec) return;
+      // Switching to a static view means you're done with the live push — stop it so the loop
+      // doesn't keep overwriting your view, and so the npLive guard releases and the bar updates.
+      if (npLive) nowPlayingCtl.stop?.();
       const ok = await guardedSend(`View → ${spec.label}`, null, proto.buildView(spec.view), { gap: 1 });
       if (ok) setNowShowing(key);
     });
