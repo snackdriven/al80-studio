@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   yne, ga, build, announce, finish, rgb565BE, buildImageTransfer, buildClock, clockFromDate,
   buildView, VIEW, FRAME_BYTES, BLOCK_COUNT, toHex,
+  buildDeletePicture, buildNextPicture, buildClearPicture, buildClearAllPictures,
   buildMainPageGif, buildMainPageImage, MP_FRAME_BYTES, MP_MAX_FRAMES,
   buildGifPage, buildStartupAnimation, GP_FRAME_BYTES, SA_FRAME_BYTES,
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightSave, buildLightGet,
@@ -148,6 +149,29 @@ ok('view switch = homepage/picture/gif announce + finish', () => {
   assert.equal(buildView(VIEW.HOMEPAGE)[0][9], 0x0b);
   assert.equal(buildView(VIEW.PICTURE)[0][9], 0x0d);
   assert.equal(buildView(VIEW.GIF)[0][9], 0x0f);
+});
+
+ok('buildDeletePicture = one 0x0e announce + a 0x42 finish (delete the shown slot)', () => {
+  const p = buildDeletePicture();
+  assert.equal(p.length, 2);
+  assert.equal(p[0][0], 0x40);        // announce report
+  assert.equal(p[0][9], 0x0e);        // PK_DEL_PIC type in the A5 5A payload
+  assert.equal(p[1][0], 0x42);        // finish
+  assert.equal(hex(p[1]).startsWith('42 00 00 38 7a'), true);
+  // it's exactly one iteration of buildClearPicture's 16x loop
+  const all = buildClearPicture();
+  assert.deepEqual(Array.from(p[0]), Array.from(all[0]));
+  assert.deepEqual(Array.from(p[1]), Array.from(all[1]));
+});
+
+ok('buildNextPicture equals buildView(0x0d) (advance the picture ring)', () => {
+  assert.deepEqual(buildNextPicture().map((r) => Array.from(r)), buildView(VIEW.PICTURE).map((r) => Array.from(r)));
+  assert.equal(VIEW.PICTURE, 0x0d);
+});
+
+ok('buildClearAllPictures is the buildClearPicture alias (all 16 slots)', () => {
+  assert.equal(buildClearAllPictures, buildClearPicture);
+  assert.equal(buildClearAllPictures().length, 32); // 16 x (announce + finish)
 });
 
 ok('clockFromDate produces a valid 18-packet transfer', () => {

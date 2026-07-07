@@ -2495,6 +2495,30 @@ function setupClearActions() {
     const ok = await guardedSend('Clear GIF', statusEl, proto.buildClearGif(), { gap: 2 });
     if (ok) setStatus(statusEl, 'GIF cleared.', 'ok');
   });
+
+  // Stored-pictures ring management. Studio can't read which slot is on the LCD, so the flow is:
+  // Next rotates the ring (PK_TOGGLE_PIC), Delete shown wipes whatever's currently displayed
+  // (PK_DEL_PIC, no index), Clear all wipes the whole 16-slot ring.
+  const spStatus = $('#storedPicturesStatus');
+  $('#picNext').addEventListener('click', async () => {
+    setStatus(spStatus, 'Rotating to next picture…');
+    const ok = await guardedSend('Picture → next', spStatus, proto.buildNextPicture(), { gap: 1 });
+    if (ok) setStatus(spStatus, 'Advanced to the next stored picture — check the LCD.', 'ok');
+  });
+
+  $('#picDeleteShown').addEventListener('click', async () => {
+    if (!confirm("Delete the picture currently on the keyboard's screen?")) return;
+    setStatus(spStatus, 'Deleting shown picture…');
+    const ok = await guardedSend('Delete shown picture', spStatus, proto.buildDeletePicture(), { gap: 2 });
+    if (ok) setStatus(spStatus, 'Deleted the shown picture. Press Next to check the next slot.', 'ok');
+  });
+
+  $('#picClearAll').addEventListener('click', async () => {
+    if (!confirm('Erase ALL 16 stored pictures on the keyboard? This cannot be undone.')) return;
+    setStatus(spStatus, 'Clearing all pictures…');
+    const ok = await guardedSend('Clear all pictures', spStatus, proto.buildClearAllPictures(), { gap: 2 });
+    if (ok) setStatus(spStatus, 'All stored pictures cleared.', 'ok');
+  });
 }
 
 // ---- keymap (was "shortcuts") — offline, no device --------------------------

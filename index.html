@@ -175,6 +175,17 @@
             </div>
           </div>
 
+          <details id="storedPictures" class="disclosure">
+            <summary>Stored pictures</summary>
+            <p class="muted small">The keyboard holds up to 16 pictures in a ring. Studio can't read them back, so you're the eyes: press <strong>Next</strong> to rotate the LCD to the one you want gone (watch the screen), then <strong>Delete shown</strong>.</p>
+            <div class="row">
+              <button id="picNext" type="button" class="btn device-action" disabled>Next</button>
+              <button id="picDeleteShown" type="button" class="btn danger device-action" disabled>Delete shown</button>
+              <button id="picClearAll" type="button" class="btn danger device-action" disabled>Clear all</button>
+            </div>
+            <p id="storedPicturesStatus" class="statusline" role="status"></p>
+          </details>
+
           <div class="danger-zone">
             <span class="danger-label">Danger</span>
             <button id="clearPicture" type="button" class="btn danger device-action" disabled>Clear stored picture</button>

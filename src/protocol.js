@@ -218,6 +218,28 @@ export function buildClearPicture() {
   return out;
 }
 
+/** Readable alias for "delete all 16 picture slots" (the 0x0e x16 loop above). */
+export const buildClearAllPictures = buildClearPicture;
+
+/**
+ * Delete the CURRENTLY-DISPLAYED picture slot — one iteration of buildClearPicture's loop.
+ * PK_DEL_PIC (0x0e) sent with no index (length 0) acts on whatever's on the LCD right now, not a
+ * slot number (matches the sibling keyboard_screen.c:354). Wire: 40 announce(0x0e,0,0) + 42 finish.
+ * Studio can't read which slot is shown, so the user rotates to it (buildNextPicture) then deletes.
+ */
+export function buildDeletePicture() {
+  return [announce(0x0e, 0, 0), finish()];
+}
+
+/**
+ * Advance the picture ring to the NEXT stored slot (PK_TOGGLE_PIC 0x0d). This is exactly what
+ * buildView(VIEW.PICTURE) sends — the picture view-switch IS the "next picture" command. Thin
+ * named wrapper so slot-management code reads clearly.
+ */
+export function buildNextPicture() {
+  return buildView(VIEW.PICTURE);
+}
+
 /** Clear the stored GIF (type 18 sub1, then type 19 sub2). DESTRUCTIVE. */
 export function buildClearGif() {
   return [announce(0x12, 0, 1, [1, 0]), finish(), announce(0x13, 0, 2, [1, 0]), finish()];
