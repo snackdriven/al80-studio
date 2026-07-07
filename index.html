@@ -457,41 +457,23 @@
 
       <div class="row">
         <label>Effect
-          <select id="lightEffect" class="device-action" disabled>
-            <option value="0">All Off</option>
-            <option value="2" selected>Solid Color</option>
-            <option value="6">Breathing</option>
-            <option value="8">Band Value</option>
-            <option value="13">Cycle All</option>
-            <option value="14">Cycle Left/Right</option>
-            <option value="15">Cycle Up/Down</option>
-            <option value="16">Rainbow Moving Chevron</option>
-            <option value="17">Cycle Out/In</option>
-            <option value="19">Cycle Pinwheel</option>
-            <option value="20">Cycle Spiral</option>
-            <option value="21">Dual Beacon</option>
-            <option value="22">Rainbow Beacon</option>
-            <option value="24">Raindrops</option>
-            <option value="26">Hue Breathing</option>
-            <option value="28">Hue Wave</option>
-            <option value="30">Digital Rain</option>
-            <option value="43">Pixel Rain</option>
-            <option value="31">Reactive Simple (react to keypress)</option>
-            <option value="32">Reactive</option>
-            <option value="33">Reactive Wide</option>
-            <option value="34">Reactive Multi-Wide</option>
-            <option value="35">Reactive Cross</option>
-            <option value="36">Reactive Multi-Cross</option>
-            <option value="37">Reactive Nexus</option>
-            <option value="38">Reactive Multi-Nexus</option>
-            <option value="39">Splash (react to keypress)</option>
-            <option value="40">Multi-Splash</option>
-            <option value="41">Solid Splash</option>
-            <option value="42">Solid Multi-Splash</option>
-            <option value="256">Palette Cycle (al80 custom)</option>
-          </select>
+          <!-- Options are generated from the effect catalog (src/effects.js) at runtime, filtered
+               to the user's enabled set. Curate the list in "Customize effects" below. -->
+          <select id="lightEffect" class="device-action" disabled></select>
         </label>
       </div>
+
+      <details id="effectCustomize" class="effect-customize">
+        <summary>Customize effects <span id="effectCount" class="log-count"></span></summary>
+        <div class="ec-toolbar">
+          <span class="muted small">Pick which effects show in the dropdown above. Firmware still supports all of them &mdash; this only tidies the list.</span>
+          <span class="ec-presets">
+            <button id="effectsAll" type="button" class="btn small">All</button>
+            <button id="effectsRecommended" type="button" class="btn small">Recommended</button>
+          </span>
+        </div>
+        <div id="effectToggles" class="effect-toggles"></div>
+      </details>
 
       <div class="row">
         <label>Effect Speed <output id="lightSpeedOut">128</output>

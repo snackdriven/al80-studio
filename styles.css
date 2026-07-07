@@ -332,6 +332,55 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .fx-mode .row { margin: 10px 0; }
 .fx-mode strong { color: var(--text); font-size: 13px; min-width: 56px; }
 
+/* Customize effects — a collapsible list that curates the #lightEffect dropdown. */
+.effect-customize {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 14px;
+  margin: 6px 0 14px;
+}
+.effect-customize > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--muted);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.effect-customize > summary::-webkit-details-marker { display: none; }
+.effect-customize > summary::before { content: "\25B8"; display: inline-block; transition: transform 0.15s; }
+.effect-customize[open] > summary::before { transform: rotate(90deg); }
+.ec-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 0 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.ec-presets { display: flex; gap: 8px; flex-shrink: 0; }
+.effect-toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px 24px;
+  padding-bottom: 12px;
+}
+.effect-group { display: flex; flex-direction: column; gap: 6px; }
+.effect-group-head {
+  color: var(--text);
+  font-weight: 600;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.effect-toggle { color: var(--muted); padding-left: 4px; }
+.effect-toggle:hover { color: var(--text); }
+
 /* Lighting palettes (multi-color presets, global board animation) */
 .palette-editor {
   background: var(--panel-2);

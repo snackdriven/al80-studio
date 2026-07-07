@@ -15,6 +15,7 @@ import * as spotify from './nowplaying/spotify.js';
 import { render as renderNowPlayingCard } from './nowplaying/card.js';
 import { loadArtRGB } from './nowplaying/albumart.js';
 import * as slots from './slots.js';
+import * as effects from './effects.js';
 
 // ---- tiny DOM helpers -------------------------------------------------------
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -1880,9 +1881,120 @@ function setupLightingTab() {
   const color = $('#lightColor');
   // Remember the built-in lighting choices across reloads (UI only; no auto-send on load).
   persist(brightness, 'lightBrightness', (el) => { brightnessOut.textContent = el.value; });
-  persist(effect, 'lightEffect');
   persist(speed, 'lightSpeed', (el) => { speedOut.textContent = el.value; });
   persist(color, 'lightColor');
+
+  // ---- effect catalog + user curation --------------------------------------
+  // The #lightEffect dropdown and the "Customize effects" toggle list both render from the same
+  // catalog (src/effects.js), filtered to the user's enabled set. Curation is display-only — the
+  // firmware still supports every effect. Default is ALL enabled; the set persists in localStorage.
+  const EFFECT_SEL_KEY = 'al80.pref.lightEffect';
+  const loadEnabled = () => {
+    try { return effects.parseEnabled(localStorage.getItem(effects.STORAGE_KEY)) || new Set(effects.ALL_IDS); }
+    catch { return new Set(effects.ALL_IDS); }
+  };
+  const saveEnabled = (set) => {
+    try { localStorage.setItem(effects.STORAGE_KEY, effects.serializeEnabled(set)); } catch { /* storage unavailable */ }
+  };
+  let enabledEffects = effects.guardEnabled(loadEnabled());
+
+  // Rebuild the dropdown to show only enabled effects, in catalog order. Keeps the current
+  // selection if it's still enabled; otherwise falls back to the first enabled effect (never sends
+  // a disabled one — the selection change here is silent, no 'change' event fires).
+  const rebuildEffectDropdown = (preferId) => {
+    const prev = preferId != null ? preferId : +effect.value;
+    effect.textContent = '';
+    for (const e of effects.filterEnabled(enabledEffects)) {
+      const opt = document.createElement('option');
+      opt.value = String(e.id);
+      opt.textContent = e.name;
+      effect.appendChild(opt);
+    }
+    effect.value = String(effects.pickSelected(enabledEffects, prev));
+  };
+
+  // Toggle list, grouped by category with a group-level "toggle all". Built once; syncToggles()
+  // reflects state changes (including presets and the empty guard) without rebuilding the DOM.
+  const toggleEls = [];   // { id, cb }
+  const groupSyncers = []; // () => void — refresh a group header's checked/indeterminate state
+  const effectCount = $('#effectCount');
+  const updateCount = () => {
+    if (effectCount) effectCount.textContent = `${enabledEffects.size} of ${effects.ALL_IDS.length}`;
+  };
+  const syncToggles = () => {
+    for (const { id, cb } of toggleEls) cb.checked = enabledEffects.has(id);
+    for (const s of groupSyncers) s();
+    updateCount();
+  };
+  // Apply an enabled-set change: guard against empty, persist, rebuild dropdown, resync toggles.
+  const applyEnabledChange = () => {
+    enabledEffects = effects.guardEnabled(enabledEffects);
+    saveEnabled(enabledEffects);
+    rebuildEffectDropdown();
+    syncToggles();
+  };
+
+  const renderToggles = () => {
+    const container = $('#effectToggles');
+    if (!container) return;
+    container.textContent = '';
+    for (const cat of effects.EFFECT_CATEGORIES) {
+      const ids = effects.idsInCategory(cat.key);
+      const group = document.createElement('div');
+      group.className = 'effect-group';
+
+      const header = document.createElement('label');
+      header.className = 'inline effect-group-head';
+      const groupCb = document.createElement('input');
+      groupCb.type = 'checkbox';
+      header.appendChild(groupCb);
+      header.appendChild(document.createTextNode(' ' + cat.label));
+      group.appendChild(header);
+
+      for (const e of effects.effectsInCategory(cat.key)) {
+        const row = document.createElement('label');
+        row.className = 'inline effect-toggle';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = enabledEffects.has(e.id);
+        cb.addEventListener('change', () => {
+          if (cb.checked) enabledEffects.add(e.id); else enabledEffects.delete(e.id);
+          applyEnabledChange();
+        });
+        row.appendChild(cb);
+        row.appendChild(document.createTextNode(' ' + e.name));
+        group.appendChild(row);
+        toggleEls.push({ id: e.id, cb });
+      }
+
+      const syncGroup = () => {
+        const on = ids.filter((id) => enabledEffects.has(id)).length;
+        groupCb.checked = on === ids.length;
+        groupCb.indeterminate = on > 0 && on < ids.length;
+      };
+      groupCb.addEventListener('change', () => {
+        if (groupCb.checked) ids.forEach((id) => enabledEffects.add(id));
+        else ids.forEach((id) => enabledEffects.delete(id));
+        applyEnabledChange();
+      });
+      groupSyncers.push(syncGroup);
+      container.appendChild(group);
+    }
+  };
+
+  renderToggles();
+  // Restore the last-selected effect (if still enabled), then draw the filtered dropdown + toggles.
+  let savedEffectSel = null;
+  try { savedEffectSel = localStorage.getItem(EFFECT_SEL_KEY); } catch { /* ignore */ }
+  rebuildEffectDropdown(savedEffectSel != null ? +savedEffectSel : undefined);
+  syncToggles();
+  // Persist the selected effect across reloads (mirrors the old persist() on #lightEffect).
+  effect.addEventListener('change', () => {
+    try { localStorage.setItem(EFFECT_SEL_KEY, effect.value); } catch { /* ignore */ }
+  });
+
+  $('#effectsAll')?.addEventListener('click', () => { enabledEffects = new Set(effects.ALL_IDS); applyEnabledChange(); });
+  $('#effectsRecommended')?.addEventListener('click', () => { enabledEffects = new Set(effects.RECOMMENDED_IDS); applyEnabledChange(); });
 
   const debounce = (fn, ms = 120) => {
     let t = null;
