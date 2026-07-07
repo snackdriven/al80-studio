@@ -499,7 +499,7 @@ function setNowShowing(which) {
   // still calls setNowShowing('picture') to track the view, but the live state must win. lastView is
   // recorded above so renderBarLive can restore the normal readout when NP stops.
   if (npLive) return;
-  $$('.ns-seg').forEach((seg) => {
+  $$('.ns-chip').forEach((seg) => {
     seg.setAttribute('aria-pressed', String(seg.dataset.view === which));
   });
   const stateEl = $('#nsState');
@@ -507,16 +507,9 @@ function setNowShowing(which) {
 }
 
 function setupNowShowing() {
-  $$('.ns-seg').forEach((seg) => {
+  $$('.ns-chip').forEach((seg) => {
     seg.addEventListener('click', async () => {
       const key = seg.dataset.view;
-      // Now Playing isn't a device VIEW — it's the live push loop. Selecting it jumps to the tab
-      // and starts the push (npStart validates device + Spotify and surfaces its own errors).
-      if (key === 'nowplaying') {
-        goToTab('nowplaying');
-        if (!npLive) { const start = $('#npStart'); if (start && !start.disabled) start.click(); }
-        return;
-      }
       const spec = NS_SEGMENTS[key];
       if (!spec) return;
       // Switching to a static view means you're done with the live push — stop it so the loop
@@ -1818,11 +1811,9 @@ function renderBarOverview(map) {
 function renderBarLive() {
   const stateEl = document.getElementById('nsState');
   const trackEl = document.getElementById('nsTrack');
-  const npSeg = document.getElementById('nsNowPlaying');
   if (!stateEl || !trackEl) return;
-  if (npSeg) npSeg.setAttribute('aria-pressed', String(npLive));
   if (npLive) {
-    // NP owns the screen — light its segment and clear the view segments' pressed state.
+    // NP owns the screen — clear the switch chips' pressed state; the readout shows the live track.
     ['nsClock', 'nsPicture', 'nsGif'].forEach((id) => document.getElementById(id)?.setAttribute('aria-pressed', 'false'));
     stateEl.textContent = '▶ Now Playing';
     stateEl.classList.add('is-live');

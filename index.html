@@ -37,20 +37,19 @@
   <div class="section" id="section-lcd" role="tabpanel" data-section-panel="lcd">
     <!-- Device status strip: what's on the LCD now + quick view switches.
          This is a READOUT + shortcuts, not the editor nav (that's .tabs below). -->
-    <div class="device-bar" role="group" aria-label="Device state">
+    <div class="device-bar" role="status" aria-label="Device state">
       <div class="device-bar-state">
         <span class="db-live">LIVE</span>
-        <span class="db-label">On the LCD now</span>
+        <span class="db-label" title="Studio can't read the screen — this is the last thing it sent.">Last set from Studio</span>
         <span id="nsState" class="ns-state">unknown</span>
         <span id="nsTrack" class="ns-track-meta" hidden></span>
       </div>
       <div class="device-bar-actions">
-        <span class="db-hint">Show:</span>
-        <div class="ns-segments">
-          <button id="nsClock" type="button" class="ns-seg device-action" data-view="clock" aria-pressed="false" title="Switch the LCD to the clock view" disabled>Clock</button>
-          <button id="nsPicture" type="button" class="ns-seg device-action" data-view="picture" aria-pressed="false" title="Switch the LCD to the picture view" disabled>Picture</button>
-          <button id="nsGif" type="button" class="ns-seg device-action" data-view="gif" aria-pressed="false" title="Switch the LCD to the GIF view" disabled>GIF</button>
-          <button id="nsNowPlaying" type="button" class="ns-seg device-action" data-view="nowplaying" aria-pressed="false" title="Open the Now Playing tab and start the live Spotify push" disabled>Now Playing</button>
+        <span class="db-hint">switch:</span>
+        <div class="ns-switch">
+          <button id="nsClock" type="button" class="ns-chip device-action" data-view="clock" aria-pressed="false" title="Switch the LCD to the clock view" disabled>Clock</button>
+          <button id="nsPicture" type="button" class="ns-chip device-action" data-view="picture" aria-pressed="false" title="Switch the LCD to the picture view" disabled>Picture</button>
+          <button id="nsGif" type="button" class="ns-chip device-action" data-view="gif" aria-pressed="false" title="Switch the LCD to the GIF view" disabled>GIF</button>
         </div>
         <span id="syncBadge" class="sync-badge" hidden>Syncing &middot; every 60s</span>
       </div>

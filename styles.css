@@ -66,7 +66,7 @@ body {
 /* Visible focus for keyboard users on the dark ground. */
 :focus-visible {
   outline: none;
-  /* inset ring is never clipped by an overflow:hidden ancestor (.ns-segments / .seg-radio /
+  /* inset ring is never clipped by an overflow:hidden ancestor (.seg-radio /
      .slide-thumb all clip); the outer --focus ring adds polish where nothing clips it. */
   box-shadow: inset 0 0 0 2px var(--accent), var(--focus);
   border-radius: 6px;
@@ -136,6 +136,9 @@ body {
 }
 
 /* ---- Device status strip (readout + view shortcuts, NOT the editor nav) ---- */
+/* Status strip — a live readout line (label + state on the left, quick-switch chips on the
+   right), NOT the editor tab nav below it. The left accent edge + inset panel fill mark it as
+   an instrument readout so it can't be mistaken for the underlined .tabs. */
 .device-bar {
   display: flex;
   align-items: center;
@@ -143,9 +146,10 @@ body {
   gap: var(--sp-5);
   flex-wrap: wrap;
   margin: 16px 0 0;
-  padding: 12px 16px;
-  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--panel-2);
   border: 1px solid var(--border-2);
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius);
 }
 .device-bar-state { display: flex; align-items: baseline; gap: 8px; }
@@ -162,7 +166,7 @@ body {
   font-variant: small-caps;
 }
 .device-bar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.db-hint { font-size: 13px; color: var(--muted); }
+.db-hint { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
 .db-live {
   font-size: 12px; font-weight: 700; letter-spacing: 0.6px;
   color: var(--ok);
@@ -174,29 +178,32 @@ body {
    disconnected so the first-run view shows ONE set of view names (the editor tabs), not two. */
 #app:not([data-connected]) .device-bar { display: none; }
 
-.ns-segments {
+/* Switch chips — small stand-alone pills, deliberately NOT the connected segmented
+   control they used to be, and NOT the underlined editor tabs (.tab). This is a status
+   strip's quick-action row, so the chips read as buttons, not navigation. */
+.ns-switch {
   display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
 }
-.ns-seg {
+.ns-chip {
   background: var(--panel-3);
-  border: none;
-  border-right: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--muted);
-  padding: 8px 16px;
-  font-size: 13px;
+  padding: var(--sp-1) var(--sp-4);
+  font-size: 12px;
+  line-height: 1.4;
   cursor: pointer;
 }
-.ns-seg:last-child { border-right: none; }
-.ns-seg:hover:not(:disabled) { color: var(--text); background: var(--border-2); }
-.ns-seg[aria-pressed="true"] {
+.ns-chip:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); background: var(--border-2); }
+.ns-chip[aria-pressed="true"] {
   background: var(--accent);
+  border-color: var(--accent);
   color: var(--accent-ink);
   font-weight: 600;
 }
-.ns-seg:disabled { opacity: 0.4; cursor: not-allowed; }
+.ns-chip:disabled { opacity: 0.4; cursor: not-allowed; }
 .sync-badge {
   font-size: 12px;
   color: var(--ok);
