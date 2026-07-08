@@ -78,7 +78,11 @@ function progressOf(np) {
 
 async function main() {
   const dev = MOCK_DEVICE ? new MockDevice() : new Device();
-  await dev.open();
+  try { dev.open(); }
+  catch (e) {
+    console.log('[nowplaying] waiting for device:', e.message); // at logon the keyboard often enumerates after us
+    await dev.reopen(); // retries with backoff (1s,2s,…5s cap) until it's plugged in
+  }
   console.log(`[nowplaying] ${LIVE ? 'LIVE (Spotify)' : 'MOCK track'} -> ${MOCK_DEVICE ? 'mock device' : 'AL80 screen'}. Ctrl-C to stop.`);
   process.on('SIGINT', () => { try { dev.close(); } catch { /* gone */ } console.log('\n[nowplaying] stopped'); process.exit(0); });
 
@@ -101,16 +105,25 @@ async function main() {
         }
         const frame = render({ title: np.title, artist: np.artist, artRGB: cached.artRGB, progress: progressOf(np), paused: np.paused });
         if (trackChanged) console.log(`[nowplaying] ${np.paused ? '⏸' : '▶'} ${np.title} — ${np.artist}`);
+        let sent = false;
         try {
           const r = await dev.sendFrame(frame);
           if (trackChanged) console.log(`[send] ${r.acked}/${r.dataBlocks} blocks acked, ${r.fellBack} fell back`);
-        } catch (e) { console.log('[send]', e.message); }
-        if (SYNC_RGB && cached.hueSat && trackChanged && !MOCK_DEVICE) {
+          sent = true;
+        } catch (e) {
+          console.log('[send]', e.message);
+          if (!dev.opened) { // unplug / sleep-resume dropped the handle — device.js closed it on the write error
+            console.log('[nowplaying] device dropped — reconnecting…');
+            try { await dev.reopen(); console.log('[nowplaying] reconnected'); }
+            catch (re) { console.log('[nowplaying] reconnect failed:', re.message); }
+          }
+          // leave lastKey/lastSentAt unchanged so this frame is re-attempted on the next poll
+        }
+        if (sent && SYNC_RGB && cached.hueSat && trackChanged && !MOCK_DEVICE) {
           const hue = Math.round((cached.hueSat.hue / 360) * 255), sat = Math.round(cached.hueSat.sat * 255);
           try { await dev.setRGB({ effect: 1 /* Solid Color */, color: { hue, sat } }); } catch { /* best effort */ }
         }
-        lastKey = key;
-        lastSentAt = Date.now();
+        if (sent) { lastKey = key; lastSentAt = Date.now(); } // only advance state on a real push
       }
     } else if (lastKey !== 'idle') {
       console.log('[nowplaying] nothing playing');
