@@ -592,20 +592,14 @@ function setupClockTab() {
   // Live-time hero — the thing Send pushes, ticking every second. Mirrors the 12/24h toggle so
   // flipping it visibly changes the readout (that's the format that gets sent to the board).
   const liveEl = $('#clockLive');
-  const meridiemEl = $('#clockLiveMeridiem');
   const liveDateEl = $('#clockLiveDate');
+  // Match the LCD home page: firmware-drawn HH:MM + the date, no seconds and no AM/PM chrome.
+  // 12-hour just drops the leading zero on the hour (no meridiem); 24-hour pads it.
   function renderLive() {
     const d = new Date();
-    const s = pad2(d.getSeconds());
     const mm = pad2(d.getMinutes());
-    if (is12.checked) {
-      const h = d.getHours() % 12 || 12;
-      liveEl.textContent = `${h}:${mm}:${s}`;
-      meridiemEl.textContent = d.getHours() < 12 ? 'AM' : 'PM';
-    } else {
-      liveEl.textContent = `${pad2(d.getHours())}:${mm}:${s}`;
-      meridiemEl.textContent = '';
-    }
+    const h = is12.checked ? (d.getHours() % 12 || 12) : pad2(d.getHours());
+    liveEl.textContent = `${h}:${mm}`;
     liveDateEl.textContent = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   }
   renderLive();
