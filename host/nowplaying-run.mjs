@@ -84,10 +84,17 @@ async function main() {
     await dev.reopen(); // retries with backoff (1s,2s,…5s cap) until it's plugged in
   }
   console.log(`[nowplaying] ${LIVE ? 'LIVE (Spotify)' : 'MOCK track'} -> ${MOCK_DEVICE ? 'mock device' : 'AL80 screen'}. Ctrl-C to stop.`);
-  process.on('SIGINT', () => { try { dev.close(); } catch { /* gone */ } console.log('\n[nowplaying] stopped'); process.exit(0); });
+  process.on('SIGINT', async () => {
+    // clean up the one card we left in the picture ring so stopping doesn't leave album art behind
+    try { if (committed && dev.opened) await dev.deletePicture(); } catch { /* best effort */ }
+    try { dev.close(); } catch { /* gone */ }
+    console.log('\n[nowplaying] stopped');
+    process.exit(0);
+  });
 
-  let lastKey = null;  // trackId + paused
-  let lastSentAt = 0;  // last frame push — drives the periodic progress-bar advance
+  let lastKey = null;   // trackId + paused
+  let lastSentAt = 0;   // last frame push — drives the periodic progress-bar advance
+  let committed = false; // have WE committed a card to the ring? gates the delete-before-add (see device.sendCard)
   for (;;) {
     let np = null;
     try { np = await currentTrack(); } catch (e) { console.log('[spotify]', e.message); }
@@ -107,13 +114,18 @@ async function main() {
         if (trackChanged) console.log(`[nowplaying] ${np.paused ? '⏸' : '▶'} ${np.title} — ${np.artist}`);
         let sent = false;
         try {
-          const r = await dev.sendFrame(frame);
+          // sendCard deletes the card we last committed (the slot on screen) before adding the new
+          // one, so the picture ring doesn't grow past our single card. Don't replace on the first
+          // push (nothing of ours yet).
+          const r = await dev.sendCard(frame, { replacePrevious: committed });
           if (trackChanged) console.log(`[send] ${r.acked}/${r.dataBlocks} blocks acked, ${r.fellBack} fell back`);
           sent = true;
+          committed = true;
         } catch (e) {
           console.log('[send]', e.message);
           if (!dev.opened) { // unplug / sleep-resume dropped the handle — device.js closed it on the write error
             console.log('[nowplaying] device dropped — reconnecting…');
+            committed = false; // after a reconnect we can't be sure our card is still the displayed slot — don't delete blind
             try { await dev.reopen(); console.log('[nowplaying] reconnected'); }
             catch (re) { console.log('[nowplaying] reconnect failed:', re.message); }
           }
