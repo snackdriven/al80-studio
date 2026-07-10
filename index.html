@@ -88,28 +88,50 @@
         <section class="panel" id="panel-clock" role="tabpanel" data-panel="clock">
           <div class="panel-head">
             <h2>Clock</h2>
-            <p class="muted">Push the current time to the LCD. Keep it synced to fight drift.</p>
+            <p class="muted">Push your computer's current time to the LCD home screen. Keep it synced so the keyboard's clock can't drift.</p>
           </div>
-          <div class="row">
-            <label>Time
-              <input id="clockTime" type="time" step="1" />
-            </label>
-            <label>Date
-              <input id="clockDate" type="date" />
-            </label>
-            <label class="inline">
-              <input id="clock12hr" type="checkbox" />
-              12-hour format
-            </label>
+
+          <div class="image-grid clock-grid">
+            <div class="image-controls clock-controls">
+              <label class="inline clock-format">
+                <input id="clock12hr" type="checkbox" />
+                12-hour clock (off = 24-hour)
+              </label>
+
+              <button id="clockSendOnce" type="button" class="btn primary block device-action" disabled>Send current time</button>
+
+              <label class="inline clock-sync">
+                <input id="clockSync" type="checkbox" class="device-action" disabled />
+                Keep synced &mdash; re-send every 60s
+              </label>
+              <p class="muted small clock-note">The board's clock drifts a few seconds a day left alone. Sync re-pushes the time each minute so the screen stays honest.</p>
+
+              <details class="disclosure clock-manual">
+                <summary>Set a specific time instead</summary>
+                <p class="muted small">For staging a photo or setting the clock ahead. Leave this closed for normal use &mdash; <em>Send current time</em> is what you want.</p>
+                <div class="row">
+                  <label>Time
+                    <input id="clockTime" type="time" step="1" />
+                  </label>
+                  <label>Date
+                    <input id="clockDate" type="date" />
+                  </label>
+                </div>
+                <button id="clockSendManual" type="button" class="btn device-action" disabled>Send this time</button>
+              </details>
+
+              <p id="clockStatus" class="statusline" role="status"></p>
+            </div>
+
+            <figure class="image-preview clock-figure">
+              <div class="clock-face" role="img" aria-label="Current time preview">
+                <span id="clockLive" class="clock-live">--:--:--</span>
+                <span id="clockLiveMeridiem" class="clock-meridiem"></span>
+                <span id="clockLiveDate" class="clock-live-date">&mdash;</span>
+              </div>
+              <figcaption class="muted small">Live now &middot; this is what Send pushes</figcaption>
+            </figure>
           </div>
-          <div class="row">
-            <button id="clockSendOnce" type="button" class="btn primary device-action" disabled>Send &amp; show</button>
-            <label class="inline">
-              <input id="clockSync" type="checkbox" class="device-action" disabled />
-              Keep synced (every 60s)
-            </label>
-          </div>
-          <p id="clockStatus" class="statusline" role="status"></p>
         </section>
 
         <!-- PICTURE (was "Image") -->

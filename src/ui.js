@@ -552,6 +552,7 @@ function setupNowShowing() {
 
 // ---- clock ------------------------------------------------------------------
 let clockSyncTimer = null;
+let clockLiveTimer = null; // 1s UI ticker for the live-time hero (not the device sync)
 
 function readClockDate() {
   // Compose a Date from the time + date inputs; fall back to now.
@@ -588,6 +589,30 @@ function setupClockTab() {
   $('#clockTime').value = now.toTimeString().slice(0, 8);
   $('#clockDate').value = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 
+  // Live-time hero — the thing Send pushes, ticking every second. Mirrors the 12/24h toggle so
+  // flipping it visibly changes the readout (that's the format that gets sent to the board).
+  const liveEl = $('#clockLive');
+  const meridiemEl = $('#clockLiveMeridiem');
+  const liveDateEl = $('#clockLiveDate');
+  function renderLive() {
+    const d = new Date();
+    const s = pad2(d.getSeconds());
+    const mm = pad2(d.getMinutes());
+    if (is12.checked) {
+      const h = d.getHours() % 12 || 12;
+      liveEl.textContent = `${h}:${mm}:${s}`;
+      meridiemEl.textContent = d.getHours() < 12 ? 'AM' : 'PM';
+    } else {
+      liveEl.textContent = `${pad2(d.getHours())}:${mm}:${s}`;
+      meridiemEl.textContent = '';
+    }
+    liveDateEl.textContent = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+  renderLive();
+  is12.addEventListener('change', renderLive); // reflect the toggle immediately, not on the next tick
+  // setupClockTab runs once, but guard anyway so we never stack ticking intervals.
+  if (!clockLiveTimer) clockLiveTimer = setInterval(renderLive, 1000);
+
   async function sendOnce(useNow = false) {
     const date = useNow ? new Date() : readClockDate();
     const packets = proto.clockFromDate(date, is12.checked);
@@ -601,7 +626,10 @@ function setupClockTab() {
     return true;
   }
 
-  $('#clockSendOnce').addEventListener('click', () => { nowPlayingCtl.stop(); weatherCtl.stop(); sendOnce(false); }); // clock takes the screen
+  // Primary action is "push the time on my computer right now" — the 99% case. clock takes the screen.
+  $('#clockSendOnce').addEventListener('click', () => { nowPlayingCtl.stop(); weatherCtl.stop(); sendOnce(true); });
+  // Secondary: push whatever's in the manual Time/Date fields (staging a photo, setting ahead).
+  $('#clockSendManual').addEventListener('click', () => { nowPlayingCtl.stop(); weatherCtl.stop(); sendOnce(false); });
 
   $('#clockSync').addEventListener('change', async (e) => {
     if (e.target.checked) {
