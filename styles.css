@@ -698,6 +698,54 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .wx-figure { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 0; }
 .wx-figure figcaption { letter-spacing: .04em; opacity: .7; }
 
+/* Clock: same two-column controls|preview as Weather. The hero is a live device-style clock face
+   (the time that Send pushes), so the light controls center against it — no dead column. */
+.clock-grid { align-items: center; }
+.clock-controls .clock-format { margin-bottom: 16px; }
+.clock-controls .clock-sync { margin-top: 16px; color: var(--text); }
+.clock-note { margin: 8px 0 0; max-width: 340px; }
+.clock-manual { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 4px; }
+.clock-manual .row { margin: 12px 0; }
+.clock-manual summary { padding-left: 0; }
+
+.clock-figure { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 0; }
+.clock-figure figcaption { letter-spacing: .04em; opacity: .7; }
+/* Dark screen framed like the physical LCD it drives — bezel padding + lift shadow, matching .wx-preview. */
+.clock-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 320px;
+  max-width: 100%;
+  min-height: 210px;
+  padding: 24px;
+  border-radius: 12px;
+  background: #05060a;
+  box-shadow: 0 0 0 1px var(--border-2), 0 10px 26px rgba(0, 0, 0, .45);
+}
+.clock-live {
+  font-size: 54px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.clock-meridiem {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  color: var(--accent);
+}
+.clock-meridiem:empty { display: none; }
+.clock-live-date {
+  font-size: 14px;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+
 /* Destination toggle → segmented control (main page vs separate view) */
 .dest-toggle {
   display: flex;
