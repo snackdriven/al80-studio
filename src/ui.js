@@ -439,6 +439,7 @@ function setupSections() {
       if (!slideshowVisible()) slideshowCtl.stop();
       if (!lightingVisible()) lightingFxCtl.stop();
       if (!keymapVisible()) keymapTesterCtl.stop();
+      if (nowPlayingVisible()) nowPlayingCtl.start?.(); else nowPlayingCtl.stop(); // self-arming with the tab/section
     });
   });
   rovingTabindex(btns);
@@ -458,7 +459,7 @@ function setupTabs() {
       if (name === 'gif') gifPreviewCtl.start(); else gifPreviewCtl.stop();
       if (name !== 'slideshow') slideshowCtl.stop();
       if (name !== 'lighting') lightingFxCtl.stop();
-      if (name !== 'nowplaying') nowPlayingCtl.stop();
+      if (name === 'nowplaying') nowPlayingCtl.start?.(); else nowPlayingCtl.stop(); // self-arming on this tab
     });
   });
   rovingTabindex(tabs);
@@ -1283,8 +1284,6 @@ function setupNowPlayingTab() {
   const forgetBtn = $('#npForgetSpotify');
   const authStatus = $('#npAuthStatus');
   const redirectEl = $('#npRedirectUri');
-  const startBtn = $('#npStart');
-  const stopBtn = $('#npStop');
   const statusEl = $('#npStatus');
   const artThumb = $('#npArtThumb');
   const titleEl = $('#npTrackTitle');
@@ -1347,7 +1346,7 @@ function setupNowPlayingTab() {
     forgetBtn.hidden = !authed;
     if (authed && authStatus.dataset.state !== 'busy') setStatus(authStatus, 'Connected to Spotify.', 'ok');
     else if (!authed) setStatus(authStatus, 'Not connected to Spotify.');
-    updateButtons();
+    syncNP();
   }
 
   async function beginAuth() {
@@ -1432,15 +1431,20 @@ function setupNowPlayingTab() {
     npToken++;                                     // invalidate any in-flight loop iteration
     if (npTimer) { clearTimeout(npTimer); npTimer = null; }
     slotsLive(false);                              // hand the picture/main slot back to its cached thumb
-    updateButtons();
   }
   nowPlayingCtl.stop = stopNP;
 
-  function updateButtons() {
-    startBtn.disabled = !connected || !spotifyConnected() || npRunning;
-    stopBtn.disabled = !npRunning;
+  // No Start/Stop button: now-playing arms itself whenever this tab is open with the keyboard +
+  // Spotify connected, and stops when you leave the tab or disconnect. It still owns the single HID
+  // connection while live, so leaving the tab is what yields the device to the other editors.
+  // syncNP runs on every connection/auth change; the tab switch calls nowPlayingCtl.start on open.
+  function syncNP() {
+    if (nowPlayingVisible() && connected && spotifyConnected()) startNP();
+    else if (!npRunning && !connected) setStatus(statusEl, 'Connect the keyboard to show now-playing.');
+    else if (!npRunning && !spotifyConnected()) setStatus(statusEl, 'Connect Spotify to show now-playing.');
   }
-  nowPlayingCtl.sync = updateButtons;
+  nowPlayingCtl.sync = syncNP;
+  nowPlayingCtl.start = startNP;
 
   async function pushTrack(np) {
     if (sending) return;
@@ -1523,23 +1527,16 @@ function setupNowPlayingTab() {
     }
   }
 
-  startBtn.addEventListener('click', () => {
-    if (!connected) { setStatus(statusEl, 'Connect the keyboard first.', 'err'); return; }
-    if (!spotifyConnected()) { setStatus(statusEl, 'Connect Spotify first.', 'err'); return; }
-    stopNP();                                      // clean any prior run
+  function startNP() {
+    if (npRunning || !connected || !spotifyConnected()) return; // self-arming: no-op unless ready
     stopClockSync();                               // clock-sync flips the view home every 60s — can't co-own the screen
     npRunning = true;
     const token = ++npToken;
-    lastKey = null; lastSentAt = 0;
+    lastKey = null; lastSentAt = 0; pausedSince = null;
     slotsLive(true, null); // claim the picture/main slot as live immediately (track fills in on first poll)
-    updateButtons();
-    setStatus(statusEl, 'Live push running — press Stop to end.', 'ok');
+    setStatus(statusEl, 'Watching Spotify — play something.', 'ok');
     tick(token);
-  });
-  stopBtn.addEventListener('click', () => {
-    stopNP();
-    setStatus(statusEl, 'Stopped.');
-  });
+  }
 
   // On load: finish an in-flight redirect (if any), then reflect state.
   completeAuthFromRedirect().finally(reflectAuth);
