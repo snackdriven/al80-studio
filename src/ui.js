@@ -459,7 +459,7 @@ function setupTabs() {
       if (name === 'gif') gifPreviewCtl.start(); else gifPreviewCtl.stop();
       if (name !== 'slideshow') slideshowCtl.stop();
       if (name !== 'lighting') lightingFxCtl.stop();
-      if (name === 'nowplaying') nowPlayingCtl.start?.(); else nowPlayingCtl.stop(); // self-arming on this tab
+      if (name === 'nowplaying') nowPlayingCtl.start?.(); // keep it running across LCD tabs; another tab's send or leaving the section stops it
     });
   });
   rovingTabindex(tabs);
@@ -574,7 +574,7 @@ function setupClockTab() {
     return true;
   }
 
-  $('#clockSendOnce').addEventListener('click', () => sendOnce(false));
+  $('#clockSendOnce').addEventListener('click', () => { nowPlayingCtl.stop(); sendOnce(false); }); // clock takes the screen
 
   $('#clockSync').addEventListener('change', async (e) => {
     if (e.target.checked) {
@@ -726,6 +726,7 @@ function setupImageTab() {
   const bar = $('#imageProgress');
   $('#imageSend').addEventListener('click', async () => {
     if (!currentFile) { setStatus(statusEl, 'Pick an image first.', 'err'); return; }
+    nowPlayingCtl.stop(); // a manual push takes the screen from the now-playing watcher
     const dest = readDest();
     setStatus(statusEl, 'Rendering frame…');
     let frame;
@@ -907,6 +908,7 @@ function setupGifTab() {
   const bar = $('#gifProgress');
   $('#gifSend').addEventListener('click', async () => {
     if (!currentFile) { setStatus(statusEl, 'Pick a GIF first.', 'err'); return; }
+    nowPlayingCtl.stop(); // a manual push takes the screen from the now-playing watcher
     const dest = readDest();
     const d = dims();
     let frames = currentFrames;
@@ -1196,6 +1198,7 @@ function setupSlideshowTab() {
   sendBtn.addEventListener('click', async () => {
     if (sending) return;
     if (!slides.length) { setStatus(statusEl, 'Add at least one image first.', 'err'); return; }
+    nowPlayingCtl.stop(); // the slideshow takes the screen from the now-playing watcher
     if (!connected) { setStatus(statusEl, 'Connect first.', 'err'); return; }
     stopCycle();
     setBusy(true);
@@ -1256,6 +1259,7 @@ function setupSlideshowTab() {
 
   $('#slideNext').addEventListener('click', async () => {
     if (!slides.length) return;
+    nowPlayingCtl.stop(); // stepping the slideshow takes the screen from the now-playing watcher
     currentIdx = (currentIdx + 1) % slides.length;
     updateCurrent();
     await guardedSend('Slideshow → next', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
