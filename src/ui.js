@@ -915,13 +915,21 @@ function setupGifTab() {
   // Changing the fit re-frames the source, so re-decode at the current resolution.
   fitEl.addEventListener('change', () => { if (currentFile) decodeAndPreview(); });
 
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
+  function loadGifFile(file) {
     if (!file) return;
     currentFile = file;
     nameEl.textContent = file.name;
     decodeAndPreview();
-  });
+  }
+  fileInput.addEventListener('change', (e) => loadGifFile(e.target.files[0]));
+
+  // drag + drop (mirrors the Picture tab)
+  const drop = $('#gifDrop');
+  ['dragenter', 'dragover'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('dragover'); }));
+  ['dragleave', 'drop'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('dragover'); }));
+  drop.addEventListener('drop', (e) => { const f = e.dataTransfer?.files?.[0]; if (f) loadGifFile(f); });
 
   // Recents "Load into tab": set the destination to match the cached area, then decode the source.
   tabLoaders.gif = (file, dest) => {
