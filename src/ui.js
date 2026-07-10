@@ -1498,7 +1498,15 @@ function setupNowPlayingTab() {
         }
       } else {
         showTrack(null);
-        if (lastKey !== 'idle') { setStatus(statusEl, 'Nothing playing on Spotify.'); lastKey = 'idle'; }
+        if (lastKey !== 'idle') {
+          // Nothing playing: fall back to the home/clock page (the card lives on the picture page).
+          // The loop keeps polling; the next track switches straight back to the now-playing card.
+          setStatus(statusEl, 'Nothing playing — showing clock.');
+          slotsLive(false); // release the live picture slot back to its cached thumb
+          await guardedSend('View → Clock', statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 });
+          setNowShowing('clock');
+          lastKey = 'idle';
+        }
       }
     } finally {
       // Always re-arm while running — this is the fix for "only the first song updates".

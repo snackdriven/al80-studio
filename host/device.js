@@ -196,6 +196,11 @@ export class Device extends EventEmitter {
     return this._send(buildDeletePicture()); // announce(0x0e)+finish — control packets, no gate
   }
 
+  /** Switch the LCD to the clock/home page (PK_GO_HOME) — the resting view when nothing's playing. */
+  async goHome() {
+    return this._send(buildView(VIEW.HOMEPAGE)); // announce(0x0b)+finish
+  }
+
   /**
    * Show `frame` as the single now-playing card WITHOUT growing the 16-slot picture ring.
    *

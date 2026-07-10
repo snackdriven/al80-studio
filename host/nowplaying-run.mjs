@@ -138,7 +138,14 @@ async function main() {
         if (sent) { lastKey = key; lastSentAt = Date.now(); } // only advance state on a real push
       }
     } else if (lastKey !== 'idle') {
-      console.log('[nowplaying] nothing playing');
+      // Nothing playing: pull our card out of the ring (it's the slot on screen) and rest on the
+      // home/clock page. On resume the next push adds a fresh card and switches back to it.
+      console.log('[nowplaying] nothing playing — back to home');
+      try {
+        if (committed) await dev.deletePicture();
+        await dev.goHome();
+      } catch (e) { console.log('[nowplaying] home switch:', e.message); }
+      committed = false; // our card is gone / no longer the displayed slot — don't delete blind later
       lastKey = 'idle';
     }
     await sleep(POLL_MS);
