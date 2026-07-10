@@ -632,7 +632,20 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 }
 .slide-move:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); }
 .slide-move:disabled { opacity: 0.3; cursor: not-allowed; }
-.slide-transport { margin-top: 16px; }
+.slide-transport { margin-top: 4px; }
+
+/* Slideshow layout: two columns so a wide screen isn't one tall strip — thumbnails fill the left,
+   settings + transport sit on the right, and the dropzone is a thin row instead of a big box. */
+.slide-grid { display: grid; grid-template-columns: 1fr 280px; gap: 28px; align-items: start; }
+.slide-side { display: flex; flex-direction: column; gap: 14px; }
+.slide-side > label { margin: 0; }
+.slide-main .slide-strip { margin: 0; }
+.dropzone-row {
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+  gap: 12px; padding: 14px 16px; margin-bottom: 14px; text-align: left;
+}
+.dropzone-row .btn { flex: none; }
+@media (max-width: 760px) { .slide-grid { grid-template-columns: 1fr; } }
 
 /* ---- now playing ---- */
 .np-auth { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
