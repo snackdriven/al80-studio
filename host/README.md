@@ -13,6 +13,10 @@ node daemon.js 8000         # run for 8s (bounded, for testing)
 ```
 The daemon owns the `0xFF60/0x61` interface — close any browser tab / vendor app first (single opener).
 
+**Spotify now-playing, always-on:** `node nowplaying-run.mjs --live` drives the LCD with album art
+straight from Node — no browser tab needed. It reconnects on unplug/sleep on its own. To have it
+start at logon and run hidden, see `autostart/README.md`.
+
 ## Develop without the device
 ```
 node demo.js                    # clock sequence -> validated -> PNGs in out/

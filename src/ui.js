@@ -577,6 +577,11 @@ function setupClockTab() {
 
   $('#clockSync').addEventListener('change', async (e) => {
     if (e.target.checked) {
+      // Clock (home page) and Now Playing (picture page) both drive the screen — one owner at a
+      // time. Clock-sync switches the view home every 60s, which would yank the screen off a live
+      // now-playing card, so starting the sync stops now-playing (the Show-bar view switch already
+      // stops it the same way).
+      nowPlayingCtl.stop?.();
       await sendOnce(true);
       clockSyncTimer = setInterval(() => sendOnce(true), 60000);
       if (badge) badge.hidden = false;
@@ -1493,7 +1498,15 @@ function setupNowPlayingTab() {
         }
       } else {
         showTrack(null);
-        if (lastKey !== 'idle') { setStatus(statusEl, 'Nothing playing on Spotify.'); lastKey = 'idle'; }
+        if (lastKey !== 'idle') {
+          // Nothing playing: fall back to the home/clock page (the card lives on the picture page).
+          // The loop keeps polling; the next track switches straight back to the now-playing card.
+          setStatus(statusEl, 'Nothing playing — showing clock.');
+          slotsLive(false); // release the live picture slot back to its cached thumb
+          await guardedSend('View → Clock', statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 });
+          setNowShowing('clock');
+          lastKey = 'idle';
+        }
       }
     } finally {
       // Always re-arm while running — this is the fix for "only the first song updates".
@@ -1505,6 +1518,7 @@ function setupNowPlayingTab() {
     if (!connected) { setStatus(statusEl, 'Connect the keyboard first.', 'err'); return; }
     if (!spotifyConnected()) { setStatus(statusEl, 'Connect Spotify first.', 'err'); return; }
     stopNP();                                      // clean any prior run
+    stopClockSync();                               // clock-sync flips the view home every 60s — can't co-own the screen
     npRunning = true;
     const token = ++npToken;
     lastKey = null; lastSentAt = 0;

@@ -15,7 +15,7 @@ import HID from 'node-hid';
 import { EventEmitter } from 'node:events';
 import {
   VID, PID, USAGE_PAGE, USAGE,
-  buildImageTransfer, clockFromDate, buildView, VIEW,
+  buildImageTransfer, buildDeletePicture, clockFromDate, buildView, VIEW,
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor,
 } from '../src/protocol.js';
 
@@ -189,6 +189,36 @@ export class Device extends EventEmitter {
     // the next slot and flips straight past our card (the "saw it for half a second" flash). The
     // commit alone shows it, and it stays.
     return this._send(packets, { gate: true });
+  }
+
+  /** Delete the picture slot currently on screen (PK_DEL_PIC, no index → acts on the displayed slot). */
+  async deletePicture() {
+    return this._send(buildDeletePicture()); // announce(0x0e)+finish — control packets, no gate
+  }
+
+  /** Switch the LCD to the clock/home page (PK_GO_HOME) — the resting view when nothing's playing. */
+  async goHome() {
+    return this._send(buildView(VIEW.HOMEPAGE)); // announce(0x0b)+finish
+  }
+
+  /**
+   * Show `frame` as the single now-playing card WITHOUT growing the 16-slot picture ring.
+   *
+   * PK_ADD_PIC always commits to a NEW slot (there's no "overwrite in place" opcode), so pushing a
+   * frame every poll — as the now-playing loop does on track change AND every progress refresh —
+   * fills the ring with album art and wraps over the user's saved pictures. Fix: before committing
+   * the new card, delete the one we last committed, which is exactly the slot on screen. Net ring
+   * growth across updates is zero.
+   *
+   * replacePrevious=false on the FIRST push (nothing of ours to delete) and after a RECONNECT (we
+   * can't assume our card is still the displayed slot; PK_DEL_PIC hits whatever is, so never guess).
+   */
+  async sendCard(frame, { replacePrevious = false } = {}) {
+    if (replacePrevious) {
+      try { await this.deletePicture(); await sleep(60); } // let the delete land before the add's announce
+      catch { /* best effort — worst case one extra slot, never a wrong delete */ }
+    }
+    return this.sendFrame(frame);
   }
 
   /**
