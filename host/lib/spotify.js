@@ -178,21 +178,19 @@ function pickArtUrl(images, targetPx = 300) {
  *          null when nothing is playing (204) or the item isn't a track (ad/podcast).
  */
 export async function getNowPlaying(accessToken) {
-  const res = await fetch(NOW_PLAYING_URL, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+  // additional_types=episode makes Spotify return podcast episodes too (else `item` is null on them).
+  const res = await fetch(`${NOW_PLAYING_URL}?additional_types=track,episode`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
   if (res.status === 204) return null;          // nothing playing
   if (res.status === 401) throw new Error('spotify.js: 401 — access token expired/invalid, refresh it.');
   if (!res.ok) throw new Error(`spotify.js: currently-playing failed ${res.status} ${await res.text()}`);
 
   const data = await res.json();
   const item = data.item;
-  if (!item || !item.album) return null;        // ad break or non-track item
+  if (!item) return null;                        // ad break with no item
 
   const elapsedMs = data.progress_ms ?? 0;
   const durationMs = item.duration_ms ?? 0;
-  return {
-    title: item.name,
-    artist: (item.artists || []).map((a) => a.name).join(', '),
-    artUrl: pickArtUrl(item.album.images, 300),
+  const common = {
     trackId: item.id,                            // cache key for the decoded artRGB
     progress: durationMs ? elapsedMs / durationMs : 0,
     progressMs: elapsedMs,                        // alias — some callers want the raw ms
@@ -200,6 +198,12 @@ export async function getNowPlaying(accessToken) {
     durationMs,
     paused: !data.is_playing,
   };
+  // Podcast episode: no album/artists — show name as the "artist", episode (or show) art.
+  if (data.currently_playing_type === 'episode' || (!item.album && (item.show || item.images))) {
+    return { ...common, title: item.name, artist: item.show?.name || 'Podcast', artUrl: pickArtUrl(item.images || item.show?.images || [], 300) };
+  }
+  if (!item.album) return null;                  // ad break / non-track item
+  return { ...common, title: item.name, artist: (item.artists || []).map((a) => a.name).join(', '), artUrl: pickArtUrl(item.album.images, 300) };
 }
 
 /**
