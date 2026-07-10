@@ -516,6 +516,9 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* Picture / GIF editor grid */
 .image-grid { display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: start; }
+/* GIF controls (Choose / FPS / Fit) are short — center them against the taller preview so the left
+   column isn't a void, matching the Weather tab. (Picture's controls are tall, so it stays top-aligned.) */
+#panel-gif .image-grid { align-items: center; }
 .image-controls { min-width: 0; }
 .image-controls label { margin-bottom: 12px; }
 .dropzone {
