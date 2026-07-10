@@ -350,16 +350,25 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .disclosure[open] > summary::before { transform: rotate(90deg); }
 
 /* Lighting: a "which one do I use" guide above the three effect areas */
-.lighting-guide {
+/* Shared "which one?" explainer box — a short guide before a set of non-obvious choices. */
+.guide {
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 12px 16px;
   margin: 0 0 24px;
 }
-.lighting-guide ul { margin: 8px 0 0; padding-left: 16px; }
-.lighting-guide li { font-size: 13px; color: var(--muted); margin: 4px 0; }
-.lighting-guide li strong { color: var(--text); }
+.guide ul { margin: 8px 0 0; padding-left: 16px; }
+.guide li { font-size: 13px; color: var(--muted); margin: 4px 0; }
+.guide li strong { color: var(--text); }
+
+/* Empty picture preview: hide the src-less <img> (it would show its alt text like a broken image)
+   and show a quiet placeholder in the frame instead, until a file is chosen. */
+#imagePreview:not([src]) { display: none; }
+.preview-frame:has(#imagePreview:not([src])) { display: grid; place-items: center; width: 288px; height: 192px; }
+.preview-frame:has(#imagePreview:not([src]))::after {
+  content: "Choose an image to preview"; color: var(--muted); font-size: 12px;
+}
 
 /* Lighting effects (software-driven strobe / cycle / breathe) */
 .fx-mode {

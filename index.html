@@ -118,6 +118,13 @@
             <h2>Picture</h2>
             <p class="muted">Send a single still to the LCD.</p>
           </div>
+          <div class="guide">
+            <span class="db-label">Which page?</span>
+            <ul>
+              <li><strong>Main page</strong> &mdash; shows on the home screen with the clock. The display path this firmware renders most reliably.</li>
+              <li><strong>Picture page</strong> &mdash; the full-screen picture view (Fn + picture key), stored in one of the board's 16 slots.</li>
+            </ul>
+          </div>
           <div class="slot-cards" id="cardsPicture" hidden></div>
           <div class="image-grid">
             <div class="image-controls">
@@ -199,6 +206,14 @@
           <div class="panel-head">
             <h2>GIF</h2>
             <p class="muted">Send an animated GIF to the LCD.</p>
+          </div>
+          <div class="guide">
+            <span class="db-label">Which page?</span>
+            <ul>
+              <li><strong>Main page</strong> &mdash; plays on the home screen (96&times;64, up to 42 frames).</li>
+              <li><strong>GIF page</strong> &mdash; the full-screen GIF view (96&times;160, up to 160 frames).</li>
+              <li><strong>Startup</strong> &mdash; replaces the boot animation the keyboard plays when it powers on.</li>
+            </ul>
           </div>
           <div class="slot-cards" id="cardsGif" hidden></div>
           <div class="image-grid">
@@ -475,7 +490,7 @@
         <h2>Lighting</h2>
         <p class="muted">Three ways to color the board. Pick by how many colors you want.</p>
       </div>
-      <div class="lighting-guide">
+      <div class="guide">
         <span class="db-label">Which one?</span>
         <ul>
           <li><strong>Built-in</strong> &mdash; one color, runs on the board, keeps going after you close this.</li>
