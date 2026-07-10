@@ -343,30 +343,31 @@
         <section class="panel" id="panel-weather" role="tabpanel" data-panel="weather" hidden>
           <div class="panel-head">
             <h2>Weather</h2>
-            <p class="muted">Show a live weather card (condition, current temp, today's hi/lo) on the LCD. Set a location and it self-arms while this tab is open — no Start button. Data from Open-Meteo (no API key). Only one thing can drive the screen at a time, so opening this tab hands off from Now Playing.</p>
+            <p class="muted">A live weather card on the LCD &mdash; condition, current temp, today's hi/lo, from Open-Meteo (no API key). Set a location and it self-arms while this tab is open; opening it hands the screen off from Now Playing. Refreshes every 10 minutes.</p>
           </div>
 
-          <div class="image-grid">
-            <div class="image-controls">
-              <div class="wx-location">
-                <label>Location
-                  <input id="wxPlace" type="text" placeholder="City, state or country" autocomplete="off" />
-                </label>
-                <p><button id="wxSetLocation" type="button" class="btn">Set location</button></p>
-                <p id="wxResolved" class="muted small">Showing weather for the saved location.</p>
+          <div class="image-grid wx-grid">
+            <div class="image-controls wx-controls">
+              <label class="wx-field">Location
+                <span class="wx-search">
+                  <input id="wxPlace" type="text" placeholder="City, state, or country" autocomplete="off" />
+                  <button id="wxSetLocation" type="button" class="btn">Set</button>
+                </span>
+              </label>
+              <p id="wxResolved" class="muted small">Showing weather for the saved location.</p>
 
-                <label class="inline">
-                  <input id="wxUnits" type="checkbox" />
-                  Show °C (off = °F)
-                </label>
-              </div>
-            </div>
+              <label class="inline wx-units">
+                <input id="wxUnits" type="checkbox" />
+                Show °C (off = °F)
+              </label>
 
-            <div class="image-preview">
-              <p class="muted small">Card preview</p>
-              <canvas id="wxPreview" width="96" height="160" class="wx-preview" aria-label="Weather card preview"></canvas>
               <p id="wxStatus" class="statusline" role="status"></p>
             </div>
+
+            <figure class="image-preview wx-figure">
+              <canvas id="wxPreview" width="96" height="160" class="wx-preview" aria-label="Weather card preview"></canvas>
+              <figcaption class="muted small">Live preview &middot; 96&times;160</figcaption>
+            </figure>
           </div>
         </section>
 

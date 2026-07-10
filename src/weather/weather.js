@@ -189,11 +189,13 @@ export function shapeGeocode(data) {
   if (!hit || hit.latitude == null || hit.longitude == null) {
     throw new Error('weather.js: no place matched that name — try a city, or add a state/country.');
   }
-  const parts = [hit.name, hit.admin1, hit.country_code || hit.country].filter(Boolean);
+  // label = just the city (it's drawn on the 96px card, ~15 chars max — region + country overflow it).
+  // detail (region, country) rides along for the fuller "Showing …" line in Studio, not the card.
   return {
     lat: hit.latitude,
     lon: hit.longitude,
-    label: parts.join(', ').toUpperCase(),
+    label: String(hit.name).toUpperCase(),
+    detail: [hit.admin1, hit.country_code || hit.country].filter(Boolean).join(', ').toUpperCase() || null,
   };
 }
 

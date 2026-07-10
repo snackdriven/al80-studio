@@ -119,13 +119,14 @@ ok('getWeatherMock returns a complete state and honors overrides', () => {
 });
 
 // ── GEOCODE SHAPER ─────────────────────────────────────────────────────────────────
-ok('shapeGeocode builds {lat,lon,label} from the first result with an uppercase label', () => {
+ok('shapeGeocode builds {lat,lon,label,detail} — label is the city (fits the card), detail carries the rest', () => {
   const g = shapeGeocode({
     results: [{ name: 'Detroit', admin1: 'Michigan', country_code: 'US', latitude: 42.33, longitude: -83.05 }],
   });
   assert.equal(g.lat, 42.33);
   assert.equal(g.lon, -83.05);
-  assert.equal(g.label, 'DETROIT, MICHIGAN, US');
+  assert.equal(g.label, 'DETROIT');            // city only — the 96px card can't fit region + country
+  assert.equal(g.detail, 'MICHIGAN, US');      // fuller place for Studio's "Showing …" line
 });
 
 ok('shapeGeocode throws a clear error when nothing matches', () => {

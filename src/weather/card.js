@@ -158,6 +158,15 @@ function drawTextCentered(fb, str, y, { scale = 1, gap = 1, color = [255, 255, 2
   drawText(fb, str, Math.round((WIDTH - w) / 2), y, { scale, gap, color });
 }
 
+/** Trim `str` (adding a trailing '.') until it fits `maxW` px — the font's only ellipsis char is '.'.
+ *  Keeps a long location label (e.g. a full "CITY, REGION, COUNTRY") from overflowing the 96px card. */
+function fitText(str, maxW, scale = 1, gap = 1) {
+  let s = String(str);
+  if (textWidth(s, scale, gap) <= maxW) return s;
+  while (s && textWidth(s + '.', scale, gap) > maxW) s = s.slice(0, -1);
+  return s.replace(/\s+$/, '') + '.';
+}
+
 /** A tiny hollow degree ring (~4x4) with its top-left at (x,y). The font has no '°' glyph. */
 function drawDegree(fb, x, y, color) {
   const pts = [[1, 0], [2, 0], [0, 1], [3, 1], [0, 2], [3, 2], [1, 3], [2, 3]];
@@ -221,7 +230,7 @@ export function render(state = {}) {
   const { temp, hi, lo } = reading(state);
 
   // --- location label (top, dim, centered) -----------------------------------------------
-  drawTextCentered(fb, String(state.label || 'LOCAL').toUpperCase(), 5, { scale: 1, color: dim });
+  drawTextCentered(fb, fitText(String(state.label || 'LOCAL').toUpperCase(), WIDTH - 6), 5, { scale: 1, color: dim });
 
   // --- condition icon (centered, ~44px) --------------------------------------------------
   drawIcon(fb, iconId, 48, 36);

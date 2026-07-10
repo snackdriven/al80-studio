@@ -1715,7 +1715,7 @@ function setupWeatherTab() {
     try {
       const hit = await weather.geocode(q);
       loc = weather.saveLocation({ lat: hit.lat, lon: hit.lon, label: hit.label, units: loc.units });
-      resolvedEl.textContent = `Showing ${loc.label}.`;
+      resolvedEl.textContent = `Showing ${hit.label}${hit.detail ? ', ' + hit.detail : ''}.`; // card shows the city; Studio shows the fuller place
       placeInput.value = '';
       lastPushKey = null;                             // force a push for the new place
       setStatus(statusEl, `Location set to ${loc.label}.`, 'ok');
