@@ -465,8 +465,10 @@ function setupTabs() {
       if (name === 'gif') gifPreviewCtl.start(); else gifPreviewCtl.stop();
       if (name !== 'slideshow') slideshowCtl.stop();
       if (name !== 'lighting') lightingFxCtl.stop();
-      if (name === 'nowplaying') nowPlayingCtl.start?.(); else nowPlayingCtl.stop(); // self-arming on this tab
-      if (name === 'weather') weatherCtl.start?.(); else weatherCtl.stop();
+      // Now-playing and weather both keep running across LCD tabs; each start() stops the other
+      // (mutual exclusion), and a real send from another tab or leaving the section hands off the screen.
+      if (name === 'nowplaying') nowPlayingCtl.start?.();
+      else if (name === 'weather') weatherCtl.start?.();
     });
   });
   rovingTabindex(tabs);
@@ -599,7 +601,7 @@ function setupClockTab() {
     return true;
   }
 
-  $('#clockSendOnce').addEventListener('click', () => sendOnce(false));
+  $('#clockSendOnce').addEventListener('click', () => { nowPlayingCtl.stop(); weatherCtl.stop(); sendOnce(false); }); // clock takes the screen
 
   $('#clockSync').addEventListener('change', async (e) => {
     if (e.target.checked) {
@@ -752,6 +754,7 @@ function setupImageTab() {
   const bar = $('#imageProgress');
   $('#imageSend').addEventListener('click', async () => {
     if (!currentFile) { setStatus(statusEl, 'Pick an image first.', 'err'); return; }
+    nowPlayingCtl.stop(); weatherCtl.stop(); // a manual push takes the screen from the live watchers
     const dest = readDest();
     setStatus(statusEl, 'Rendering frame…');
     let frame;
@@ -933,6 +936,7 @@ function setupGifTab() {
   const bar = $('#gifProgress');
   $('#gifSend').addEventListener('click', async () => {
     if (!currentFile) { setStatus(statusEl, 'Pick a GIF first.', 'err'); return; }
+    nowPlayingCtl.stop(); weatherCtl.stop(); // a manual push takes the screen from the live watchers
     const dest = readDest();
     const d = dims();
     let frames = currentFrames;
@@ -1222,6 +1226,7 @@ function setupSlideshowTab() {
   sendBtn.addEventListener('click', async () => {
     if (sending) return;
     if (!slides.length) { setStatus(statusEl, 'Add at least one image first.', 'err'); return; }
+    nowPlayingCtl.stop(); weatherCtl.stop(); // the slideshow takes the screen from the live watchers
     if (!connected) { setStatus(statusEl, 'Connect first.', 'err'); return; }
     stopCycle();
     setBusy(true);
@@ -1282,6 +1287,7 @@ function setupSlideshowTab() {
 
   $('#slideNext').addEventListener('click', async () => {
     if (!slides.length) return;
+    nowPlayingCtl.stop(); weatherCtl.stop(); // stepping the slideshow takes the screen from the live watchers
     currentIdx = (currentIdx + 1) % slides.length;
     updateCurrent();
     await guardedSend('Slideshow → next', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
@@ -1597,6 +1603,9 @@ function setupWeatherTab() {
   placeInput.value = ''; // the box is for entering a NEW place; the resolved line shows the current one
 
   const activeTemp = (s) => (s.units === 'C' ? s.tempC : s.tempF);
+  // The device-bar live readout for a weather state: "72° PARTLY CLOUDY" over the location. Reuses
+  // slotsLive's {title, artist} shape so the bar/cards render it the same way they do a track.
+  const weatherBarInfo = (s) => ({ title: `${activeTemp(s)}° ${s.condition}`, artist: s.label });
 
   // Decode a 96x160 RGB565-BE frame (the exact bytes buildImageTransfer sends) into the preview
   // canvas. The CSS upscales it nearest-neighbor so the pixel icons + 5x7 font stay crisp.
@@ -1619,6 +1628,7 @@ function setupWeatherTab() {
     const frame = renderWeatherCard(state);
     drawPreview(frame);                               // preview always updates, connected or not
     if (!connected) { setStatus(statusEl, 'Preview only — connect the keyboard to push to the LCD.'); return; }
+    slotsLive(true, weatherBarInfo(state), 'weather'); // keep the device-bar readout in step with the reading
     const key = `${state.units}|${state.tempF}|${state.code}|${state.hiF}|${state.loF}|${state.label}`;
     if (key === lastPushKey) return;                 // unchanged reading — don't re-push
     let packets;
@@ -1670,9 +1680,10 @@ function setupWeatherTab() {
     wxRunning = true;
     lastPushKey = null;
     const token = ++wxToken;
-    if (connected) slotsLive(true, null);             // claim the picture slot as live while weather drives it
+    const seed = weather.getWeatherMock({ label: loc.label, units: loc.units });
+    if (connected) slotsLive(true, weatherBarInfo(seed), 'weather'); // claim the picture slot as live (weather owner)
     // Immediate preview so the tab is never blank, even before the first fetch returns.
-    drawPreview(renderWeatherCard(weather.getWeatherMock({ label: loc.label, units: loc.units })));
+    drawPreview(renderWeatherCard(seed));
     setStatus(statusEl, connected ? 'Fetching weather…' : 'Preview only — connect the keyboard to push to the LCD.');
     tick(token);
   }
@@ -1944,9 +1955,10 @@ function createSlotCard(area, slot) {
   const body = el('div', 'slot-card-body');
   body.appendChild(el('div', 'slot-card-area', AREA_LABEL[area]));
   if (live) {
-    body.appendChild(el('div', 'slot-card-name', '▶ Now Playing (live)'));
+    const labels = LIVE_LABELS[liveKind] || LIVE_LABELS.np;
+    body.appendChild(el('div', 'slot-card-name', labels.card));
     body.appendChild(el('div', 'slot-card-when',
-      npTrack && npTrack.title ? `${npTrack.title} — ${npTrack.artist || ''}`.replace(/ — $/, '') : 'streaming from Spotify'));
+      npTrack && npTrack.title ? `${npTrack.title} — ${npTrack.artist || ''}`.replace(/ — $/, '') : labels.fallbackSub));
   } else {
     body.appendChild(el('div', 'slot-card-name', slot.name || AREA_LABEL[area]));
     const when = el('div', 'slot-card-when', `Last pushed from Studio · ${relTime(slot.pushedAt)}`);
@@ -1996,9 +2008,10 @@ function renderBarOverview(map) {
     if (!slot && !live) continue;
     const b = el('button', 'db-thumb' + (live ? ' is-live' : ''));
     b.type = 'button';
-    b.title = live ? '▶ Now Playing (live)' : `${slot.name} — last pushed from Studio ${relTime(slot.pushedAt)}`;
+    const liveLabel = (LIVE_LABELS[liveKind] || LIVE_LABELS.np).card;
+    b.title = live ? liveLabel : `${slot.name} — last pushed from Studio ${relTime(slot.pushedAt)}`;
     if (live) {
-      b.appendChild(el('span', 'db-thumb-live', '▶'));
+      b.appendChild(el('span', 'db-thumb-live', liveKind === 'weather' ? '☀' : '▶'));
     } else if (slot.thumbBlob) {
       const img = el('img'); img.src = objURL(slot.thumbBlob); img.alt = '';
       if (slot.kind === 'gif' && slot.sourceBlob) wireGifHover(img, slot);
@@ -2012,15 +2025,15 @@ function renderBarOverview(map) {
   wrap.hidden = count === 0;
 }
 
-// ---- render: device-bar live readout (Now Playing) ----
+// ---- render: device-bar live readout (Now Playing / Weather) ----
 function renderBarLive() {
   const stateEl = document.getElementById('nsState');
   const trackEl = document.getElementById('nsTrack');
   if (!stateEl || !trackEl) return;
   if (npLive) {
-    // NP owns the screen — clear the switch chips' pressed state; the readout shows the live track.
+    // A live feature owns the screen — clear the switch chips' pressed state; the readout shows it.
     ['nsClock', 'nsPicture', 'nsGif'].forEach((id) => document.getElementById(id)?.setAttribute('aria-pressed', 'false'));
-    stateEl.textContent = '▶ Now Playing';
+    stateEl.textContent = (LIVE_LABELS[liveKind] || LIVE_LABELS.np).bar;
     stateEl.classList.add('is-live');
     if (npTrack && npTrack.title) {
       trackEl.textContent = `${npTrack.title} — ${npTrack.artist || ''}`.replace(/ — $/, '');
@@ -2033,12 +2046,15 @@ function renderBarLive() {
   }
 }
 
-// Called by the Now Playing loop: claim/release the live slot + keep the bar readout in step.
-function slotsLive(on, np) {
+// Called by the Now Playing OR Weather loop: claim/release the live slot + keep the bar readout in
+// step. `kind` names the owner ('np' | 'weather') so the bar/cards label it right; ignored on release.
+function slotsLive(on, np, kind = 'np') {
   const newTrack = on && np ? { title: np.title, artist: np.artist } : (on ? npTrack : null);
-  const changed = on !== npLive || JSON.stringify(newTrack) !== JSON.stringify(npTrack);
+  const newKind = on ? kind : 'np';
+  const changed = on !== npLive || newKind !== liveKind || JSON.stringify(newTrack) !== JSON.stringify(npTrack);
   npLive = on;
   npTrack = newTrack;
+  liveKind = newKind;
   renderBarLive();
   if (changed) refreshSlotsUI(); // only rebuild cards/overview when the live state actually moved
 }
