@@ -653,6 +653,29 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .np-title { margin: 0 0 4px; font-weight: 600; overflow-wrap: anywhere; }
 .np-transport { margin-top: 12px; gap: 8px; }
 
+/* Weather card preview — the 96x160 frame drawn up ~2.5x, framed like the physical LCD it drives.
+   Nearest-neighbor keeps the pixel art and 5x7 font crisp instead of blurring it; the padding reads
+   as the screen bezel and the shadow lifts it off the panel. */
+.wx-preview {
+  width: 240px; height: 400px;
+  max-width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  background: #05060a;
+  box-shadow: 0 0 0 1px var(--border-2), 0 10px 26px rgba(0, 0, 0, .45);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+/* The weather controls are light, so center them against the tall card — no dead column. */
+.wx-grid { align-items: center; }
+.wx-field { display: block; margin-bottom: 10px; }
+.wx-search { display: flex; gap: 8px; margin-top: 6px; }
+.wx-search input[type="text"] { flex: 1; min-width: 0; box-sizing: border-box; }
+.wx-search .btn { flex: none; }
+.wx-units { margin-top: 14px; }
+.wx-figure { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 0; }
+.wx-figure figcaption { letter-spacing: .04em; opacity: .7; }
+
 /* Destination toggle → segmented control (main page vs separate view) */
 .dest-toggle {
   display: flex;
