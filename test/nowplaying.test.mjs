@@ -99,10 +99,35 @@ ok('parseNowPlaying maps a playing track to {title,artist,artUrl,isPlaying,...}'
   assert.ok(Math.abs(np.progress - 0.25) < 1e-9);
 });
 
-ok('parseNowPlaying returns null for 204 (null), ads, and non-track items', () => {
+ok('parseNowPlaying returns null for 204 (null), ads, and bare non-track items', () => {
   assert.equal(parseNowPlaying(null), null);
   assert.equal(parseNowPlaying({ is_playing: true, item: null }), null);       // ad break
-  assert.equal(parseNowPlaying({ is_playing: true, item: { name: 'x' } }), null); // no album (podcast/ad)
+  assert.equal(parseNowPlaying({ is_playing: true, item: { name: 'x' } }), null); // no album/show/images
+});
+
+ok('parseNowPlaying maps a podcast episode via show name + episode art', () => {
+  const np = parseNowPlaying({
+    is_playing: true,
+    progress_ms: 30_000,
+    currently_playing_type: 'episode',
+    item: {
+      id: 'ep123', name: 'The One About Testing', duration_ms: 1_800_000,
+      images: [{ url: 'ep300', width: 300 }, { url: 'ep64', width: 64 }],
+      show: { name: 'QA Radio', images: [{ url: 'show300', width: 300 }] },
+    },
+  });
+  assert.equal(np.title, 'The One About Testing');
+  assert.equal(np.artist, 'QA Radio');          // show name stands in for the artist
+  assert.equal(np.artUrl, 'ep300');             // episode images preferred over show images
+  assert.equal(np.trackId, 'ep123');
+  assert.equal(np.durationMs, 1_800_000);
+  // an episode with no images of its own falls back to the show's art
+  const np2 = parseNowPlaying({
+    is_playing: false, progress_ms: 0, currently_playing_type: 'episode',
+    item: { id: 'ep2', name: 'E2', duration_ms: 60_000, show: { name: 'S', images: [{ url: 'show300', width: 300 }] } },
+  });
+  assert.equal(np2.artUrl, 'show300');
+  assert.equal(np2.isPlaying, false);
 });
 
 ok('parseNowPlaying flags paused state', () => {

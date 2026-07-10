@@ -1277,6 +1277,7 @@ function setupSlideshowTab() {
 function setupNowPlayingTab() {
   const POLL_MS = 5000;
   const PROGRESS_REFRESH_MS = 15000; // re-push while playing to advance the progress bar, even mid-track
+  const PAUSE_HOME_MS = 5 * 60 * 1000; // after this long paused, fall back to the home page
 
   const connectBtn = $('#npConnectSpotify');
   const forgetBtn = $('#npForgetSpotify');
@@ -1411,8 +1412,20 @@ function setupNowPlayingTab() {
 
   // ---- live push loop (setTimeout chain + generation token, like the lighting FX) ----
   let npToken = 0, npTimer = null, npRunning = false, sending = false;
-  let lastKey = null, lastSentAt = 0;
+  let lastKey = null, lastSentAt = 0, pausedSince = null;
   const artCache = new Map(); // trackId -> Uint8Array|null (null = art failed/tainted, use placeholder)
+  const ART_CACHE_MAX = 50;   // bound memory over a long session — drop the oldest past this
+  const cacheArt = (id, v) => { artCache.set(id, v); if (artCache.size > ART_CACHE_MAX) artCache.delete(artCache.keys().next().value); };
+
+  // Fall back to the home/clock page (nothing playing, or paused a long while). The loop keeps
+  // polling; the next track switches straight back to the now-playing card.
+  async function fallBackHome(msg) {
+    setStatus(statusEl, msg);
+    slotsLive(false);                              // release the live picture slot back to its cached thumb
+    await guardedSend('View → Clock', statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 });
+    setNowShowing('clock');
+    lastKey = 'idle';
+  }
 
   function stopNP() {
     npRunning = false;
@@ -1435,7 +1448,7 @@ function setupNowPlayingTab() {
     progWrap.hidden = false;
     progBar.style.width = '0%';
     try {
-      if (!artCache.has(np.trackId)) artCache.set(np.trackId, await loadArtRGB(np.artUrl));
+      if (!artCache.has(np.trackId)) cacheArt(np.trackId, await loadArtRGB(np.artUrl));
       const artRGB = artCache.get(np.trackId);
       const frame = renderNowPlayingCard({
         title: np.title, artist: np.artist, artRGB,
@@ -1478,13 +1491,17 @@ function setupNowPlayingTab() {
       if (np && np.title) {
         showTrack(np);
         slotsLive(true, np); // keep the device-bar live readout in step with the track
+        pausedSince = np.isPlaying ? null : (pausedSince ?? Date.now());
+        const restedPaused = !np.isPlaying && Date.now() - pausedSince >= PAUSE_HOME_MS;
         const key = `${np.trackId}|${np.isPlaying ? 'r' : 'p'}`;
         const trackChanged = key !== lastKey;
         const progressDue = np.isPlaying && Date.now() - lastSentAt >= PROGRESS_REFRESH_MS;
-        const willPush = (trackChanged || progressDue) && !sending;
+        const willPush = !restedPaused && (trackChanged || progressDue) && !sending;
         console.log('[nowplaying] poll', np.trackId, np.isPlaying ? 'playing' : 'paused',
-          willPush ? (trackChanged ? 'PUSH (changed)' : 'PUSH (progress)') : (sending ? 'busy' : 'unchanged'));
-        if (willPush) {
+          willPush ? (trackChanged ? 'PUSH (changed)' : 'PUSH (progress)') : (restedPaused ? 'rested' : sending ? 'busy' : 'unchanged'));
+        if (restedPaused && lastKey !== 'idle') {
+          await fallBackHome('Paused a while — showing clock.'); // rest the screen instead of a frozen card
+        } else if (willPush) {
           try {
             await pushTrack(np);
             lastKey = key;            // advance the change-key ONLY after a successful render+push
@@ -1498,15 +1515,7 @@ function setupNowPlayingTab() {
         }
       } else {
         showTrack(null);
-        if (lastKey !== 'idle') {
-          // Nothing playing: fall back to the home/clock page (the card lives on the picture page).
-          // The loop keeps polling; the next track switches straight back to the now-playing card.
-          setStatus(statusEl, 'Nothing playing — showing clock.');
-          slotsLive(false); // release the live picture slot back to its cached thumb
-          await guardedSend('View → Clock', statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 });
-          setNowShowing('clock');
-          lastKey = 'idle';
-        }
+        if (lastKey !== 'idle') await fallBackHome('Nothing playing — showing clock.');
       }
     } finally {
       // Always re-arm while running — this is the fix for "only the first song updates".

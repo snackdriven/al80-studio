@@ -22,8 +22,14 @@ const SYNC_RGB = args.has('--sync');
 const MOCK_DEVICE = args.has('--mock-device');
 const POLL_MS = 5000;
 const PROGRESS_REFRESH_MS = 15000; // re-push the frame this often to advance the progress bar, even mid-track
+const PAUSE_HOME_MS = 5 * 60 * 1000; // after this long paused, rest on the home page instead of a frozen card
 
 const artCache = new Map(); // trackId -> { artRGB, hueSat }
+const ART_CACHE_MAX = 50;   // bound memory on a long-running bridge — drop the oldest past this
+function cacheArt(id, val) {
+  artCache.set(id, val);
+  if (artCache.size > ART_CACHE_MAX) artCache.delete(artCache.keys().next().value);
+}
 
 async function fetchArtRGB(url) {
   if (!url) return null;
@@ -95,22 +101,33 @@ async function main() {
   let lastKey = null;   // trackId + paused
   let lastSentAt = 0;   // last frame push — drives the periodic progress-bar advance
   let committed = false; // have WE committed a card to the ring? gates the delete-before-add (see device.sendCard)
+  let pausedSince = null; // when the current track went paused — drives the rest-on-home timeout
   for (;;) {
     let np = null;
     try { np = await currentTrack(); } catch (e) { console.log('[spotify]', e.message); }
 
     if (np && np.title) {
+      pausedSince = np.paused ? (pausedSince ?? Date.now()) : null;
+      const restedPaused = np.paused && Date.now() - pausedSince >= PAUSE_HOME_MS;
       const key = `${np.trackId}|${np.paused ? 'p' : 'r'}`;
       const trackChanged = key !== lastKey;
       const progressDue = !np.paused && Date.now() - lastSentAt >= PROGRESS_REFRESH_MS; // nudge the bar forward
-      if (trackChanged || progressDue) {
+      if (restedPaused) {
+        if (lastKey !== 'idle') { // paused long enough — rest on home like idle (pull our card first)
+          console.log('[nowplaying] paused a while — back to home');
+          try { if (committed) await dev.deletePicture(); await dev.goHome(); }
+          catch (e) { console.log('[nowplaying] home switch:', e.message); }
+          committed = false;
+          lastKey = 'idle';
+        }
+      } else if (trackChanged || progressDue) {
         let cached = artCache.get(np.trackId);
         if (!cached) {
           const artRGB = await fetchArtRGB(np.artUrl);
           cached = { artRGB, hueSat: artRGB ? dominantColor(artRGB) : null };
-          artCache.set(np.trackId, cached);
+          cacheArt(np.trackId, cached);
         }
-        const frame = render({ title: np.title, artist: np.artist, artRGB: cached.artRGB, progress: progressOf(np), paused: np.paused });
+        const frame = render({ title: np.title, artist: np.artist, artRGB: cached.artRGB, progress: progressOf(np), paused: np.paused, elapsedMs: np.elapsedMs, durationMs: np.durationMs });
         if (trackChanged) console.log(`[nowplaying] ${np.paused ? '⏸' : '▶'} ${np.title} — ${np.artist}`);
         let sent = false;
         try {

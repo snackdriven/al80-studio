@@ -158,18 +158,32 @@ export function pickArtUrl(images, targetPx = 300) {
 export function parseNowPlaying(data) {
   if (!data) return null;
   const item = data.item;
-  if (!item || !item.album) return null;
+  if (!item) return null;
   const elapsedMs = data.progress_ms ?? 0;
   const durationMs = item.duration_ms ?? 0;
-  return {
-    title: item.name,
-    artist: (item.artists || []).map((a) => a.name).join(', '),
-    artUrl: pickArtUrl(item.album.images, 300),
+  const common = {
     trackId: item.id,
     isPlaying: !!data.is_playing,
     progress: durationMs ? elapsedMs / durationMs : 0,
     elapsedMs,
     durationMs,
+  };
+  // Podcast episode: no album/artists. The show name stands in for the artist, and art comes from
+  // the episode (or its show). Needs additional_types=episode on the request or `item` is null.
+  if (data.currently_playing_type === 'episode' || (!item.album && (item.show || item.images))) {
+    return {
+      ...common,
+      title: item.name,
+      artist: item.show?.name || 'Podcast',
+      artUrl: pickArtUrl(item.images || item.show?.images || [], 300),
+    };
+  }
+  if (!item.album) return null;                   // ad break / unknown non-track item
+  return {
+    ...common,
+    title: item.name,
+    artist: (item.artists || []).map((a) => a.name).join(', '),
+    artUrl: pickArtUrl(item.album.images, 300),
   };
 }
 
@@ -180,7 +194,7 @@ export function parseNowPlaying(data) {
  * @returns {Promise<null | ReturnType<typeof parseNowPlaying>>}
  */
 export async function getNowPlaying(accessToken) {
-  const res = await fetch(NOW_PLAYING_URL, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const res = await fetch(`${NOW_PLAYING_URL}?additional_types=track,episode`, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (res.status === 204) return null;            // nothing playing
   if (res.status === 401) { const e = new Error('spotify: 401 — access token expired'); e.status = 401; throw e; }
   if (!res.ok) throw new Error(`spotify: currently-playing failed ${res.status} ${await res.text()}`);
