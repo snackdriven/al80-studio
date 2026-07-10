@@ -653,6 +653,20 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .np-title { margin: 0 0 4px; font-weight: 600; overflow-wrap: anywhere; }
 .np-transport { margin-top: 12px; gap: 8px; }
 
+/* Weather card preview — the 96x160 frame drawn up ~2.5x. Nearest-neighbor keeps the pixel art and
+   5x7 font crisp instead of blurring it. */
+.wx-preview {
+  width: 240px; height: 400px;
+  max-width: 100%;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  background: var(--panel-2);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.wx-location label { display: block; margin-bottom: 8px; }
+.wx-location input[type="text"] { width: 100%; box-sizing: border-box; }
+
 /* Destination toggle → segmented control (main page vs separate view) */
 .dest-toggle {
   display: flex;

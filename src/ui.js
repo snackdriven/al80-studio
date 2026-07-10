@@ -14,6 +14,8 @@ import * as keymap from './keymap.js';
 import * as spotify from './nowplaying/spotify.js';
 import { render as renderNowPlayingCard } from './nowplaying/card.js';
 import { loadArtRGB } from './nowplaying/albumart.js';
+import * as weather from './weather/weather.js';
+import { render as renderWeatherCard } from './weather/card.js';
 import * as slots from './slots.js';
 import * as effects from './effects.js';
 
@@ -159,8 +161,10 @@ function reflectConnection() {
     lightingFxCtl.stop();
     keymapTesterCtl.stop();
     nowPlayingCtl.stop();
+    weatherCtl.stop();
   }
   nowPlayingCtl.sync?.(); // refresh Now Playing button gating on every connection change
+  weatherCtl.sync?.();    // and the weather tab's status/self-arm
 }
 
 // Wrap a device action: catch errors (incl. the single-opener one), log, surface.
@@ -283,6 +287,7 @@ function init() {
   setupGifTab();
   setupSlideshowTab();
   setupNowPlayingTab();
+  setupWeatherTab();
   setupLightingTab();
   setupClearActions();
   setupKeymap();
@@ -440,6 +445,7 @@ function setupSections() {
       if (!lightingVisible()) lightingFxCtl.stop();
       if (!keymapVisible()) keymapTesterCtl.stop();
       if (nowPlayingVisible()) nowPlayingCtl.start?.(); else nowPlayingCtl.stop(); // self-arming with the tab/section
+      if (weatherVisible()) weatherCtl.start?.(); else weatherCtl.stop();
     });
   });
   rovingTabindex(btns);
@@ -460,6 +466,7 @@ function setupTabs() {
       if (name !== 'slideshow') slideshowCtl.stop();
       if (name !== 'lighting') lightingFxCtl.stop();
       if (name === 'nowplaying') nowPlayingCtl.start?.(); else nowPlayingCtl.stop(); // self-arming on this tab
+      if (name === 'weather') weatherCtl.start?.(); else weatherCtl.stop();
     });
   });
   rovingTabindex(tabs);
@@ -474,6 +481,15 @@ const nowPlayingVisible = () =>
   document.querySelector('#app')?.dataset.section === 'lcd' &&
   document.querySelector('.panel[data-panel="nowplaying"]')?.hidden === false;
 
+// Weather is the second ambient-display feature and shares the same "one screen, one owner"
+// constraint as now-playing — they cannot both drive the picture page. It self-arms on its own tab
+// exactly like now-playing; setupWeatherTab fills start/stop/sync in. Declared at module scope (next
+// to nowPlayingCtl) so each setup can reference the other for the mutual-exclusion handoff.
+const weatherCtl = { stop() {} };
+const weatherVisible = () =>
+  document.querySelector('#app')?.dataset.section === 'lcd' &&
+  document.querySelector('.panel[data-panel="weather"]')?.hidden === false;
+
 // Per-tab file loaders, registered by each setup*Tab so the Recents "Load into tab" action can drop
 // a cached source back into the editor. Keyed by tab name ('picture' | 'gif'). Assigned at init.
 const tabLoaders = {};
@@ -482,11 +498,19 @@ const tabLoaders = {};
 // Tracks the last view THIS app set. 'unknown' on fresh connect (write-only device).
 let lastView = 'unknown';
 
-// Now-Playing live ownership of the picture/main slot. While npLive is true the device bar reads
-// "▶ Now Playing" + the track, and the picture/main slot cards show a live badge instead of a stale
-// thumbnail. Set by slotsLive() from the Now Playing loop; read by setNowShowing + the card render.
+// Live ownership of the picture/main slot. While npLive is true the device bar reads a live label +
+// readout, and the picture/main slot cards show a live badge instead of a stale thumbnail. Set by
+// slotsLive() from either the Now Playing loop or the Weather loop; read by setNowShowing + the card
+// render. liveKind names WHICH feature owns it ('np' | 'weather') so the bar/cards label it right.
 let npLive = false;
 let npTrack = null;
+let liveKind = 'np';
+
+// The live readout labels per owner: the bar title, the slot-card badge, and its fallback sub-line.
+const LIVE_LABELS = {
+  np: { bar: '▶ Now Playing', card: '▶ Now Playing (live)', fallbackSub: 'streaming from Spotify' },
+  weather: { bar: '☀ Weather', card: '☀ Weather (live)', fallbackSub: 'showing local weather' },
+};
 
 const NS_SEGMENTS = {
   clock: { view: proto.VIEW.HOMEPAGE, label: 'Clock' },
@@ -516,6 +540,7 @@ function setupNowShowing() {
       // Switching to a static view means you're done with the live push — stop it so the loop
       // doesn't keep overwriting your view, and so the npLive guard releases and the bar updates.
       if (npLive) nowPlayingCtl.stop?.();
+      weatherCtl.stop?.(); // weather also drives the picture page — a manual view switch takes it over
       const ok = await guardedSend(`View → ${spec.label}`, null, proto.buildView(spec.view), { gap: 1 });
       if (ok) setNowShowing(key);
     });
@@ -583,6 +608,7 @@ function setupClockTab() {
       // now-playing card, so starting the sync stops now-playing (the Show-bar view switch already
       // stops it the same way).
       nowPlayingCtl.stop?.();
+      weatherCtl.stop?.(); // clock-sync flips the view home every 60s — it can't co-own the screen with weather either
       await sendOnce(true);
       clockSyncTimer = setInterval(() => sendOnce(true), 60000);
       if (badge) badge.hidden = false;
@@ -1529,6 +1555,7 @@ function setupNowPlayingTab() {
 
   function startNP() {
     if (npRunning || !connected || !spotifyConnected()) return; // self-arming: no-op unless ready
+    weatherCtl.stop?.();                           // one screen, one owner — now-playing takes over from weather
     stopClockSync();                               // clock-sync flips the view home every 60s — can't co-own the screen
     npRunning = true;
     const token = ++npToken;
@@ -1541,6 +1568,164 @@ function setupNowPlayingTab() {
   // On load: finish an in-flight redirect (if any), then reflect state.
   completeAuthFromRedirect().finally(reflectAuth);
   reflectAuth();
+}
+
+// The weather tab — the second ambient-display feature, built to the same shape as now-playing.
+// Self-arming: it polls Open-Meteo (no API key) every 10 min while this tab is open, renders the
+// 96x160 card (weather/card.js), draws it into the in-tab preview canvas EVERY refresh (so you see
+// it even without a keyboard connected), and — when connected — pushes it to the LCD via the same
+// ACK-gated picture path now-playing uses. No Start/Stop button. "Set location" geocodes a place
+// name to lat/lon and persists it. Weather and now-playing are mutually exclusive owners of the
+// single screen: startWx stops now-playing, and now-playing's startNP stops weather.
+function setupWeatherTab() {
+  const WX_POLL_MS = 10 * 60 * 1000; // weather is slow (Open-Meteo updates ~every 15 min); poll every 10 min
+
+  const placeInput = $('#wxPlace');
+  const setBtn = $('#wxSetLocation');
+  const resolvedEl = $('#wxResolved');
+  const unitsCb = $('#wxUnits');
+  const canvas = $('#wxPreview');
+  const statusEl = $('#wxStatus');
+  if (!setBtn || !canvas) return;
+
+  const ctx = canvas.getContext('2d');
+
+  // Current location record (lat/lon/label/units), persisted in localStorage; defaults to Detroit.
+  let loc = weather.loadLocation();
+  unitsCb.checked = loc.units === 'C';
+  resolvedEl.textContent = `Showing ${loc.label}.`;
+  placeInput.value = ''; // the box is for entering a NEW place; the resolved line shows the current one
+
+  const activeTemp = (s) => (s.units === 'C' ? s.tempC : s.tempF);
+
+  // Decode a 96x160 RGB565-BE frame (the exact bytes buildImageTransfer sends) into the preview
+  // canvas. The CSS upscales it nearest-neighbor so the pixel icons + 5x7 font stay crisp.
+  function drawPreview(frame) {
+    const img = ctx.createImageData(proto.WIDTH, proto.HEIGHT);
+    for (let i = 0, p = 0; i < frame.length; i += 2, p += 4) {
+      const v = (frame[i] << 8) | frame[i + 1];
+      img.data[p] = ((v >> 11) & 0x1f) << 3;      // R5 -> R8
+      img.data[p + 1] = ((v >> 5) & 0x3f) << 2;   // G6 -> G8
+      img.data[p + 2] = (v & 0x1f) << 3;          // B5 -> B8
+      img.data[p + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  // Render a state into the preview and, when a keyboard is connected, push it to the LCD. lastPushKey
+  // suppresses redundant device pushes — the picture ring isn't churned unless the reading changed.
+  let lastPushKey = null;
+  async function renderAndMaybePush(state) {
+    const frame = renderWeatherCard(state);
+    drawPreview(frame);                               // preview always updates, connected or not
+    if (!connected) { setStatus(statusEl, 'Preview only — connect the keyboard to push to the LCD.'); return; }
+    const key = `${state.units}|${state.tempF}|${state.code}|${state.hiF}|${state.loF}|${state.label}`;
+    if (key === lastPushKey) return;                 // unchanged reading — don't re-push
+    let packets;
+    try { packets = proto.buildImageTransfer(frame); }
+    catch (e) { setStatus(statusEl, 'Build failed: ' + ((e && e.message) || e), 'err'); return; }
+    const ok = await sendAckGatedWithProgress('Weather → card', statusEl, packets, () => {});
+    if (ok) {
+      lastPushKey = key;
+      setNowShowing('picture');                      // the card lives on the picture page
+      setStatus(statusEl, `${state.label} · ${activeTemp(state)}° ${state.condition}`, 'ok');
+    }
+  }
+
+  // ---- self-arming poll loop (setTimeout chain + generation token, like now-playing / lighting FX) ----
+  let wxToken = 0, wxTimer = null, wxRunning = false;
+
+  function stopWx() {
+    wxRunning = false;
+    wxToken++;                                        // invalidate any in-flight loop iteration
+    if (wxTimer) { clearTimeout(wxTimer); wxTimer = null; }
+    slotsLive(false);                                 // hand the picture slot back to its cached thumb
+  }
+  weatherCtl.stop = stopWx;
+
+  async function tick(token) {
+    if (token !== wxToken || !wxRunning) return;
+    try {
+      let state;
+      try {
+        state = await weather.getWeather(loc);
+      } catch (e) {
+        const msg = (e && e.message) || String(e);
+        console.warn('[weather] poll — fetch error:', msg);
+        setStatus(statusEl, 'Weather fetch failed: ' + msg, 'err');
+        state = weather.getWeatherMock({ label: loc.label, units: loc.units }); // show something, not a blank card
+      }
+      if (token !== wxToken || !wxRunning) return;
+      await renderAndMaybePush(state);
+    } finally {
+      // Always re-arm while running (same fix now-playing uses so one bad fetch can't kill the loop).
+      if (token === wxToken && wxRunning) wxTimer = setTimeout(() => tick(token), WX_POLL_MS);
+    }
+  }
+
+  function startWx() {
+    nowPlayingCtl.stop?.();                           // one screen, one owner — weather takes over from now-playing
+    if (wxRunning) return;                            // self-arming: already running is a no-op
+    stopClockSync();                                  // clock-sync flips the view home every 60s — can't co-own the screen
+    wxRunning = true;
+    lastPushKey = null;
+    const token = ++wxToken;
+    if (connected) slotsLive(true, null);             // claim the picture slot as live while weather drives it
+    // Immediate preview so the tab is never blank, even before the first fetch returns.
+    drawPreview(renderWeatherCard(weather.getWeatherMock({ label: loc.label, units: loc.units })));
+    setStatus(statusEl, connected ? 'Fetching weather…' : 'Preview only — connect the keyboard to push to the LCD.');
+    tick(token);
+  }
+  weatherCtl.start = startWx;
+
+  // Runs on every connection change (from reflectConnection). While the tab is open, restart so a
+  // fresh connect pushes right away and a disconnect drops back to preview-only — without waiting out
+  // the 10-min poll gap.
+  function syncWx() {
+    if (!weatherVisible()) return;
+    stopWx();
+    startWx();
+  }
+  weatherCtl.sync = syncWx;
+
+  // Immediate refresh outside the poll cadence (after Set location / units change). If the tab is open
+  // it's self-armed, so restart to re-fetch now; otherwise just refresh the preview for the next open.
+  function refreshNow() {
+    if (weatherVisible()) { stopWx(); startWx(); }
+    else drawPreview(renderWeatherCard(weather.getWeatherMock({ label: loc.label, units: loc.units })));
+  }
+
+  // ---- location control: geocode a typed place name -> lat/lon/label, persist, refresh ----
+  async function applyPlace() {
+    const q = placeInput.value.trim();
+    if (!q) { setStatus(statusEl, 'Type a place name first.', 'err'); return; }
+    setBtn.disabled = true;
+    setStatus(statusEl, `Looking up “${q}”…`);
+    try {
+      const hit = await weather.geocode(q);
+      loc = weather.saveLocation({ lat: hit.lat, lon: hit.lon, label: hit.label, units: loc.units });
+      resolvedEl.textContent = `Showing ${loc.label}.`;
+      placeInput.value = '';
+      lastPushKey = null;                             // force a push for the new place
+      setStatus(statusEl, `Location set to ${loc.label}.`, 'ok');
+      refreshNow();
+    } catch (e) {
+      setStatus(statusEl, (e && e.message) || String(e), 'err');
+    } finally {
+      setBtn.disabled = false;
+    }
+  }
+  setBtn.addEventListener('click', applyPlace);
+  placeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyPlace(); } });
+
+  unitsCb.addEventListener('change', () => {
+    loc = weather.saveLocation({ units: unitsCb.checked ? 'C' : 'F' });
+    lastPushKey = null;                               // unit changed — force a re-push
+    refreshNow();
+  });
+
+  // Draw an initial preview at setup so the canvas shows a card the instant the tab is first opened.
+  drawPreview(renderWeatherCard(weather.getWeatherMock({ label: loc.label, units: loc.units })));
 }
 
 // ---- slot cache + recents (client-side memory of what Studio pushed) ---------
