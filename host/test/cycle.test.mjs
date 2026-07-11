@@ -178,4 +178,59 @@ function fakePanel(id, page, opts = {}) {
   console.log('ok — 7) frame correctness (matches apps/nowplaying render, checksums valid)');
 }
 
-console.log('cycle.test.mjs: all 7 SPARC C2 assertions passed');
+// ---- 8) Pause freezes auto-rotation; step()/jumpTo still act; toggle resumes ---------------
+{
+  const dev = new RecordingDevice();
+  const a = fakePanel('nowplaying', 'picture', { dwellMs: 1000 });
+  const b = fakePanel('weather', 'picture', { dwellMs: 1000 });
+  const c = fakePanel('clock', 'home', { dwellMs: 1000 });
+  const cyc = makeCycler({ dev, panels: [a, b, c], mode: 'roundrobin', npFocusOnChange: false });
+
+  await cyc.tick(0);
+  assert.equal(cyc.current.id, 'nowplaying');
+
+  assert.equal(cyc.togglePaused(), true, 'togglePaused() returns the new paused state');
+  assert.equal(cyc.paused, true);
+  await cyc.tick(1000); // dwell elapsed, but paused -> no advance
+  assert.equal(cyc.current.id, 'nowplaying', 'paused: dwell-elapsed does not advance');
+  await cyc.tick(5000); // long past dwell, still frozen
+  assert.equal(cyc.current.id, 'nowplaying', 'paused: stays frozen regardless of elapsed time');
+
+  cyc.step(); // PANEL_NEXT — explicit advance, even while paused
+  await cyc.tick(6000);
+  assert.equal(cyc.current.id, 'weather', 'step() advances one panel while paused');
+  assert.equal(cyc.paused, true, 'step() does not un-pause');
+
+  cyc.jumpTo('clock'); // explicit jump still acts while paused
+  await cyc.tick(7000);
+  assert.equal(cyc.current.id, 'clock', 'jumpTo() acts while paused');
+
+  assert.equal(cyc.togglePaused(), false, 'toggle resumes');
+  await cyc.tick(8000); // dwell (7000+1000) elapsed and no longer paused -> advance
+  assert.notEqual(cyc.current.id, 'clock', 'resumed: dwell advance works again');
+  console.log('ok — 8) pause freezes rotation; step/jumpTo still act; toggle resumes');
+}
+
+// ---- 9) A panel whose render() throws is contained, not fatal to the host ------------------
+{
+  const dev = new RecordingDevice();
+  let boom = true;
+  const bad = fakePanel('nowplaying', 'picture', {
+    dwellMs: 1000,
+    render: () => { if (boom) throw new Error('render kaboom'); const fb = new Uint8Array(FRAME_BYTES); fb[0] = 1; return fb; },
+  });
+  const good = fakePanel('clock', 'home', { dwellMs: 1000 });
+  const cyc = makeCycler({ dev, panels: [bad, good], mode: 'roundrobin', npFocusOnChange: false });
+
+  await assert.doesNotReject(() => cyc.tick(0), 'a panel render() throw must not reject the tick / crash the host');
+  assert.deepEqual(dev.ops, [], 'nothing is pushed when render() throws');
+  assert.equal(cyc.committed, false, 'no card committed on a failed render');
+
+  boom = false;
+  dev.ops.length = 0;
+  await cyc.tick(1000); // host still alive -> rotation continues to the next panel
+  assert.ok(dev.ops.length >= 1, 'host survives the throw and keeps painting');
+  console.log('ok — 9) panel render() throw is contained (no host crash)');
+}
+
+console.log('cycle.test.mjs: all 9 SPARC C2 + robustness assertions passed');

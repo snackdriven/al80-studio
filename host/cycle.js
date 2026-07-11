@@ -28,6 +28,8 @@ export function makeCycler({
   let preempting = false;
   let lastAlertShown = null;
   let pendingJump = null; // panelId requested via jumpTo(), consumed on the next tick
+  let pendingStep = false; // step()/PANEL_NEXT — advance one panel on the next tick
+  let paused = false;      // togglePaused()/CYCLE_TOGGLE — freezes auto-rotation (dwell + focus); alerts/jump/step still act
 
   /** FR3/FR9: smart rules gate availability; roundrobin ignores them (pure fixed rotation). */
   const available = (p) => (p.available() && !(p.stale?.())) || mode === 'roundrobin';
@@ -52,7 +54,10 @@ export function makeCycler({
       await dev.sendClock();
       await dev.goHome();
     } else {
-      await pushCard(p.render());
+      let frame;
+      try { frame = p.render(); }
+      catch (e) { console.error(`[cycle] panel "${p.id}" render() threw — holding this tick:`, e?.message ?? e); return; }
+      await pushCard(frame);
       if (syncRGB && p.rgb?.()) { try { await dev.setRGB(p.rgb()); } catch { /* best effort — never blocks the panel */ } }
     }
   }
@@ -61,6 +66,13 @@ export function makeCycler({
    * effect on the NEXT tick, ahead of focus-on-change and normal dwell advance, but never ahead of
    * an active alert (alerts always win — A5/FR6). No-op if the panel doesn't exist or isn't available. */
   function jumpTo(panelId) { pendingJump = panelId; }
+
+  /** Public (hotkey PANEL_NEXT): advance one panel on the next tick. Fires whether paused or not. */
+  function step() { pendingStep = true; }
+
+  /** Public (hotkey CYCLE_TOGGLE): freeze/resume auto-rotation. Alerts + explicit jump/step still act.
+   * Returns the new paused state. */
+  function togglePaused() { paused = !paused; return paused; }
 
   async function tick(t) {
     try {
@@ -93,7 +105,14 @@ export function makeCycler({
         }
         // unknown/unavailable panel -> ignored, fall through to normal dwell logic this tick
       }
-      if (mode === 'smart' && npFocusOnChange) {
+      if (pendingStep) { // explicit PANEL_NEXT — advance now, regardless of paused/dwell
+        pendingStep = false;
+        idx = nextAvailableIndex(idx);
+        await showPanel(panels[idx]);
+        dwellUntil = t + panels[idx].dwellMs;
+        return;
+      }
+      if (mode === 'smart' && npFocusOnChange && !paused) {
         const npi = panels.findIndex((p) => p.id === 'nowplaying');
         // consume-once regardless of whether we act, so a stale flag can't fire later (R5)
         const wants = npi >= 0 ? !!panels[npi].wantsFocus?.() : false;
@@ -117,7 +136,7 @@ export function makeCycler({
         dwellUntil = t + panels[idx].dwellMs;
         return;
       }
-      if (t >= dwellUntil) { // dwell elapsed -> advance
+      if (t >= dwellUntil && !paused) { // dwell elapsed -> advance (frozen while paused)
         idx = nextAvailableIndex(idx);
         await showPanel(panels[idx]);
         dwellUntil = t + panels[idx].dwellMs;
@@ -138,10 +157,13 @@ export function makeCycler({
   return {
     tick,
     jumpTo,
+    step,
+    togglePaused,
     get idx() { return idx; },
     get current() { return panels[idx]; },
     get committed() { return committed; },
     get preempting() { return preempting; },
+    get paused() { return paused; },
     get dwellUntil() { return dwellUntil; },
   };
 }

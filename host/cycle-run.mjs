@@ -34,7 +34,10 @@ const modeArg = [...args].find((a) => a.startsWith('--mode='));
 /** A7 config schema. */
 export function parseEnv(env = process.env, argv = []) {
   const modeFlag = argv.find((a) => a.startsWith('--mode='))?.split('=')[1];
-  const panelIds = (env.CYCLE_PANELS || 'nowplaying,weather,clock').split(',').map((s) => s.trim()).filter(Boolean);
+  const onlyFlag = argv.find((a) => a.startsWith('--only='))?.split('=')[1]; // single-panel debug — overrides CYCLE_PANELS
+  const panelIds = onlyFlag
+    ? [onlyFlag.trim()] // buildPanels throws on an unknown name, so a bad --only= errors loudly (not a silent all-3 run)
+    : (env.CYCLE_PANELS || 'nowplaying,weather,clock').split(',').map((s) => s.trim()).filter(Boolean);
   const dwellDefault = Math.max(8000, Number(env.CYCLE_DWELL_MS) || 15000); // floored 8s (NFR2)
   const dwellFor = (id) => {
     const key = `CYCLE_DWELL_${id.toUpperCase()}`;
