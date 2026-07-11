@@ -50,24 +50,10 @@
           <button id="nsClock" type="button" class="ns-chip device-action" data-view="clock" aria-pressed="false" title="Switch the LCD to the clock view" disabled>Clock</button>
           <button id="nsPicture" type="button" class="ns-chip device-action" data-view="picture" aria-pressed="false" title="Switch the LCD to the picture view" disabled>Picture</button>
           <button id="nsGif" type="button" class="ns-chip device-action" data-view="gif" aria-pressed="false" title="Switch the LCD to the GIF view" disabled>GIF</button>
+          <button id="nsNowPlaying" type="button" class="ns-chip device-action" data-live="np" aria-pressed="false" title="Arm live Now Playing on the LCD" disabled>Now Playing</button>
+          <button id="nsWeather" type="button" class="ns-chip device-action" data-live="weather" aria-pressed="false" title="Arm live Weather on the LCD" disabled>Weather</button>
         </div>
         <span id="syncBadge" class="sync-badge" hidden>Syncing &middot; every 60s</span>
-      </div>
-
-      <!-- Ambient readouts: current Now Playing + Weather, always shown regardless of which feature
-           owns the LCD (that's the single-owner nsState/nsTrack readout above). Live while each poll
-           runs, a mock sample otherwise. -->
-      <div class="db-ambient">
-        <span class="db-ambient-item">
-          <span class="db-ambient-icon" aria-hidden="true">&#9654;</span>
-          <span class="db-label">Now Playing</span>
-          <span id="nsNowPlaying" class="ns-track-meta"></span>
-        </span>
-        <span class="db-ambient-item">
-          <span class="db-ambient-icon" aria-hidden="true">&#9728;</span>
-          <span class="db-label">Weather</span>
-          <span id="nsWeather" class="ns-track-meta"></span>
-        </span>
       </div>
 
       <!-- Overview strip: what Studio last PUSHED to each area (client-side memory, not a device
