@@ -18,6 +18,7 @@ import * as weather from './weather/weather.js';
 import { render as renderWeatherCard } from './weather/card.js';
 import * as slots from './slots.js';
 import * as effects from './effects.js';
+import * as music from './music.js';
 
 // ---- tiny DOM helpers -------------------------------------------------------
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -2496,6 +2497,118 @@ function setupLightingTab() {
     setStatus(fxStatus, 'Stopped.');
     await restTo(breatheColorA);                  // rest on the last A
   });
+
+  // ---- music-reactive lighting (opt-in) -------------------------------------
+  // Captures PC audio in the browser (getDisplayMedia, behind the Start gesture), reduces each frame
+  // to ONE global HSV (src/music.js — pure + tested), and streams it save-less at rAF rate. Works on
+  // stock and custom firmware via pickSaveLessCommand; the only new protocol bit is a firmware detect.
+  // Twin of startFx: same one-time Solid-Color pin, same "no EEPROM on the audio path" contract, but
+  // an audio color source and an rAF clock. Registered into lightingFxCtl.stop so every teardown point
+  // (Stop, tab-away ui.js:445/467, disconnect ui.js:161) also tears the audio stream down.
+  const musicStatus = $('#musicStatus');
+  const musicMode = $('#musicMode');
+  const musicCap = $('#musicCap');
+  const musicCapOut = $('#musicCapOut');
+  persist(musicMode, 'musicMode');
+  persist(musicCap, 'musicCap', (el) => { musicCapOut.textContent = el.value; });
+  musicCap.addEventListener('input', () => { musicCapOut.textContent = musicCap.value; });
+
+  let audioToken = 0, rafId = null, mediaStream = null, audioCtx = null;
+
+  function stopMusic() {
+    audioToken++;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    try { mediaStream?.getTracks().forEach((t) => t.stop()); } catch { /* already gone */ }
+    try { audioCtx?.close(); } catch { /* already closed */ }
+    mediaStream = null; audioCtx = null;
+  }
+  // Chain into the shared lighting-stop so tab-away / disconnect / section-switch cover music too.
+  const prevLightingStop = lightingFxCtl.stop;
+  lightingFxCtl.stop = () => { prevLightingStop(); stopMusic(); };
+
+  // Firmware detect via the 0x46 side-bar probe. Cached per run; misdetect is safe (wrong command
+  // no-ops). Injected viaTransact keeps src/music.js DOM/HID-free and unit-testable.
+  const detectFw = () =>
+    music.detectFirmware((report, match, ms) => viaTransact(report, match, ms), 400);
+
+  async function startMusic() {
+    stopFx(); stopMusic();                          // exclusive with every other effect
+    // stopMusic() just bumped audioToken; snapshot it so any Stop/disconnect/section-switch that
+    // fires DURING an await below (the picker can sit open for seconds) is detectable afterward.
+    // Without this, a cancel's stopMusic() runs, then the resolved await starts a loop anyway —
+    // leaving a live screen-capture / zombie loop. Re-checked after every await in the setup path.
+    const startToken = audioToken;
+    if (!connected) { setStatus(musicStatus, 'Connect first.', 'err'); return; }
+    setStatus(musicStatus, 'Detecting firmware…');
+    const fw = await detectFw();
+    if (startToken !== audioToken) { stopMusic(); return; }   // cancelled during detect
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setStatus(musicStatus, 'This browser can\'t capture system audio (Chrome/Edge on Windows).', 'err');
+      return;
+    }
+    try {
+      mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, systemAudio: 'include' });
+    } catch {
+      setStatus(musicStatus, 'Screen/audio share was cancelled.', 'err');
+      return;
+    }
+    // Cancelled while the picker was open — tear down the stream we just got, don't start.
+    if (startToken !== audioToken) { stopMusic(); return; }
+    if (!mediaStream.getAudioTracks().length) {
+      stopMusic();
+      setStatus(musicStatus, 'No system audio — re-Start and tick “Share system audio”.', 'err');
+      return;
+    }
+    mediaStream.getVideoTracks().forEach((t) => t.stop());       // we only want the audio track
+    mediaStream.getAudioTracks()[0].addEventListener('ended', stopMusic);
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const srcNode = audioCtx.createMediaStreamSource(mediaStream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.7;
+    srcNode.connect(analyser);                                    // NEVER analyser.connect(destination)
+
+    // The ONE and ONLY EEPROM write: pin the base effect to Solid Color so live frames show through.
+    // Custom uses the VialRGB ordinal (SOLID=2); stock uses the QMK RGB-matrix Solid Color id (1).
+    const STOCK_SOLID_EFFECT = 1;
+    const pin = fw === 'custom'
+      ? proto.buildVialRGB(SOLID_COLOR_EFFECT, { val: 255 })
+      : proto.buildLightEffect(STOCK_SOLID_EFFECT);
+    if (!await guardedSend('Music → Solid Color', musicStatus, pin)) { stopMusic(); return; }
+    if (startToken !== audioToken) { stopMusic(); return; }   // cancelled during the pin send
+
+    const freq = new Uint8Array(analyser.frequencyBinCount);
+    const wave = new Uint8Array(analyser.fftSize);
+    const state = music.newMapState();
+    const mode = musicMode.value;
+    const token = ++audioToken;
+    setStatus(musicStatus, `Music reacting (${fw}) — press Stop to end.`, 'ok');
+
+    const tick = async () => {
+      if (token !== audioToken) return;
+      analyser.getByteFrequencyData(freq);
+      analyser.getByteTimeDomainData(wave);
+      const cap = +musicCap.value / 100;
+      const hsv = music.mapAudioToHSV(freq, wave, mode, { cap, state });
+      try {
+        // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so
+        // animation frames don't flood the device log; only errors surface.
+        await hid.send(music.pickSaveLessCommand(fw, hsv), { gap: 0 });
+      } catch (err) {
+        const msg = (err && err.message) || String(err);
+        devLog('Music FX frame', { error: msg });
+        setStatus(musicStatus, 'Send failed: ' + msg, 'err');
+        stopMusic();
+        return;
+      }
+      if (token !== audioToken) return;
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  $('#musicStart').addEventListener('click', startMusic);
+  $('#musicStop').addEventListener('click', () => { stopMusic(); setStatus(musicStatus, 'Stopped.'); });
 
   // Manual effect/color changes take over from any running animation.
   effect.addEventListener('change', stopFx);
