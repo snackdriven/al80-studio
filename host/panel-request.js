@@ -5,16 +5,16 @@
 // as this Device's 'panelRequest' event (see device.js, additive after the ACK-match block). This
 // module is the consumer: it subscribes to that event and drives the auto-cycle SPARC's `cycler`.
 //
-// Built against the `cycler` INTERFACE the auto-cycle SPARC specifies (jumpTo/togglePaused/step), not
-// the real implementation — al80-lcd-panel-auto-cycle-SPARC.md's cycle.js/cycle-run.mjs are a separate
-// unmerged feature. cycle-run.mjs wires this in once it exists:
+// Drives the `cycler` from the auto-cycle feature (host/cycle.js makeCycler). That branch now
+// implements all three methods this calls — jumpTo/togglePaused/step — so this is no longer built
+// against a phantom interface; it just isn't wired yet. The integration commit adds, after both land:
 //   import { wirePanelRequests } from './panel-request.js';
 //   wirePanelRequests(dev, cyc);   // after dev.open(), once
 //
-// cycler interface (auto-cycle SPARC A/P sections):
-//   jumpTo(panelName, now)   -> set idx to the named panel, repaint, reset dwell, pause the cycle
-//   togglePaused()           -> flip the rotation's paused flag (CYCLE_TOGGLE)
-//   step(now)                -> advance one panel (PANEL_NEXT)
+// cycler interface (host/cycle.js) — the `now` arg passed below is ignored by jumpTo/step, kept for API symmetry:
+//   jumpTo(panelName)   -> jump to the named panel on the next tick, repaint, reset dwell (does NOT pause)
+//   togglePaused()      -> freeze/resume auto-rotation (CYCLE_TOGGLE)
+//   step()              -> advance one panel on the next tick (PANEL_NEXT)
 import { PANEL_ID, PANEL_NAME_BY_ID } from '../src/protocol.js';
 
 /** Debounce/coalesce window (SPARC R3, FR7): collapses a held key / double-tap bounce to the LAST id. */
@@ -45,11 +45,18 @@ export function wirePanelRequests(dev, cycler, opts = {}) {
   const fire = (id) => {
     timer = null;
     const t = now();
-    if (id === PANEL_ID.CYCLE_TOGGLE) { cycler.togglePaused(); return; }
-    if (id === PANEL_ID.PANEL_NEXT) { cycler.step(t); return; }
-    const name = PANEL_NAME_BY_ID[id];
-    if (name === undefined) { opts.onDrop?.(id); return; } // unknown id — ignore, never throw on a bad byte
-    cycler.jumpTo(name, t);
+    try {
+      if (id === PANEL_ID.CYCLE_TOGGLE) { cycler.togglePaused(); return; }
+      if (id === PANEL_ID.PANEL_NEXT) { cycler.step(t); return; }
+      const name = PANEL_NAME_BY_ID[id];
+      if (name === undefined) { opts.onDrop?.(id); return; } // unknown id — ignore, never throw on a bad byte
+      cycler.jumpTo(name, t);
+    } catch (e) {
+      // This runs in a bare setTimeout — an uncaught throw here would crash the always-on host.
+      // A misbehaving/mismatched cycler must degrade to a dropped hotkey, never take the process down.
+      console.error('[panel-request] cycler action failed for id', id, '—', e?.message ?? e);
+      opts.onError?.(id, e);
+    }
   };
 
   const onPanelRequest = (id) => {

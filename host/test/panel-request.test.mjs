@@ -158,5 +158,26 @@ function emitPanelRequest(dev, id) {
   console.log('panel-request: unwire ok (stops delivery)');
 }
 
+// ---- (7) a throwing cycler is contained — a bad hotkey never crashes the always-on host ----
+{
+  const dev = new MockDevice({ log: () => {} });
+  await dev.open();
+  const boomCycler = {
+    jumpTo() { throw new Error('cycler boom'); },
+    togglePaused() { throw new Error('cycler boom'); },
+    step() { throw new Error('cycler boom'); },
+  };
+  let errId = null;
+  const unwire = wirePanelRequests(dev, boomCycler, { debounceMs: 10, onError: (id) => { errId = id; } });
+
+  emitPanelRequest(dev, PANEL_ID.NOWPLAYING);
+  await sleep(20); // fire() runs inside setTimeout — a throw here must be caught, not crash the process
+
+  assert.equal(errId, PANEL_ID.NOWPLAYING, 'a throwing cycler is caught + reported via onError, not propagated');
+  unwire();
+  dev.close();
+  console.log('panel-request: throwing cycler contained (no host crash)');
+}
+
 assert.equal(typeof PANEL_REQ_DEBOUNCE_MS, 'number', 'exports its default debounce constant');
 console.log('host/panel-request.test.mjs: all assertions passed');
