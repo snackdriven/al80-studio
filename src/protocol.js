@@ -539,6 +539,23 @@ export const buildMacroGetBuffer = (offset, size) => viaReport([VIA_CMD.MACRO_GE
 export const buildMacroSetBuffer = (offset, data) => viaReport([VIA_CMD.MACRO_SET_BUFFER, hi16(offset), lo16(offset), data.length & 0xff, ...data.map((b) => b & 0xff)]);
 export const buildMacroReset = () => viaReport([VIA_CMD.MACRO_RESET]);
 
+// ---- hotkey → panel signal (keyboard→host, custom firmware) ----
+// Unsolicited raw_hid_send from the keyboard's process_record_kb (al80-hotkey-panel-switch-SPARC.md):
+// the keyboard emits this on keypress, unprompted — the host never sends a matching request. Disjoint
+// from every host→keyboard opcode (0x40-0x48 LCD/palette/bar) and from the 0x41 LCD echo the ACK matcher
+// keys on (device.js _onData matches byte[0]===0x41; 0x4B can never false-resolve an in-flight ACK wait).
+// report = [0x4B, panelId, 0, 0, ...]. panelId: 0x00 nowplaying, 0x01 weather, 0x02 clock,
+// 0xF0 CYCLE_TOGGLE (pause/resume rotation), 0xF1 PANEL_NEXT (advance one). Read-only from the host's
+// side — there is no builder here on purpose; the host never constructs this report, only decodes it.
+export const PANEL_REQ = 0x4b;
+export const PANEL_ID = Object.freeze({ NOWPLAYING: 0x00, WEATHER: 0x01, CLOCK: 0x02, CYCLE_TOGGLE: 0xf0, PANEL_NEXT: 0xf1 });
+/** Map a wire panelId to the auto-cycle SPARC's panel name (`cycle.js` panels[].id). null if unknown/control id. */
+export const PANEL_NAME_BY_ID = Object.freeze({
+  [PANEL_ID.NOWPLAYING]: 'nowplaying',
+  [PANEL_ID.WEATHER]: 'weather',
+  [PANEL_ID.CLOCK]: 'clock',
+});
+
 /** Serialize a logical packet (64-byte body) to the capture-schema hex string, for tests/logs. */
 export function toHex(pkt) {
   return Array.from(pkt, (b) => b.toString(16).padStart(2, '0')).join(' ');
