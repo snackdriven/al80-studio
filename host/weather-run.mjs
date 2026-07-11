@@ -1,6 +1,8 @@
-// Weather slide on the AL80 screen: poll Open-Meteo (or a mock) -> render the 96x160 card -> push
-// it over the native transport (device.js, with all the anti-banding fixes). Mirrors
-// nowplaying-run.mjs — same device handling, same picture-ring safety.
+// Weather slide on the AL80 screen, as a single-panel launcher over panels/weather.js (Phase 0
+// refactor of the auto-cycle SPARC — same behavior as before the split: poll on the panel's own
+// cadence, push/delete-before-add via device.js, only re-push when the reading actually changed).
+// For the multi-panel always-on host (now-playing + weather + clock, alerts, smart rules) use
+// cycle-run.mjs. Mirrors nowplaying-run.mjs — same device handling, same picture-ring safety.
 //
 // Usage (close al80-studio / usevia first — one app owns the keyboard at a time):
 //   node weather-run.mjs                 MOCK weather + real screen  (proves it with NO network)
@@ -13,22 +15,16 @@
 // Open-Meteo needs NO API key, so --live works with nothing configured.
 //
 // ONE SCREEN, ONE OWNER: the LCD is a single surface. Run weather OR now-playing, not both — they
-// can't drive the panel at once (device.js throws "device busy" if another opener holds it).
-// Coordinating the two is future scheduler work (see weather-DESIGN.md), out of scope here.
+// can't drive the panel at once (device.js throws "device busy" if another opener holds it). For
+// both together, use cycle-run.mjs.
 import Device, { MockDevice } from './device.js';
-import { render } from './apps/weather.js';
-import { getWeatherFromEnv, getWeatherMock } from './lib/weather.js';
+import { makeWeatherPanel } from './panels/weather.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const args = new Set(process.argv.slice(2));
 const LIVE = args.has('--live');
 const MOCK_DEVICE = args.has('--mock-device');
 const POLL_MS = 10 * 60 * 1000; // weather is slow — 10 min keeps it fresh + polite to a free no-key API
-
-async function currentWeather() {
-  if (!LIVE) return getWeatherMock();
-  return getWeatherFromEnv(process.env); // throws on network/HTTP error — caught by the loop
-}
 
 /** A change key so we only re-push when the drawn reading actually moves (avoids ring churn). */
 function readingKey(w) {
@@ -44,42 +40,38 @@ async function main() {
   }
   console.log(`[weather] ${LIVE ? 'LIVE (Open-Meteo)' : 'MOCK weather'} -> ${MOCK_DEVICE ? 'mock device' : 'AL80 screen'}. Ctrl-C to stop.`);
   process.on('SIGINT', async () => {
-    // clean up the one card we left in the picture ring so stopping doesn't leave the slide behind
     try { if (committed && dev.opened) await dev.deletePicture(); } catch { /* best effort */ }
     try { dev.close(); } catch { /* gone */ }
     console.log('\n[weather] stopped');
     process.exit(0);
   });
 
+  const panel = makeWeatherPanel({ live: LIVE });
   let lastKey = null;    // last drawn reading — skip a push when nothing changed
-  let committed = false; // have WE committed a card to the ring? gates the delete-before-add (see device.sendCard)
-  for (;;) {
-    let w = null;
-    try { w = await currentWeather(); } catch (e) { console.log('[weather]', e.message); }
+  let committed = false; // have WE committed a card to the ring? gates the delete-before-add (device.sendCard)
 
-    if (w) {
-      const key = readingKey(w);
+  for (;;) {
+    try { await panel.poll(); } catch (e) { console.log('[weather]', e.message); }
+
+    if (panel.available()) {
+      // panels/weather.js drops the daemon's internal state on poll(); read it back for the change-key
+      // via a fresh render (pure) and gate the push the same way the pre-split runner did.
+      const frame = panel.render();
+      const key = readingKey(panel.state ? panel.state() : {});
       if (key !== lastKey) {
-        const frame = render(w);
-        const t = w.units === 'C' ? w.tempC : w.tempF;
-        console.log(`[weather] ${w.label} ${t}°${w.units} ${w.condition} (hi ${w.units === 'C' ? w.hiC : w.hiF}/lo ${w.units === 'C' ? w.loC : w.loF})`);
         try {
-          // sendCard deletes the card we last committed (the slot on screen) before adding the new
-          // one, so the picture ring doesn't grow past our single card. Don't replace on the first
-          // push (nothing of ours yet).
           const r = await dev.sendCard(frame, { replacePrevious: committed });
           console.log(`[send] ${r.acked}/${r.dataBlocks} blocks acked, ${r.fellBack} fell back`);
           committed = true;
-          lastKey = key; // only advance state on a real push
+          lastKey = key;
         } catch (e) {
           console.log('[send]', e.message);
-          if (!dev.opened) { // unplug / sleep-resume dropped the handle — device.js closed it on the write error
+          if (!dev.opened) {
             console.log('[weather] device dropped — reconnecting…');
-            committed = false; // after a reconnect we can't be sure our card is still the displayed slot — don't delete blind
+            committed = false;
             try { await dev.reopen(); console.log('[weather] reconnected'); }
             catch (re) { console.log('[weather] reconnect failed:', re.message); }
           }
-          // leave lastKey unchanged so this frame is re-attempted on the next poll
         }
       }
     }
