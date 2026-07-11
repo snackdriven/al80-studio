@@ -1,3 +1,7 @@
+// DEPRECATED (Autostart unification, research/al80-buildout-flow-and-overnight-plan.md): nothing
+// launches this anymore — cycle-run.mjs uses device.js (the anti-banding-fixed native transport)
+// instead. Kept for reference / the daemon.js prototype it backed. Do not wire new work to this.
+//
 // Real transport: drives the AL80 over USB via node-hid. Same send(packets) interface as
 // MockTransport, so apps/diff/scheduler don't care which is wired. Proven by host/spike.mjs
 // (node-hid opens 0xFF60/0x61 on Windows, 64-byte body, device ACKs every report with byte6=0x55).

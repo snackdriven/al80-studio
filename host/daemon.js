@@ -1,3 +1,8 @@
+// DEPRECATED (Autostart unification, research/al80-buildout-flow-and-overnight-plan.md): its
+// always-on loop + local alert intake (control/local-hook.js + Scheduler) folded into
+// cycle-run.mjs, which is what autostart now launches. Nothing launches daemon.js anymore; kept
+// for reference. Do not wire new work to this.
+//
 // M1 daemon core: connect -> loop { render clock, diff, paced send, health-check } -> recover.
 // Demonstrates the always-on loop + the no-admin recovery ladder (reopen + full re-sync) and uses
 // the echo channel as a wedge watchdog. Pushes rendered frames to the picture-page store (no view

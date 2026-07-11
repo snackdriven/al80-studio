@@ -8,14 +8,18 @@ and `al80-nowplaying-webhooks-SPARC.md`.
 ## Run
 ```
 npm install                 # node-hid (prebuilt) + (later) @napi-rs/canvas
-node daemon.js              # connect, drive the clock, accept alerts (Ctrl-C to stop)
-node daemon.js 8000         # run for 8s (bounded, for testing)
+node cycle-run.mjs          # the always-on host: rotates clock/weather/now-playing, accepts alerts
+node cycle-run.mjs --only=nowplaying   # single-panel debug (also: --only=weather, --only=clock)
 ```
-The daemon owns the `0xFF60/0x61` interface — close any browser tab / vendor app first (single opener).
+`cycle-run.mjs` owns the `0xFF60/0x61` interface — close any browser tab / vendor app first (single
+opener: ONE always-on host, not one process per panel). `daemon.js` was the M1 prototype for the
+loop/reconnect/scheduler/intake pattern; that's folded into `cycle-run.mjs` now and daemon.js is
+deprecated (kept for reference, nothing launches it).
 
-**Spotify now-playing, always-on:** `node nowplaying-run.mjs --live` drives the LCD with album art
-straight from Node — no browser tab needed. It reconnects on unplug/sleep on its own. To have it
-start at logon and run hidden, see `autostart/README.md`.
+**Always-on, no browser:** `node cycle-run.mjs --live` drives the LCD straight from Node with real
+Spotify + real Open-Meteo — no browser tab needed. It reconnects on unplug/sleep on its own. To have
+it start at logon and run hidden, see `autostart/README.md`. `nowplaying-run.mjs` / `weather-run.mjs`
+still exist as thin single-panel debug launchers (equivalent to `cycle-run.mjs --only=<panel>`).
 
 ## Develop without the device
 ```
@@ -27,7 +31,7 @@ The mock transport reassembles real packets into a framebuffer and writes PNGs, 
 built and tested with no hardware.
 
 ## Alerts
-The daemon listens on `http://127.0.0.1:7333`:
+`cycle-run.mjs` listens on `http://127.0.0.1:7333`:
 ```
 curl -XPOST 127.0.0.1:7333/alert -d '{"title":"SITE DOWN","body":"snackdriven.com","level":"error"}'
 curl -XPOST 127.0.0.1:7333/ack           # dismiss the top sticky alert
@@ -49,10 +53,12 @@ It POSTs to the local daemon and always exits 0 fast — a stopped daemon never 
 ## Layout
 ```
 protocol      ../src/protocol.js        (shared with the browser app)
-transport     transport-hid.js  (node-hid, real)   transport-mock.js  (reassemble->PNG)
-apps          apps/clock.js  apps/alert.js
-lib           lib/render.js  lib/font.js  lib/diff.js  lib/scheduler.js  lib/png.js
+transport     device.js  (node-hid, real, anti-banding)   transport-mock.js  (reassemble->PNG)
+apps          apps/clock.js  apps/weather.js  apps/nowplaying.js  apps/alert.js
+lib           lib/render.js  lib/font.js  lib/diff.js  lib/scheduler.js  lib/png.js  lib/spotify.js  lib/weather.js  lib/art.js
 control       control/local-hook.js  (127.0.0.1 intake)
 hooks         hooks/al80-notify.mjs  (Claude Code hook)
-daemon.js     loop + reconnect + echo watchdog + scheduler + intake
+cycle-run.mjs     the always-on host: loop + reconnect + scheduler + intake + panel rotation
+nowplaying-run.mjs / weather-run.mjs   --only=<panel>-equivalent single-panel debug launchers
+daemon.js / transport-hid.js           deprecated (folded into cycle-run.mjs); reference only
 ```
