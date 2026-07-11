@@ -58,7 +58,11 @@ export function makeCycler({
       try { frame = p.render(); }
       catch (e) { console.error(`[cycle] panel "${p.id}" render() threw — holding this tick:`, e?.message ?? e); return; }
       await pushCard(frame);
-      if (syncRGB && p.rgb?.()) { try { await dev.setRGB(p.rgb()); } catch { /* best effort — never blocks the panel */ } }
+      // always-on host: a throwing rgb() must be contained like render() — skip the tint, keep dwelling, never crash
+      if (syncRGB) {
+        try { const tint = p.rgb?.(); if (tint) await dev.setRGB(tint); }
+        catch (e) { console.error(`[cycle] panel "${p.id}" rgb() threw — skipping tint:`, e?.message ?? e); }
+      }
     }
   }
 

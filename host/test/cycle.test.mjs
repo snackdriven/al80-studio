@@ -233,4 +233,24 @@ function fakePanel(id, page, opts = {}) {
   console.log('ok — 9) panel render() throw is contained (no host crash)');
 }
 
-console.log('cycle.test.mjs: all 9 SPARC C2 + robustness assertions passed');
+// ---- 10) A panel whose rgb() throws is contained too (Bug 1: the rgb() gap under --sync) --------
+{
+  const dev = new RecordingDevice();
+  const bad = fakePanel('nowplaying', 'picture', {
+    dwellMs: 1000,
+    rgb: () => { throw new Error('rgb kaboom'); },
+  });
+  const good = fakePanel('clock', 'home', { dwellMs: 1000 });
+  const cyc = makeCycler({ dev, panels: [bad, good], mode: 'roundrobin', npFocusOnChange: false, syncRGB: true });
+
+  await assert.doesNotReject(() => cyc.tick(0), 'a panel rgb() throw must not reject the tick / crash the host');
+  assert.equal(cyc.committed, true, 'the card still committed — render succeeded, only the tint was skipped');
+  assert.ok(dev.ops.some((o) => o && o.op === 'sendCard'), 'card was pushed despite the rgb() throw');
+  assert.ok(!dev.ops.some((o) => o && o.op === 'setRGB'), 'no tint applied when rgb() throws');
+
+  await cyc.tick(1000); // host still alive -> rotation continues
+  assert.equal(cyc.current.id, 'clock', 'host survives the rgb() throw and keeps cycling');
+  console.log('ok — 10) panel rgb() throw is contained under --sync (no host crash)');
+}
+
+console.log('cycle.test.mjs: all 10 SPARC C2 + robustness assertions passed');

@@ -113,7 +113,10 @@ async function main() {
   });
 
   while (!stopped) {
-    await cyc.tick(Date.now());
+    // always-on host: contain an unexpected tick throw (non-drop bugs tick() rethrows) — log and keep
+    // cycling; the next tick retries recovery. sleep() stays outside so cadence still paces the retry.
+    try { await cyc.tick(Date.now()); }
+    catch (e) { console.error('[cycle] tick threw — continuing:', e?.message ?? e); }
     await sleep(cfg.tickMs);
   }
 }
