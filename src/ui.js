@@ -2533,9 +2533,15 @@ function setupLightingTab() {
 
   async function startMusic() {
     stopFx(); stopMusic();                          // exclusive with every other effect
+    // stopMusic() just bumped audioToken; snapshot it so any Stop/disconnect/section-switch that
+    // fires DURING an await below (the picker can sit open for seconds) is detectable afterward.
+    // Without this, a cancel's stopMusic() runs, then the resolved await starts a loop anyway —
+    // leaving a live screen-capture / zombie loop. Re-checked after every await in the setup path.
+    const startToken = audioToken;
     if (!connected) { setStatus(musicStatus, 'Connect first.', 'err'); return; }
     setStatus(musicStatus, 'Detecting firmware…');
     const fw = await detectFw();
+    if (startToken !== audioToken) { stopMusic(); return; }   // cancelled during detect
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setStatus(musicStatus, 'This browser can\'t capture system audio (Chrome/Edge on Windows).', 'err');
       return;
@@ -2546,6 +2552,8 @@ function setupLightingTab() {
       setStatus(musicStatus, 'Screen/audio share was cancelled.', 'err');
       return;
     }
+    // Cancelled while the picker was open — tear down the stream we just got, don't start.
+    if (startToken !== audioToken) { stopMusic(); return; }
     if (!mediaStream.getAudioTracks().length) {
       stopMusic();
       setStatus(musicStatus, 'No system audio — re-Start and tick “Share system audio”.', 'err');
@@ -2567,6 +2575,7 @@ function setupLightingTab() {
       ? proto.buildVialRGB(SOLID_COLOR_EFFECT, { val: 255 })
       : proto.buildLightEffect(STOCK_SOLID_EFFECT);
     if (!await guardedSend('Music → Solid Color', musicStatus, pin)) { stopMusic(); return; }
+    if (startToken !== audioToken) { stopMusic(); return; }   // cancelled during the pin send
 
     const freq = new Uint8Array(analyser.frequencyBinCount);
     const wave = new Uint8Array(analyser.fftSize);
