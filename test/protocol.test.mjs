@@ -14,6 +14,7 @@ import {
   buildBarColor, buildBarSave, buildBarGet, AP_BAR,
   buildKeymapGet, buildKeymapSet, buildEncoderSet, buildSwitchMatrixState, buildViaLayerCount,
   buildMacroSetBuffer, VIA_CMD,
+  buildLiveLeds, buildLiveFrame, buildLiveStop, AP_LIVE, RGB_MATRIX_LED_COUNT, LED_BAR_RANGE,
 } from '../src/protocol.js';
 
 let pass = 0;
@@ -316,6 +317,83 @@ ok('buildBarColor emits 47 <h> <s> <v> <independent>; buildBarSave emits 48', ()
   assert.equal(buildBarColor(999, -5, 300)[1], 0xff);
   assert.equal(buildBarColor(999, -5, 300)[2], 0x00);
   assert.equal(buildBarColor(999, -5, 300)[3], 0xff);
+});
+
+// Per-key audio-reactive live LED stream (custom firmware raw-HID 0x49) — HOST BUILDERS ONLY.
+// Wire: [0x49, offset, count, r,g,b x count], count max = floor((64-3)/3) = 20.
+ok('buildLiveLeds emits 0x49 opcode + offset/count framing, clamps to 0..255', () => {
+  const one = buildLiveLeds(0, [10, 20, 30]);
+  assert.equal(one.length, 64);
+  assert.equal(one[0], AP_LIVE.LEDS);
+  assert.equal(AP_LIVE.LEDS, 0x49);
+  assert.equal(one[1], 0); // offset
+  assert.equal(one[2], 1); // count
+  assert.deepEqual(Array.from(one.slice(3, 6)), [10, 20, 30]);
+
+  const twenty = buildLiveLeds(20, new Array(60).fill(255));
+  assert.equal(twenty[1], 20);
+  assert.equal(twenty[2], 20); // max chunk size
+  assert.equal(twenty.length, 64);
+
+  // clamp8 applied per-channel (mirrors buildBarColor's clamping behavior)
+  const clamped = buildLiveLeds(0, [999, -5, 300]);
+  assert.deepEqual(Array.from(clamped.slice(3, 6)), [0xff, 0x00, 0xff]);
+});
+
+ok('buildLiveLeds rejects out-of-range or malformed chunk sizes', () => {
+  assert.throws(() => buildLiveLeds(0, []), /out of range/); // count 0
+  assert.throws(() => buildLiveLeds(0, new Array(21 * 3).fill(0)), /out of range/); // count 21 > 20
+  assert.throws(() => buildLiveLeds(0, [1, 2]), /not a multiple of 3/); // not a multiple of 3
+});
+
+ok('buildLiveFrame(82 LEDs) -> 5 chunks, offsets 0/20/40/60/80, counts 20/20/20/20/2, every LED covered once, each <=64 bytes', () => {
+  assert.equal(RGB_MATRIX_LED_COUNT, 82);
+  const rgb246 = new Uint8Array(RGB_MATRIX_LED_COUNT * 3);
+  // fill with a distinct, recoverable value per LED so coverage can be verified byte-for-byte
+  for (let led = 0; led < RGB_MATRIX_LED_COUNT; led++) {
+    rgb246[led * 3] = led & 0xff;      // r = led index
+    rgb246[led * 3 + 1] = 0x11;        // g = constant marker
+    rgb246[led * 3 + 2] = 0x22;        // b = constant marker
+  }
+  const frames = buildLiveFrame(rgb246);
+  assert.equal(frames.length, 5);
+  assert.deepEqual(frames.map((p) => p[1]), [0, 20, 40, 60, 80]); // offsets
+  assert.deepEqual(frames.map((p) => p[2]), [20, 20, 20, 20, 2]); // counts
+  assert.ok(frames.every((p) => p.length === 64));
+
+  // reconstruct the 82*3 buffer from the chunks and confirm every LED is covered exactly once
+  const rebuilt = new Uint8Array(RGB_MATRIX_LED_COUNT * 3);
+  let coveredLeds = 0;
+  for (const p of frames) {
+    const offset = p[1], count = p[2];
+    for (let i = 0; i < count; i++) {
+      const led = offset + i;
+      rebuilt[led * 3] = p[3 + i * 3];
+      rebuilt[led * 3 + 1] = p[3 + i * 3 + 1];
+      rebuilt[led * 3 + 2] = p[3 + i * 3 + 2];
+      coveredLeds++;
+    }
+  }
+  assert.equal(coveredLeds, RGB_MATRIX_LED_COUNT); // no gaps, no overlaps
+  assert.deepEqual(Array.from(rebuilt), Array.from(rgb246));
+});
+
+ok('buildLiveFrame rejects a buffer that is not exactly 82*3 bytes', () => {
+  assert.throws(() => buildLiveFrame(new Uint8Array(246 - 3)), /expected 246 bytes/);
+  assert.throws(() => buildLiveFrame(new Uint8Array(246 + 3)), /expected 246 bytes/);
+});
+
+ok('buildLiveStop emits 0x4A sub0 (AP_LIVE_CTRL stop-now)', () => {
+  const stop = buildLiveStop();
+  assert.equal(stop.length, 64);
+  assert.equal(stop[0], AP_LIVE.CTRL);
+  assert.equal(AP_LIVE.CTRL, 0x4a);
+  assert.equal(stop[1], 0);
+});
+
+ok('LED_BAR_RANGE flags indices 76-78 as the side-bar range (documentation constant, not enforced by the builders)', () => {
+  assert.deepEqual(LED_BAR_RANGE, [76, 78]);
+  assert.ok(LED_BAR_RANGE[0] < RGB_MATRIX_LED_COUNT && LED_BAR_RANGE[1] < RGB_MATRIX_LED_COUNT);
 });
 
 console.log(`\n${pass} checks passed.`);
