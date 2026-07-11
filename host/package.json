@@ -6,7 +6,7 @@
   "description": "Always-on host for the AL80 LCD. Reuses ../src/protocol.js. Mock transport + apps first; native node-hid transport later.",
   "scripts": {
     "demo": "node demo.js",
-    "test": "node test/roundtrip.test.mjs"
+    "test": "node --test"
   },
   "dependencies": {
     "node-hid": "^3.3.0"
