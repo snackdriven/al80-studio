@@ -201,6 +201,28 @@ export async function getNowPlaying(accessToken) {
   return parseNowPlaying(await res.json());
 }
 
+/**
+ * Mock now-playing — same shape as getNowPlaying, zero network, zero credentials. Lets the readouts
+ * show a sample track offline with nothing connected (mirrors weather.getWeatherMock). Pass a
+ * wall-clock ms to animate the progress; omit it for a fixed, deterministic sample.
+ * @param {number} [nowMs]  e.g. Date.now() to advance progress; default gives a stable mid-track frame.
+ * @returns {{title,artist,artUrl,trackId,isPlaying,progress,elapsedMs,durationMs}}
+ */
+export function getNowPlayingMock(nowMs) {
+  const durationMs = 369_000;                     // ~6:09
+  const elapsedMs = nowMs == null ? 129_000 : nowMs % durationMs; // fixed 2:09, or animated
+  return {
+    title: 'Get Lucky',
+    artist: 'Daft Punk, Pharrell Williams, Nile Rodgers',
+    artUrl: null,
+    trackId: 'mock-get-lucky',
+    isPlaying: true,
+    progress: elapsedMs / durationMs,
+    elapsedMs,
+    durationMs,
+  };
+}
+
 // ── TOKEN + PKCE STATE PERSISTENCE (localStorage; browser-only) ──────────────────────────────────
 
 const LS_REFRESH = 'al80.spotify.refreshToken';

@@ -1389,6 +1389,7 @@ function setupNowPlayingTab() {
 
   // ---- track readout (title / artist / art thumbnail) ----
   function showTrack(np) {
+    setNpStrip(np); // keep the always-on device-bar readout in step with the tab's track view
     if (np && np.title) {
       titleEl.textContent = np.title;
       artistEl.textContent = (np.isPlaying ? '' : '(paused) ') + (np.artist || '');
@@ -1602,6 +1603,10 @@ function setupNowPlayingTab() {
     tick(token);
   }
 
+  // Seed the always-on device-bar readout with a sample track so it's never blank offline; the poll
+  // loop's showTrack() replaces it with the live track once armed.
+  setNpStrip(spotify.getNowPlayingMock());
+
   // On load: finish an in-flight redirect (if any), then reflect state.
   completeAuthFromRedirect().finally(reflectAuth);
   reflectAuth();
@@ -1656,6 +1661,7 @@ function setupWeatherTab() {
   // suppresses redundant device pushes — the picture ring isn't churned unless the reading changed.
   let lastPushKey = null;
   async function renderAndMaybePush(state) {
+    setWeatherStrip(state);                           // keep the always-on device-bar readout in step
     const frame = renderWeatherCard(state);
     drawPreview(frame);                               // preview always updates, connected or not
     if (!connected) { setStatus(statusEl, 'Preview only — connect the keyboard to push to the LCD.'); return; }
@@ -1734,7 +1740,11 @@ function setupWeatherTab() {
   // it's self-armed, so restart to re-fetch now; otherwise just refresh the preview for the next open.
   function refreshNow() {
     if (weatherVisible()) { stopWx(); startWx(); }
-    else drawPreview(renderWeatherCard(weather.getWeatherMock({ label: loc.label, units: loc.units })));
+    else {
+      const sample = weather.getWeatherMock({ label: loc.label, units: loc.units });
+      setWeatherStrip(sample);                        // reflect the new place/units in the strip even while hidden
+      drawPreview(renderWeatherCard(sample));
+    }
   }
 
   // ---- location control: geocode a typed place name -> lat/lon/label, persist, refresh ----
@@ -1766,8 +1776,11 @@ function setupWeatherTab() {
     refreshNow();
   });
 
-  // Draw an initial preview at setup so the canvas shows a card the instant the tab is first opened.
-  drawPreview(renderWeatherCard(weather.getWeatherMock({ label: loc.label, units: loc.units })));
+  // Draw an initial preview at setup so the canvas shows a card the instant the tab is first opened,
+  // and seed the always-on device-bar readout so it's never blank offline.
+  const initialWx = weather.getWeatherMock({ label: loc.label, units: loc.units });
+  setWeatherStrip(initialWx);
+  drawPreview(renderWeatherCard(initialWx));
 }
 
 // ---- slot cache + recents (client-side memory of what Studio pushed) ---------
@@ -2088,6 +2101,25 @@ function slotsLive(on, np, kind = 'np') {
   liveKind = newKind;
   renderBarLive();
   if (changed) refreshSlotsUI(); // only rebuild cards/overview when the live state actually moved
+}
+
+// ---- device-bar ambient readouts (Now Playing + Weather) --------------------
+// Two always-on readouts in the strip, independent of which feature currently owns the LCD (that's
+// the single-owner nsState/nsTrack readout). Each shows the last reading its poll produced — live
+// while the loop runs, a mock sample otherwise — so the strip is never blank. Display-only, so they
+// persist across tab switches; the poll loops call these whenever they get a fresh reading.
+function setNpStrip(np) {
+  const elm = document.getElementById('nsNowPlaying');
+  if (!elm) return;
+  elm.textContent = np && np.title
+    ? (np.artist ? `${np.title} — ${np.artist}` : np.title)
+    : 'Nothing playing';
+}
+function setWeatherStrip(s) {
+  const elm = document.getElementById('nsWeather');
+  if (!elm || !s) return;
+  const temp = s.units === 'C' ? s.tempC : s.tempF;
+  elm.textContent = `${temp}° ${s.condition} · ${s.label}`;
 }
 
 // ---- render: recents gallery ----

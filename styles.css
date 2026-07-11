@@ -992,6 +992,21 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 }
 .ns-state.is-live { color: var(--ok); }
 
+/* Ambient readouts (Now Playing + Weather) — a full-width row in the device bar, wrapping onto its
+   own line under the state + switch rows. Mirrors .db-overview's full-width treatment. */
+.db-ambient {
+  flex-basis: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-5);
+  flex-wrap: wrap;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.db-ambient-item { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.db-ambient-icon { color: var(--ok); font-size: 13px; }
+
 /* Device-bar overview strip: the 4 area thumbnails, wraps to its own row. */
 .db-overview {
   flex-basis: 100%;
