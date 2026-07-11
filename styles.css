@@ -726,24 +726,21 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   box-shadow: 0 0 0 1px var(--border-2), 0 10px 26px rgba(0, 0, 0, .45);
 }
 .clock-live {
-  font-size: 54px;
+  font-size: 68px;
   font-weight: 600;
   line-height: 1;
-  letter-spacing: .02em;
+  letter-spacing: .04em;
   color: var(--text);
+  /* Monospaced + tabular so it reads like the firmware's digital home-screen clock and HH:MM
+     doesn't reflow as the digits tick. */
+  font-family: ui-monospace, "SFMono-Regular", "Consolas", monospace;
   font-variant-numeric: tabular-nums;
 }
-.clock-meridiem {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: .18em;
-  color: var(--accent);
-}
-.clock-meridiem:empty { display: none; }
 .clock-live-date {
-  font-size: 14px;
-  letter-spacing: .04em;
+  font-size: 15px;
+  letter-spacing: .08em;
   color: var(--muted);
+  text-transform: uppercase;
 }
 
 /* Destination toggle → segmented control (main page vs separate view) */
