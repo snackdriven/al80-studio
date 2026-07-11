@@ -424,6 +424,16 @@ export const buildLightColor = (hue, sat) => [buildLightSet(LIGHT.COLOR, [hue, s
  */
 export const buildLightColorLive = (hue, sat) => buildLightSet(LIGHT.COLOR, [hue, sat]);
 
+/**
+ * SAVE-LESS brightness set for real-time animation. One 07 03 01 <val> report, no 0x09 save.
+ * Companion to buildLightColorLive; the streaming loop uses this instead of buildLightBrightness
+ * (which appends a save = EEPROM write). Stock via_qmk_rgb_matrix_set_value handles id 1 noeeprom
+ * (rgb_matrix_sethsv_noeeprom, preserving the current hue/sat). The music-reactive path pairs this
+ * with buildLightColorLive on stock firmware to stream full HSV without ever touching eeconfig.
+ * @returns {Uint8Array} one 07 03 01 <val> report — NOT an array, unlike buildLightBrightness.
+ */
+export const buildLightBrightnessLive = (v) => buildLightSet(LIGHT.BRIGHTNESS, [v]);
+
 // ---- VialRGB (custom vial-qmk firmware) — a DIFFERENT protocol from the stock channel-3 lighting ----
 // Read from vial-qmk quantum/vialrgb.c: with VIALRGB_ENABLE, VIA id_custom_set_value (0x07) routes
 // straight to vialrgb_set_value — there is NO channel byte, so the stock "07 03 …" is ignored. Instead

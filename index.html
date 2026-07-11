@@ -630,6 +630,30 @@
 
       <p id="fxStatus" class="statusline" role="status"></p>
 
+      <div class="fx-mode">
+        <div class="row">
+          <strong>Music</strong>
+          <span class="muted small">reacts to PC audio &mdash; opt-in, gentle by default</span>
+          <label class="inline">Style
+            <select id="musicMode" class="device-action" disabled>
+              <option value="breathe">Breathe (gentle)</option>
+              <option value="pulse">Pulse (beat pops)</option>
+              <option value="follow">Follow hue</option>
+            </select>
+          </label>
+          <label class="inline">Max brightness <output id="musicCapOut">60</output>%
+            <input id="musicCap" type="range" min="10" max="100" value="60" class="device-action" disabled />
+          </label>
+          <button id="musicStart" type="button" class="btn primary small device-action" disabled>Start</button>
+          <button id="musicStop" type="button" class="btn small device-action" disabled>Stop</button>
+        </div>
+        <p class="muted small">Start opens the screen/audio share picker &mdash; pick <strong>Entire screen</strong> and
+          tick <strong>Share system audio</strong> (or share the tab your music plays in). Nothing is recorded; the
+          audio only drives color. Chrome/Edge on Windows. Stops on Stop, leaving this tab, or disconnect.</p>
+      </div>
+
+      <p id="musicStatus" class="statusline" role="status"></p>
+
       <h3>Palettes</h3>
       <p class="muted small">Build a multi-color palette, then animate the whole board through it &mdash;
         <strong>global</strong>, one color at a time. Save named presets to this browser. Runs live over
