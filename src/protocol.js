@@ -490,6 +490,64 @@ export function buildBarGet() {
   return kbReport([AP_BAR.GET]);
 }
 
+// ---- per-key audio-reactive live LED stream (custom firmware, opcode 0x49) ----------------
+// HOST BUILDERS ONLY — the 0x49 firmware handler (g_live_rgb + rgb_matrix_indicators_advanced_kb +
+// matrix_scan_kb idle-timeout) is the firmware half of this feature and lives in al80.c, not here.
+// See research/al80-per-key-audio-reactive-SPARC.md (A.1/A.3) for the full design.
+//
+// Wire: [0x49, offset, count, R,G,B x count(<=20), spare...] padded to 64 bytes. count max =
+// floor((64-3)/3) = 20. The 82-LED rgb-matrix (keyboard.json rgb_matrix.layout order — the
+// electrical scramble is already resolved inside the aw20216s driver's g_aw20216s_leds[], so the
+// host sends plain logical index order, no wire-side remap) needs 5 chunks per full-board frame:
+// offsets 0/20/40/60/80 with counts 20/20/20/20/2 (82 = 4*20 + 2). Save-less: no 0x09/0x48-style
+// SAVE exists for this opcode by design (NFR2) — RAM-only, mirrors the bar/LCD streaming pattern.
+export const AP_LIVE = Object.freeze({ LEDS: 0x49, CTRL: 0x4a });
+export const RGB_MATRIX_LED_COUNT = 82;
+export const LED_BAR_RANGE = [76, 78]; // inclusive indices the independent side bar owns
+const LIVE_MAX_LEDS_PER_CHUNK = Math.floor((REPORT - 3) / 3); // 20
+
+/**
+ * One 0x49 chunk: [0x49, offset, count, r,g,b x count]. `leds` is a flat array/typed-array of
+ * count*3 RGB bytes (already in rgb-matrix logical order for this offset). count must be 1..20 —
+ * anything else throws (mirrors the firmware's out-of-range ACK 0x0F path, but catch it host-side
+ * before it ever reaches the wire).
+ * @param {number} offset  starting LED index (0-based, logical rgb-matrix order)
+ * @param {number[]|Uint8Array} leds  flat RGB bytes, length must be a multiple of 3, 3..60 bytes
+ */
+export function buildLiveLeds(offset, leds) {
+  const count = Math.floor(leds.length / 3);
+  if (leds.length % 3 !== 0) throw new Error(`protocol.buildLiveLeds: leds length ${leds.length} is not a multiple of 3`);
+  if (count < 1 || count > LIVE_MAX_LEDS_PER_CHUNK) {
+    throw new Error(`protocol.buildLiveLeds: count ${count} out of range 1..${LIVE_MAX_LEDS_PER_CHUNK}`);
+  }
+  const rgb = Array.from(leds, clamp8);
+  return kbReport([AP_LIVE.LEDS, offset & 0xff, count & 0xff, ...rgb]);
+}
+
+/**
+ * Chunk a full-board RGB field into <=5 reports of <=20 LEDs each, covering every LED exactly once.
+ * @param {number[]|Uint8Array} rgb246  RGB_MATRIX_LED_COUNT*3 bytes (82*3 = 246), logical LED order
+ * @returns {Uint8Array[]} 0x49 reports, offsets ascending from 0, each <=64 bytes
+ */
+export function buildLiveFrame(rgb246) {
+  const expected = RGB_MATRIX_LED_COUNT * 3;
+  if (rgb246.length !== expected) {
+    throw new Error(`protocol.buildLiveFrame: expected ${expected} bytes (${RGB_MATRIX_LED_COUNT} LEDs x 3), got ${rgb246.length}`);
+  }
+  const packets = [];
+  for (let led = 0; led < RGB_MATRIX_LED_COUNT; led += LIVE_MAX_LEDS_PER_CHUNK) {
+    const ledCount = Math.min(LIVE_MAX_LEDS_PER_CHUNK, RGB_MATRIX_LED_COUNT - led);
+    const slice = Array.prototype.slice.call(rgb246, led * 3, led * 3 + ledCount * 3);
+    packets.push(buildLiveLeds(led, slice));
+  }
+  return packets;
+}
+
+/** 0x4A AP_LIVE_CTRL sub0: stop-now (clears g_live_active without waiting for the idle timeout). */
+export function buildLiveStop() {
+  return kbReport([AP_LIVE.CTRL, 0]);
+}
+
 // ---- VIA keymap / macros / encoder — live editing on ripple, same 0xFF60/0x61 channel, 64-byte reports ----
 // Standard VIA command IDs (the-via/app + qmk quantum/via.c). Ripple implements VIA (usevia drives it),
 // so these work on the stock firmware — no custom flash. Each builds a REQUEST report; the device replies
