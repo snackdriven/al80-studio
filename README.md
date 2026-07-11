@@ -12,11 +12,11 @@ A browser control panel for the **YUNZII AL80**, built on the reverse-engineered
 1. Plug the AL80 in (wired). Close the YUNZII web app and VIA first, only one program can hold the keyboard's HID interface at a time.
 2. Open the site, hit **Connect**, pick the AL80.
 3. Three sections:
-   - **LCD** — clock (12/24hr + auto-resync), picture (fit / brightness / contrast / saturation / grayscale / dither, to the main or picture page), GIF, slideshow. Everything's editable and previewable offline; only *Send* needs the device.
+   - **LCD** — clock (12/24hr + auto-resync), picture (fit / brightness / contrast / saturation / grayscale / dither, to the main or picture page), GIF, slideshow, plus live **now-playing** and **weather** cards. Everything's editable and previewable offline; only *Send* needs the device.
    - **Keymap** — a live VIA editor. Read and write keys in real time, or edit the factory layout offline and import/export VIA JSON. Layers, the encoder, a switch-matrix key tester.
-   - **Lighting** — pick an RGB effect, color, brightness, speed. On the custom firmware this speaks **VialRGB**: the full effect list (cyclics, reactive, splash), an independently-colored side LED bar, and saved palettes. Software strobe/cycle/breathe stream from the browser and stop on disconnect.
+   - **Lighting** — pick an RGB effect, color, brightness, speed. On the custom firmware this speaks **VialRGB**: the full effect list (cyclics, reactive, splash), an independently-colored side LED bar, and saved palettes. Software strobe/cycle/breathe stream from the browser and stop on disconnect. Opt-in **music mode** captures system audio and drives one color + brightness off the beat, save-less, on both stock and custom firmware.
 
-A little Node host under `host/` pushes **Spotify now-playing** (cover art + track) to the LCD over the same protocol. See `host/nowplaying-run.mjs`.
+A Node host under `host/` drives the LCD on its own, no browser tab. The always-on process (`host/cycle-run.mjs`) rotates **Spotify now-playing** (cover art + track), a **weather** card (Open-Meteo, no key), and the **clock**, and preempts to an alert card when something POSTs its local intake. It reconnects on unplug and can start at logon. `nowplaying-run.mjs` / `weather-run.mjs` are single-panel debug launchers over the same code. See `host/README.md`.
 
 ## How it works
 
@@ -30,7 +30,8 @@ One HID protocol over `0xFF60` (VID `0x28E9` / PID `0x30AF`): `0x40` announce, `
 
 ## Develop
 
-    npm test                      # offline protocol + keymap tests, no hardware
+    cd host && npm install        # once, for the host tests (node-hid)
+    npm test                      # protocol, keymap, host + lighting tests, no hardware
     python -m http.server 8137    # then open http://localhost:8137
 
 ## Status & caveats
