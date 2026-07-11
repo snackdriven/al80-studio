@@ -95,6 +95,19 @@ lib           lib/render.js  lib/font.js  lib/diff.js  lib/scheduler.js  lib/png
 control       control/local-hook.js  (127.0.0.1 intake)
 hooks         hooks/al80-notify.mjs  (Claude Code hook)
 nowplaying-run.mjs / weather-run.mjs   thin single-panel debug launchers over panels/ (Phase 0)
+panel-request.js  hotkey->panel HOST reader/router (see below)
 daemon.js / transport-hid.js           deprecated (folded into cycle-run.mjs); reference only
 test/recording-device.js   device-free Device stand-in for cycle.test.mjs (ops[] + MockTransport + fault injection)
 ```
+
+## Hotkey → panel (host half)
+`device.js` decodes an inbound `0x4B` report (unsolicited keyboard→host raw-HID, sent by the
+firmware half of `research/al80-hotkey-panel-switch-SPARC.md` on a bound key's press-edge — not built
+yet as of this doc) and re-emits it as a `'panelRequest'` event. `panel-request.js` exports
+`wirePanelRequests(dev, cycler, opts)`: subscribe once after `dev.open()`, and it debounces/coalesces
+a burst of requests to the LAST id (default 250ms) before routing to `cycler.jumpTo(name, now)` /
+`cycler.togglePaused()` / `cycler.step(now)` — the `cycler` interface the (also unmerged)
+`al80-lcd-panel-auto-cycle-SPARC.md` specifies. `cycle-run.mjs` will call
+`wirePanelRequests(dev, cyc)` once both features land; until then this module is wired and tested
+(`test/panel-request.test.mjs`) against a mock cycler, doing nothing on a real board because no
+firmware key emits `0x4B` yet.

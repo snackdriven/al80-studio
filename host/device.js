@@ -17,6 +17,7 @@ import {
   VID, PID, USAGE_PAGE, USAGE,
   buildImageTransfer, buildDeletePicture, clockFromDate, buildView, VIEW,
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor,
+  PANEL_REQ,
 } from '../src/protocol.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -89,6 +90,14 @@ export class Device extends EventEmitter {
       const p = this._pending;
       this._pending = null;
       p.resolve(true);
+    }
+    // Hotkey→panel signal (al80-hotkey-panel-switch-SPARC.md FR3): the keyboard's process_record_kb
+    // sends this UNSOLICITED (no matching outbound request, unlike the ACK block above) on keypress.
+    // 0x4B can never collide with the ACK matcher (which keys on byte[0]===0x41) or the 0x43-0x48
+    // host->keyboard request/reply opcodes, so this is safe to check unconditionally, every inputreport.
+    if (buf[0] === PANEL_REQ) {
+      this.emit('panelRequest', buf[1]);
+      return;
     }
   }
 
