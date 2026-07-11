@@ -8,10 +8,13 @@ and `al80-nowplaying-webhooks-SPARC.md`.
 ## Run
 ```
 npm install                 # node-hid (prebuilt) + (later) @napi-rs/canvas
-node daemon.js              # connect, drive the clock, accept alerts (Ctrl-C to stop)
-node daemon.js 8000         # run for 8s (bounded, for testing)
+node cycle-run.mjs          # the always-on host: rotates clock/weather/now-playing, accepts alerts
+node cycle-run.mjs --only=nowplaying   # single-panel debug (also: --only=weather, --only=clock)
 ```
-The daemon owns the `0xFF60/0x61` interface — close any browser tab / vendor app first (single opener).
+`cycle-run.mjs` owns the `0xFF60/0x61` interface — close any browser tab / vendor app first (single
+opener: ONE always-on host, not one process per panel). `daemon.js` was the M1 prototype for the
+loop/reconnect/scheduler/intake pattern; that's folded into `cycle-run.mjs` now and daemon.js is
+deprecated (kept for reference, nothing launches it).
 
 **Panel auto-cycle, always-on (recommended):** `node cycle-run.mjs --live` is the superset — ONE
 process owns the screen and rotates now-playing / weather / clock on a dwell timer, dropping panels
@@ -60,7 +63,7 @@ framebuffer and write PNGs, so app layout AND the rotation logic are built and t
 hardware.
 
 ## Alerts
-The daemon listens on `http://127.0.0.1:7333`:
+`cycle-run.mjs` listens on `http://127.0.0.1:7333`:
 ```
 curl -XPOST 127.0.0.1:7333/alert -d '{"title":"SITE DOWN","body":"snackdriven.com","level":"error"}'
 curl -XPOST 127.0.0.1:7333/ack           # dismiss the top sticky alert
@@ -82,7 +85,7 @@ It POSTs to the local daemon and always exits 0 fast — a stopped daemon never 
 ## Layout
 ```
 protocol      ../src/protocol.js        (shared with the browser app)
-transport     transport-hid.js  (node-hid, real)   transport-mock.js  (reassemble->PNG)
+transport     device.js  (node-hid, real, anti-banding)   transport-mock.js  (reassemble->PNG)
 device.js     the single-opener Device — every real HID write, ACK-gated + settle-timed
 cycle.js      the panel-rotation FSM: tick(now), showPanel, jumpTo, the `committed` invariant
 cycle-run.mjs the always-on launcher: owns Device+Scheduler+local-hook, drives cycle.js on a timer
@@ -91,7 +94,7 @@ apps          apps/clock.js  apps/alert.js  apps/nowplaying.js  apps/weather.js 
 lib           lib/render.js  lib/font.js  lib/diff.js  lib/scheduler.js  lib/png.js  lib/spotify.js  lib/weather.js  lib/art.js
 control       control/local-hook.js  (127.0.0.1 intake)
 hooks         hooks/al80-notify.mjs  (Claude Code hook)
-daemon.js     the OLDER bitmap-clock daemon (transport-hid.js, no ring/view-switch) — separate stack, not superseded by cycle-run.mjs
 nowplaying-run.mjs / weather-run.mjs   thin single-panel debug launchers over panels/ (Phase 0)
+daemon.js / transport-hid.js           deprecated (folded into cycle-run.mjs); reference only
 test/recording-device.js   device-free Device stand-in for cycle.test.mjs (ops[] + MockTransport + fault injection)
 ```
