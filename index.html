@@ -54,6 +54,22 @@
         <span id="syncBadge" class="sync-badge" hidden>Syncing &middot; every 60s</span>
       </div>
 
+      <!-- Ambient readouts: current Now Playing + Weather, always shown regardless of which feature
+           owns the LCD (that's the single-owner nsState/nsTrack readout above). Live while each poll
+           runs, a mock sample otherwise. -->
+      <div class="db-ambient">
+        <span class="db-ambient-item">
+          <span class="db-ambient-icon" aria-hidden="true">&#9654;</span>
+          <span class="db-label">Now Playing</span>
+          <span id="nsNowPlaying" class="ns-track-meta"></span>
+        </span>
+        <span class="db-ambient-item">
+          <span class="db-ambient-icon" aria-hidden="true">&#9728;</span>
+          <span class="db-label">Weather</span>
+          <span id="nsWeather" class="ns-track-meta"></span>
+        </span>
+      </div>
+
       <!-- Overview strip: what Studio last PUSHED to each area (client-side memory, not a device
            read). Filled by JS from the slot cache; click a thumb to jump to that tab. -->
       <div class="db-overview" id="dbOverview" hidden>
