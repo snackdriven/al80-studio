@@ -206,7 +206,7 @@
             </div>
           </div>
 
-          <details id="storedPictures" class="disclosure">
+          <details id="storedPictures" class="disclosure" open>
             <summary>Stored pictures</summary>
             <p class="muted small">The keyboard holds up to 16 pictures in a ring. Studio can't read them back, so you're the eyes: press <strong>Next</strong> to rotate the LCD to the one you want gone (watch the screen), then <strong>Delete shown</strong>.</p>
             <div class="row">
@@ -216,12 +216,6 @@
             </div>
             <p id="storedPicturesStatus" class="statusline" role="status"></p>
           </details>
-
-          <div class="danger-zone">
-            <span class="danger-label">Danger</span>
-            <button id="clearPicture" type="button" class="btn danger device-action" disabled>Clear stored picture</button>
-            <span class="muted small">erases pictures on the keyboard</span>
-          </div>
         </section>
 
         <!-- GIF -->
@@ -311,9 +305,7 @@
                 <span class="muted small">or drop images here &middot; <span id="slideCounter">0/16</span> slots used</span>
               </div>
               <div id="slideStrip" class="slide-strip"></div>
-            </div>
 
-            <div class="slide-side">
               <label>Fit
                 <select id="slideFit">
                   <option value="cover" selected>Cover (fill, crop)</option>
@@ -331,7 +323,7 @@
 
               <button id="slideSend" type="button" class="btn primary block device-action" disabled>Send slideshow</button>
               <div class="row slide-transport">
-                <button id="slidePlay" type="button" class="btn device-action" disabled>Play</button>
+                <button id="slidePlay" type="button" class="btn" disabled>Play</button>
                 <button id="slideNext" type="button" class="btn device-action" disabled>Next</button>
                 <span id="slideCurrent" class="muted small">No slides</span>
               </div>
@@ -339,6 +331,14 @@
                 <div class="progress-bar" id="slideProgress"></div>
               </div>
               <p id="slideStatus" class="statusline" role="status"></p>
+            </div>
+
+            <div class="slide-side">
+              <figure class="image-preview slide-figure">
+                <img id="slidePreview" class="slide-preview" width="240" height="400" alt="Current slide preview" hidden />
+                <div id="slidePreviewEmpty" class="slide-preview slide-empty"><span class="muted small">No slides yet</span></div>
+                <figcaption class="muted small">Live preview &middot; 96&times;160</figcaption>
+              </figure>
             </div>
           </div>
         </section>

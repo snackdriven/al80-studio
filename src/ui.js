@@ -1058,6 +1058,8 @@ function setupSlideshowTab() {
   const playBtn = $('#slidePlay');
   const wrap = $('#slideProgressWrap');
   const bar = $('#slideProgress');
+  const preview = $('#slidePreview');
+  const previewEmpty = $('#slidePreviewEmpty');
 
   const controls = {
     fit: $('#slideFit'),
@@ -1089,11 +1091,22 @@ function setupSlideshowTab() {
   const isPlaying = () => cycleTimer !== null;
 
   function updateCounter() { counter.textContent = `${slides.length}/${MAX}`; }
+  // The preview mirrors the current slide — the same index the device is on while playing,
+  // so Play steps them in lockstep. brightness/gray/fit already bake into slide.url.
+  function updatePreview() {
+    if (!slides.length) { preview.hidden = true; preview.removeAttribute('src'); previewEmpty.hidden = false; return; }
+    previewEmpty.hidden = true;
+    preview.src = slides[currentIdx % slides.length].url;
+    preview.hidden = false;
+  }
   function updateCurrent() {
     readout.textContent = slides.length
       ? `Slide ${(currentIdx % slides.length) + 1} of ${slides.length}`
       : 'No slides';
+    updatePreview();
   }
+  // Play runs the local preview even offline; the device send only happens when connected.
+  function refreshPlay() { playBtn.disabled = sending || !slides.length; }
 
   function stopCycle() {
     if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
@@ -1110,15 +1123,16 @@ function setupSlideshowTab() {
 
   function startCycle() {
     stopCycle();
-    if (!slides.length || !connected) return;
+    if (!slides.length) return;
     playBtn.textContent = 'Pause';
     const period = Math.max(1, +intervalEl.value || 1) * 1000;
     cycleTimer = setInterval(async () => {
-      // Never advance while hidden or disconnected — stop and bail.
-      if (!slideshowVisible() || !connected) { stopCycle(); return; }
+      // Stop if the tab's hidden. Advance the preview regardless of connection;
+      // only push to the device when connected (keeps the preview alive offline).
+      if (!slideshowVisible()) { stopCycle(); return; }
       currentIdx = (currentIdx + 1) % slides.length;
       updateCurrent();
-      await guardedSend('Slideshow → next', statusEl, proto.buildView(proto.VIEW.PICTURE));
+      if (connected) await guardedSend('Slideshow → next', statusEl, proto.buildView(proto.VIEW.PICTURE));
     }, period);
   }
 
@@ -1133,6 +1147,10 @@ function setupSlideshowTab() {
       const img = document.createElement('img');
       img.src = slide.url;
       img.alt = `Slide ${i + 1}`;
+      img.title = 'Preview this slide';
+      img.style.cursor = 'pointer';
+      // Click a thumb to jump the preview (and the play position) to it.
+      img.addEventListener('click', () => { currentIdx = i; updateCurrent(); });
       thumb.appendChild(img);
 
       const idx = document.createElement('span');
@@ -1188,6 +1206,7 @@ function setupSlideshowTab() {
     });
     updateCounter();
     updateCurrent();
+    refreshPlay();
   }
 
   async function addFiles(fileList) {
@@ -1260,7 +1279,8 @@ function setupSlideshowTab() {
   let sending = false;
   const setBusy = (busy) => {
     sending = busy;
-    sendBtn.disabled = nextBtn.disabled = playBtn.disabled = busy || !connected;
+    sendBtn.disabled = nextBtn.disabled = busy || !connected;
+    refreshPlay();
   };
   sendBtn.addEventListener('click', async () => {
     if (sending) return;
@@ -1320,7 +1340,7 @@ function setupSlideshowTab() {
     } else {
       if (!slides.length) { setStatus(statusEl, 'Add slides first.', 'err'); return; }
       startCycle();
-      setStatus(statusEl, 'Playing.', 'ok');
+      setStatus(statusEl, connected ? 'Playing.' : 'Previewing — connect to drive the LCD.', 'ok');
     }
   });
 
@@ -1337,6 +1357,7 @@ function setupSlideshowTab() {
   intervalOut.textContent = intervalEl.value + 's';
   updateCounter();
   updateCurrent();
+  refreshPlay();
 }
 
 // ---- now playing (Spotify -> live card on the LCD, over WebHID) --------------
@@ -2860,14 +2881,6 @@ function setupLightingTab() {
 
 // ---- clear actions (moved into Picture / GIF editors) -----------------------
 function setupClearActions() {
-  $('#clearPicture').addEventListener('click', async () => {
-    if (!confirm('Erase ALL stored pictures on the keyboard? This cannot be undone.')) return;
-    const statusEl = $('#imageStatus');
-    setStatus(statusEl, 'Clearing pictures…');
-    const ok = await guardedSend('Clear picture', statusEl, proto.buildClearPicture(), { gap: 2 });
-    if (ok) setStatus(statusEl, 'Pictures cleared.', 'ok');
-  });
-
   $('#clearGif').addEventListener('click', async () => {
     if (!confirm('Erase the stored GIF on the keyboard? This cannot be undone.')) return;
     const statusEl = $('#gifStatus');
