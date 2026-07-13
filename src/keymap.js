@@ -88,6 +88,18 @@ export const PRESETS = {
     { label: 'Show picture page', keycode: 'CUSTOM(23)', note: 'LCD image view (IMG) — protocol VIEW.PICTURE 0x0d' },
   ],
 
+  // AL80 firmware panel hotkeys (CUSTOM 25-29, from al80-lcd al80.h). These fire the local LCD
+  // view AND send an unsolicited raw-HID [0x4B, panelId] the always-on host (cycle-run.mjs) reads
+  // and routes to its panel cycler — so they only "jump" while the host is running. Requires the
+  // consolidated-keycodes firmware (AL80_CUSTOM_QMK_v28_keycodes.bin) flashed.
+  'LCD panels (host cycler)': [
+    { label: 'Panel: Now Playing', keycode: 'CUSTOM(25)', note: 'view 0x0d + host panel 0x00 (needs Spotify creds on the host)' },
+    { label: 'Panel: Weather', keycode: 'CUSTOM(26)', note: 'view 0x0d + host panel 0x01' },
+    { label: 'Panel: Clock', keycode: 'CUSTOM(27)', note: 'view 0x0b + host panel 0x02' },
+    { label: 'Cycle pause / resume', keycode: 'CUSTOM(28)', note: 'host panel 0xf0 — toggle rotation' },
+    { label: 'Cycle next panel', keycode: 'CUSTOM(29)', note: 'host panel 0xf1 — advance one' },
+  ],
+
   // AL80 firmware lighting / backlight custom keycodes (same CUSTOM(n) space).
   'LCD + lighting': [
     { label: 'Backlight on/off', keycode: 'CUSTOM(10)', note: 'Toggle backlight (BLT)' },
@@ -141,6 +153,23 @@ export const PRESETS = {
     { label: 'Close window', keycode: 'LALT(KC_F4)', note: 'Alt+F4' },
     { label: 'Show desktop', keycode: 'LGUI(KC_D)', note: 'Win+D' },
     { label: 'Task view', keycode: 'LGUI(KC_TAB)', note: 'Win+Tab' },
+  ],
+
+  // Layer activation. Place the trigger on the layer you press it FROM (usually
+  // base/layer 0); put the target keys on the destination layer. Four layers (0-3).
+  // NESTING: to reach layer 2 with "Fn + key", put MO(2) on a key on LAYER 1 (the
+  // layer Fn=MO(1) turns on) — holding Fn makes layer 1 active, and the MO(2) key on
+  // it then adds layer 2 while both are held. No firmware change needed.
+  'Layers': [
+    { label: 'Hold layer 1 (Fn)', keycode: 'MO(1)', note: 'Momentary — active while held. The factory Fn key.' },
+    { label: 'Hold layer 2', keycode: 'MO(2)', note: 'Momentary L2. Put on a LAYER-1 key for Fn+key nesting.' },
+    { label: 'Hold layer 3', keycode: 'MO(3)', note: 'Momentary L3.' },
+    { label: 'Toggle layer 1', keycode: 'TG(1)', note: 'Tap on, tap off.' },
+    { label: 'Toggle layer 2', keycode: 'TG(2)', note: 'Tap on, tap off.' },
+    { label: 'Toggle layer 3', keycode: 'TG(3)', note: 'Tap on, tap off.' },
+    { label: 'Switch to layer 1', keycode: 'TO(1)', note: 'Latch to L1 until another TO().' },
+    { label: 'Switch to layer 2', keycode: 'TO(2)', note: 'Latch to L2 until another TO().' },
+    { label: 'Switch to base (layer 0)', keycode: 'TO(0)', note: 'Return to the base layer.' },
   ],
 
   'Basics': [
