@@ -84,15 +84,8 @@ async function main() {
   const scheduler = new Scheduler(null); // base stays null — never rendered (A5)
   const hook = startLocalHook(scheduler, { port: cfg.alertPort });
 
-  // Interruptible pacing: a hotkey jump/step calls onKick -> kick() -> ends the inter-tick sleep early
-  // so the jump renders now instead of up to a full tick late (that gap is the picture-page blip
-  // before weather lands). Still one writer — we only wake the loop sooner, never render concurrently.
-  let wake = null;
-  const kick = () => { if (wake) wake(); };
-
   const cyc = makeCycler({
     dev, panels, mode: cfg.mode, npFocusOnChange: cfg.npFocusOnChange, syncRGB: SYNC_RGB || cfg.syncRGB, scheduler,
-    onKick: kick,
   });
 
   // Bridge the keyboard's PANEL_* hotkeys: device.js emits 'panelRequest' on an inbound [0x4B, id];
@@ -133,11 +126,7 @@ async function main() {
     // cycling; the next tick retries recovery. sleep() stays outside so cadence still paces the retry.
     try { await cyc.tick(Date.now()); }
     catch (e) { console.error('[cycle] tick threw — continuing:', e?.message ?? e); }
-    // interruptible sleep: resolves after tickMs OR early when kick() fires (a hotkey jump/step)
-    await new Promise((res) => {
-      const timer = setTimeout(() => { wake = null; res(); }, cfg.tickMs);
-      wake = () => { clearTimeout(timer); wake = null; res(); };
-    });
+    await sleep(cfg.tickMs);
   }
 }
 

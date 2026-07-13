@@ -19,8 +19,6 @@ export function makeCycler({
   syncRGB = false,          // Phase-3 optional; off by default
   scheduler = null,         // Scheduler|null — alert preemption (A5); null disables alerts entirely
   now = () => Date.now(),
-  onKick = null,            // optional: called by jumpTo/step so the run-loop can wake and render now
-                            // instead of up to a tick late (hotkey responsiveness). No-op in tests.
 } = {}) {
   if (!Array.isArray(panels) || panels.length === 0) throw new Error('cycle: at least one panel required');
 
@@ -71,10 +69,10 @@ export function makeCycler({
   /** Public: request an immediate jump to `panelId` (the hotkey feature builds against this). Takes
    * effect on the NEXT tick, ahead of focus-on-change and normal dwell advance, but never ahead of
    * an active alert (alerts always win — A5/FR6). No-op if the panel doesn't exist or isn't available. */
-  function jumpTo(panelId) { pendingJump = panelId; onKick?.(); }
+  function jumpTo(panelId) { pendingJump = panelId; }
 
   /** Public (hotkey PANEL_NEXT): advance one panel on the next tick. Fires whether paused or not. */
-  function step() { pendingStep = true; onKick?.(); }
+  function step() { pendingStep = true; }
 
   /** Public (hotkey CYCLE_TOGGLE): freeze/resume auto-rotation. Alerts + explicit jump/step still act.
    * Returns the new paused state. */
