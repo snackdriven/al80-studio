@@ -18,6 +18,7 @@
 import Device, { MockDevice } from './device.js';
 import { Scheduler } from './lib/scheduler.js';
 import { startLocalHook } from './control/local-hook.js';
+import { wirePanelRequests } from './panel-request.js';
 import { makeCycler } from './cycle.js';
 import { makeNowPlayingPanel } from './panels/nowplaying.js';
 import { makeWeatherPanel } from './panels/weather.js';
@@ -83,8 +84,22 @@ async function main() {
   const scheduler = new Scheduler(null); // base stays null — never rendered (A5)
   const hook = startLocalHook(scheduler, { port: cfg.alertPort });
 
+  // Interruptible pacing: a hotkey jump/step calls onKick -> kick() -> ends the inter-tick sleep early
+  // so the jump renders now instead of up to a full tick late (that gap is the picture-page blip
+  // before weather lands). Still one writer — we only wake the loop sooner, never render concurrently.
+  let wake = null;
+  const kick = () => { if (wake) wake(); };
+
   const cyc = makeCycler({
     dev, panels, mode: cfg.mode, npFocusOnChange: cfg.npFocusOnChange, syncRGB: SYNC_RGB || cfg.syncRGB, scheduler,
+    onKick: kick,
+  });
+
+  // Bridge the keyboard's PANEL_* hotkeys: device.js emits 'panelRequest' on an inbound [0x4B, id];
+  // route it to the cycler (jump to panel / pause / next). Without this the hotkey's local view-switch
+  // fires on the board but the host never jumps, so a weather hotkey just advances the picture ring.
+  const unwirePanels = wirePanelRequests(dev, cyc, {
+    onDrop: (id) => console.log('[cycle] panel-request: unknown id 0x' + id.toString(16)),
   });
 
   console.log(`[cycle] ${LIVE ? 'LIVE' : 'MOCK'} data -> ${MOCK_DEVICE ? 'mock device' : 'AL80 screen'}. Panels: ${cfg.panelIds.join(', ')} (${cfg.mode}). Alerts on :${cfg.alertPort}. Ctrl-C to stop.`);
@@ -105,6 +120,7 @@ async function main() {
   process.on('SIGINT', async () => {
     stopped = true;
     try { if (cyc.committed && dev.opened) await dev.deletePicture(); } catch { /* best effort */ }
+    try { unwirePanels(); } catch { /* gone */ }
     try { dev.close(); } catch { /* gone */ }
     try { hook.close(); } catch { /* gone */ }
     for (const t of timers) if (t) clearInterval(t);
@@ -117,7 +133,11 @@ async function main() {
     // cycling; the next tick retries recovery. sleep() stays outside so cadence still paces the retry.
     try { await cyc.tick(Date.now()); }
     catch (e) { console.error('[cycle] tick threw — continuing:', e?.message ?? e); }
-    await sleep(cfg.tickMs);
+    // interruptible sleep: resolves after tickMs OR early when kick() fires (a hotkey jump/step)
+    await new Promise((res) => {
+      const timer = setTimeout(() => { wake = null; res(); }, cfg.tickMs);
+      wake = () => { clearTimeout(timer); wake = null; res(); };
+    });
   }
 }
 
