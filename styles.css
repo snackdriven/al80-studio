@@ -361,7 +361,7 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 }
 .guide ul {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
   margin: 10px 0 0;
   padding: 0;
@@ -701,12 +701,22 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { .slide-grid { grid-template-columns: 1fr; } }
 
 /* ---- now playing ---- */
+.np-auth-card,
+.np-current-card,
+.wx-controls {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+}
 .np-auth { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.np-auth > .db-label,
+.np-current-card > .db-label { align-self: flex-start; }
 .np-redirect {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  background: var(--panel-2);
+  background: var(--panel);
   border: 1px solid var(--border-2);
   border-radius: 6px;
   padding: 6px 8px;
@@ -714,7 +724,18 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   word-break: break-all;
   color: var(--muted);
 }
-.np-track { display: flex; gap: 12px; align-items: center; text-align: left; margin: 6px 0 16px; }
+.np-current-card {
+  min-width: 320px;
+  text-align: left;
+}
+.np-track {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  margin: 10px 0 16px;
+  min-height: 96px;
+}
 .np-art {
   width: 96px; height: 96px;
   border: 1px solid var(--border-2);
@@ -744,8 +765,9 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 }
 /* Empty state uses the same LCD frame as the img, centered placeholder text. */
 .slide-empty { box-sizing: border-box; display: grid; place-items: center; text-align: center; }
-/* The weather controls are light, so center them against the tall card — no dead column. */
-.wx-grid { align-items: center; }
+/* Weather controls belong at the top; centering them made the left side look empty. */
+.wx-grid { align-items: start; }
+.wx-controls { min-width: 0; }
 .wx-field { display: block; margin-bottom: 10px; }
 .wx-search { display: flex; gap: 8px; margin-top: 6px; }
 .wx-search input[type="text"] { flex: 1; min-width: 0; box-sizing: border-box; }
