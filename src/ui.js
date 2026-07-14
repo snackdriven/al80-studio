@@ -2552,6 +2552,10 @@ function setupLightingTab() {
   const musicColor = $('#musicColor');
   const musicCap = $('#musicCap');
   const musicCapOut = $('#musicCapOut');
+  const musicGain = $('#musicGain');
+  const musicGainOut = $('#musicGainOut');
+  const musicDecay = $('#musicDecay');
+  const musicDecayOut = $('#musicDecayOut');
   const musicThreshold = $('#musicThreshold');
   const musicThresholdOut = $('#musicThresholdOut');
   const musicThresholdLabel = (value) => {
@@ -2568,8 +2572,12 @@ function setupLightingTab() {
   persist(musicMode, 'musicMode');
   if (musicColor) persist(musicColor, 'musicColor');
   persist(musicCap, 'musicCap255', (el) => { musicCapOut.textContent = el.value; });
+  persist(musicGain, 'musicGain', (el) => { musicGainOut.textContent = el.value + '%'; });
+  persist(musicDecay, 'musicDecay', (el) => { musicDecayOut.textContent = el.value + '%'; });
   if (musicThreshold) persist(musicThreshold, 'musicThreshold', renderMusicThreshold);
   musicCap.addEventListener('input', () => { musicCapOut.textContent = musicCap.value; });
+  musicGain.addEventListener('input', () => { musicGainOut.textContent = musicGain.value + '%'; });
+  musicDecay.addEventListener('input', () => { musicDecayOut.textContent = musicDecay.value + '%'; });
   musicThreshold?.addEventListener('input', renderMusicThreshold);
   renderMusicThreshold();
 
@@ -2650,8 +2658,10 @@ function setupLightingTab() {
       analyser.getByteTimeDomainData(wave);
       const cap = Math.max(0, Math.min(255, +musicCap.value || 0)) / 255;
       const threshold = musicThreshold ? +musicThreshold.value / 100 : music.DEFAULT_THRESHOLD;
+      const gain = Math.max(0, +musicGain.value || 0) / 100;
+      const decay = 0.2 - Math.max(0, Math.min(100, +musicDecay.value || 0)) / 100 * 0.19;
       const accent = musicColor ? rgbToHueSat(musicColor.value) : { hue: 40, sat: 255 };
-      const hsv = music.mapAudioToHSV(freq, wave, mode, { cap, threshold, state, accentHue: accent.hue, accentSat: accent.sat });
+      const hsv = music.mapAudioToHSV(freq, wave, mode, { cap, threshold, gain, decay, state, accentHue: accent.hue, accentSat: accent.sat });
       try {
         // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so
         // animation frames don't flood the device log; only errors surface.

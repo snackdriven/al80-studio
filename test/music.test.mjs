@@ -90,6 +90,37 @@ test('moderate sustained audio can reach the selected maximum brightness', () =>
   assert.equal(hsv.val, 255, `expected max cap to reach 255, got ${hsv.val}`);
 });
 
+test('strong music stays bright after a louder peak', () => {
+  const state = newMapState();
+  settle(() => mapAudioToHSV(flatFreq(180), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state }), 12);
+  const w = new Uint8Array(WAVE);
+  for (let i = 0; i < WAVE; i++) w[i] = i % 2 ? 168 : 88; // RMS ~= 0.31 before threshold
+  const hsv = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state }), 12);
+  assert.ok(hsv.val >= 220, `expected strong post-peak audio to stay bright, got ${hsv.val}`);
+});
+
+test('gain raises active music without exceeding the selected cap', () => {
+  const lowGain = newMapState();
+  const highGain = newMapState();
+  settle(() => mapAudioToHSV(flatFreq(180), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, gain: 1, state: lowGain }), 12);
+  settle(() => mapAudioToHSV(flatFreq(180), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, gain: 1.75, state: highGain }), 12);
+  const w = new Uint8Array(WAVE);
+  for (let i = 0; i < WAVE; i++) w[i] = i % 2 ? 168 : 88;
+  const low = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, gain: 1, state: lowGain }), 6);
+  const high = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, gain: 1.75, state: highGain }), 6);
+  assert.ok(high.val > low.val, `expected gain to raise output, got ${low.val} -> ${high.val}`);
+  assert.ok(high.val <= 255, `gain exceeded full cap: ${high.val}`);
+});
+
+test('slower decay holds brightness longer after music stops', () => {
+  const fast = newMapState();
+  const slow = newMapState();
+  fast.prevVal = slow.prevVal = 1;
+  const fastFrame = mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.BREATHE, { cap: 1, decay: 0.2, state: fast });
+  const slowFrame = mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.BREATHE, { cap: 1, decay: 0.02, state: slow });
+  assert.ok(slowFrame.val > fastFrame.val, `expected slow decay to hold brightness, got ${fastFrame.val} vs ${slowFrame.val}`);
+});
+
 test('reactivity threshold treats quiet signal as silence and holds hue', () => {
   const state = newMapState();
   state.prevHue = 85;
