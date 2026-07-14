@@ -2544,11 +2544,17 @@ function setupLightingTab() {
   // (Stop, tab-away ui.js:445/467, disconnect ui.js:161) also tears the audio stream down.
   const musicStatus = $('#musicStatus');
   const musicMode = $('#musicMode');
+  const musicColor = $('#musicColor');
   const musicCap = $('#musicCap');
   const musicCapOut = $('#musicCapOut');
+  const musicThreshold = $('#musicThreshold');
+  const musicThresholdOut = $('#musicThresholdOut');
   persist(musicMode, 'musicMode');
+  if (musicColor) persist(musicColor, 'musicColor');
   persist(musicCap, 'musicCap', (el) => { musicCapOut.textContent = el.value; });
+  if (musicThreshold) persist(musicThreshold, 'musicThreshold', (el) => { if (musicThresholdOut) musicThresholdOut.textContent = el.value; });
   musicCap.addEventListener('input', () => { musicCapOut.textContent = musicCap.value; });
+  musicThreshold?.addEventListener('input', () => { if (musicThresholdOut) musicThresholdOut.textContent = musicThreshold.value; });
 
   let audioToken = 0, rafId = null, mediaStream = null, audioCtx = null;
 
@@ -2626,7 +2632,9 @@ function setupLightingTab() {
       analyser.getByteFrequencyData(freq);
       analyser.getByteTimeDomainData(wave);
       const cap = +musicCap.value / 100;
-      const hsv = music.mapAudioToHSV(freq, wave, mode, { cap, state });
+      const threshold = musicThreshold ? +musicThreshold.value / 100 : music.DEFAULT_THRESHOLD;
+      const accent = musicColor ? rgbToHueSat(musicColor.value) : { hue: 40, sat: 255 };
+      const hsv = music.mapAudioToHSV(freq, wave, mode, { cap, threshold, state, accentHue: accent.hue, accentSat: accent.sat });
       try {
         // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so
         // animation frames don't flood the device log; only errors surface.

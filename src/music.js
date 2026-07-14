@@ -11,11 +11,12 @@ import {
   buildVialRGBColorLive, buildLightColorLive, buildLightBrightnessLive, buildBarGet,
 } from './protocol.js';
 
-export const MUSIC_MODE = Object.freeze({ BREATHE: 'breathe', PULSE: 'pulse', FOLLOW_HUE: 'follow' });
+export const MUSIC_MODE = Object.freeze({ BREATHE: 'breathe', PULSE: 'pulse', FOLLOW_HUE: 'follow', PICKED: 'picked' });
 
 // Safety constants (R.3/R.4). The firmware imposes NO brightness ceiling, so the host is the only
 // clamp: DEFAULT_CAP scales every frame, and the slew limits keep a bass drop from strobing.
 export const DEFAULT_CAP = 0.6;             // ~60% brightness ceiling by default
+export const DEFAULT_THRESHOLD = 0.06;       // ignore low-level noise; higher = less sensitive
 export const MAX_VAL_DELTA = 0.12;          // max value change per frame (0..1) — anti-strobe
 export const MAX_HUE_DELTA = 24;            // max hue change per frame on the 0..255 wheel
 export const FLOOR = 0.15;                  // dim floor so silence still shows a gentle glow
@@ -69,18 +70,22 @@ function dominantBinHue(freq) {
  * @param {Uint8Array|number[]} freq  getByteFrequencyData output (0..255 per bin)
  * @param {Uint8Array|number[]} wave  getByteTimeDomainData output (0..255, 128 = silence)
  * @param {string} mode               MUSIC_MODE.*
- * @param {{cap?:number, state:object, accentHue?:number}} opts
- * @returns {{hue:number, sat:number, val:number}} 0..255 each — sat pinned 255
+ * @param {{cap?:number, threshold?:number, state:object, accentHue?:number, accentSat?:number}} opts
+ * @returns {{hue:number, sat:number, val:number}} 0..255 each
  */
 export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) {
   const cap = opts.cap == null ? DEFAULT_CAP : clamp01(opts.cap);
+  const threshold = opts.threshold == null ? DEFAULT_THRESHOLD : clamp01(opts.threshold);
   const state = opts.state || newMapState();
   const accentHue = opts.accentHue == null ? 40 : opts.accentHue; // warm accent for onset pops
+  const accentSat = opts.accentSat == null ? 255 : Math.max(0, Math.min(255, Math.round(opts.accentSat)));
 
   // RMS loudness (0..1) from the time-domain waveform.
   let ss = 0;
   for (let i = 0; i < wave.length; i++) { const d = wave[i] - 128; ss += d * d; }
-  const rms = clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
+  const rawRms = clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
+  const active = rawRms > threshold;
+  const rms = active ? clamp01((rawRms - threshold) / Math.max(1e-6, 1 - threshold)) : 0;
 
   // Band energies → a target hue.
   const bass = meanRange(freq, 1, 8);
@@ -91,7 +96,7 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
 
   // Spectral flux → adaptive onset detection.
   let flux = 0;
-  if (state.prevFreq) {
+  if (active && state.prevFreq) {
     for (let i = 0; i < freq.length; i++) {
       const inc = freq[i] - state.prevFreq[i];
       if (inc > 0) flux += inc;
@@ -102,14 +107,23 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
   state.fluxAvg = lerp(state.fluxAvg, flux, 0.1); // moving average
 
   // Per-mode value + hue target.
-  let valTarget, hueGoal;
-  if (mode === MUSIC_MODE.PULSE) {
+  let valTarget, hueGoal, satTarget = 255;
+  if (!active) {
+    valTarget = FLOOR;
+    hueGoal = mode === MUSIC_MODE.PICKED ? accentHue : state.prevHue;
+    if (mode === MUSIC_MODE.PICKED) satTarget = accentSat;
+  } else if (mode === MUSIC_MODE.PULSE) {
     const base = lerp(0.1, 0.55, rms);
     valTarget = onset ? Math.min(1, base + 0.45) : base;
     hueGoal = onset ? accentHue : slewLimitWrap(state.prevHue, hueTarget, MAX_HUE_DELTA * 3);
+    if (onset) satTarget = accentSat;
   } else if (mode === MUSIC_MODE.FOLLOW_HUE) {
     valTarget = lerp(0.2, 1.0, rms);
     hueGoal = dominantBinHue(freq);
+  } else if (mode === MUSIC_MODE.PICKED) {
+    valTarget = lerp(FLOOR, 1.0, smoothstep(rms));
+    hueGoal = accentHue;
+    satTarget = accentSat;
   } else { // BREATHE (gentle default)
     valTarget = lerp(FLOOR, 1.0, smoothstep(rms));
     hueGoal = hueTarget;
@@ -123,7 +137,7 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
   state.prevVal = val;
   state.prevHue = hue;
 
-  return { hue: Math.round(hue), sat: 255, val: Math.round(clamp01(val) * 255) };
+  return { hue: Math.round(hue), sat: satTarget, val: Math.round(clamp01(val) * 255) };
 }
 
 /**

@@ -641,10 +641,15 @@
               <option value="breathe">Breathe (gentle)</option>
               <option value="pulse">Pulse (beat pops)</option>
               <option value="follow">Follow hue</option>
+              <option value="picked">Picked color</option>
             </select>
           </label>
+          <label class="inline">Color <input id="musicColor" type="color" value="#ff2d95" class="device-action" disabled /></label>
           <label class="inline">Max brightness <output id="musicCapOut">60</output>%
             <input id="musicCap" type="range" min="10" max="100" value="60" class="device-action" disabled />
+          </label>
+          <label class="inline">Threshold <output id="musicThresholdOut">6</output>%
+            <input id="musicThreshold" type="range" min="0" max="40" value="6" class="device-action" disabled />
           </label>
           <button id="musicStart" type="button" class="btn primary small device-action" disabled>Start</button>
           <button id="musicStop" type="button" class="btn small device-action" disabled>Stop</button>

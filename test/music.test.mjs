@@ -74,6 +74,33 @@ test('brightness cap respected — cap 0.6 never exceeds val 153', () => {
   }
 });
 
+test('reactivity threshold treats quiet signal as silence and holds hue', () => {
+  const state = newMapState();
+  state.prevHue = 85;
+  const quietWave = new Uint8Array(WAVE);
+  for (let i = 0; i < WAVE; i++) quietWave[i] = i % 2 ? 132 : 124; // tiny RMS, below 8%
+  const hsv = settle(() => mapAudioToHSV(bandFreq(41, 120), quietWave, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.08, state }), 5);
+  assert.equal(hsv.hue, 85, 'below threshold should not chase the treble hue');
+  const floor = Math.round(0.15 * 255);
+  assert.ok(Math.abs(hsv.val - floor) <= 3, `expected floor≈${floor}, got ${hsv.val}`);
+});
+
+test('reactivity threshold lets signal above the threshold through', () => {
+  const state = newMapState();
+  const quiet = mapAudioToHSV(flatFreq(255), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.95, state });
+  const active = settle(() => mapAudioToHSV(flatFreq(255), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.05, state }), 8);
+  assert.ok(active.val > quiet.val, `active val ${active.val} should exceed gated val ${quiet.val}`);
+});
+
+test('picked color mode keeps the selected color while audio drives brightness', () => {
+  const state = newMapState();
+  const quiet = mapAudioToHSV(bandFreq(1, 8), silenceWave(), MUSIC_MODE.PICKED, { cap: 1, threshold: 0, state, accentHue: 170, accentSat: 120 });
+  const active = settle(() => mapAudioToHSV(bandFreq(1, 8), loudWave(), MUSIC_MODE.PICKED, { cap: 1, threshold: 0, state, accentHue: 170, accentSat: 120 }), 8);
+  assert.equal(active.hue, 170);
+  assert.equal(active.sat, 120);
+  assert.ok(active.val > quiet.val, `active val ${active.val} should exceed quiet ${quiet.val}`);
+});
+
 test('slew limits value — a 0→loud step rises at most MAX_VAL_DELTA in one frame', () => {
   const state = newMapState(); // prevVal 0
   const hsv = mapAudioToHSV(flatFreq(255), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, state });
