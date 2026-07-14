@@ -360,8 +360,6 @@ function setupHeader() {
   });
 
   btn.addEventListener('click', toggleConnect);
-  const gateBtn = $('#gateConnect');
-  if (gateBtn) gateBtn.addEventListener('click', toggleConnect);
 
   // Reflect an already-open device (e.g. after reload with a granted device).
   try {
