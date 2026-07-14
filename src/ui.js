@@ -2567,7 +2567,7 @@ function setupLightingTab() {
   };
   persist(musicMode, 'musicMode');
   if (musicColor) persist(musicColor, 'musicColor');
-  persist(musicCap, 'musicCap', (el) => { musicCapOut.textContent = el.value; });
+  persist(musicCap, 'musicCap255', (el) => { musicCapOut.textContent = el.value; });
   if (musicThreshold) persist(musicThreshold, 'musicThreshold', renderMusicThreshold);
   musicCap.addEventListener('input', () => { musicCapOut.textContent = musicCap.value; });
   musicThreshold?.addEventListener('input', renderMusicThreshold);
@@ -2648,7 +2648,7 @@ function setupLightingTab() {
       if (token !== audioToken) return;
       analyser.getByteFrequencyData(freq);
       analyser.getByteTimeDomainData(wave);
-      const cap = +musicCap.value / 100;
+      const cap = Math.max(0, Math.min(255, +musicCap.value || 0)) / 255;
       const threshold = musicThreshold ? +musicThreshold.value / 100 : music.DEFAULT_THRESHOLD;
       const accent = musicColor ? rgbToHueSat(musicColor.value) : { hue: 40, sat: 255 };
       const hsv = music.mapAudioToHSV(freq, wave, mode, { cap, threshold, state, accentHue: accent.hue, accentSat: accent.sat });
