@@ -1276,8 +1276,7 @@ function setupSlideshowTab() {
     if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
   });
 
-  // Send slideshow: clear slots -> upload each still (200ms gap between so the device
-  // commits each) -> show picture 1 -> start the auto-cycle. Guarded against re-entry so a
+  // Send slideshow: clear slots -> upload each still with ACK flow control -> show picture 1 -> start the auto-cycle. Guarded against re-entry so a
   // second Send (or Play mid-upload) can't interleave writes to the write-only device.
   const sendBtn = $('#slideSend');
   const nextBtn = $('#slideNext');
@@ -1310,7 +1309,7 @@ function setupSlideshowTab() {
         try { packets = proto.buildImageTransfer(frame); }
         catch (err) { setStatus(statusEl, `Build failed on slide ${i + 1}: ` + ((err && err.message) || err), 'err'); return; }
         // Accumulate progress across all slides: slide i contributes [i/n, (i+1)/n).
-        const ok = await sendWithProgress(`Slideshow slide ${i + 1}/${n}`, statusEl, packets, (f) => {
+        const ok = await sendAckGatedWithProgress(`Slideshow slide ${i + 1}/${n}`, statusEl, packets, (f) => {
           bar.style.width = Math.round(((i + f) / n) * 100) + '%';
         }, { gap: 0 });
         if (!ok) return;
@@ -1319,7 +1318,7 @@ function setupSlideshowTab() {
       setStatus(statusEl, 'Showing slideshow…');
       currentIdx = 0;
       updateCurrent();
-      await guardedSend('Slideshow → show', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+      if (!await guardedSend('Slideshow → show', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 })) return;
       setNowShowing('picture');
       setBusy(false); // re-enable before starting the cycle
       startCycle();
@@ -1558,13 +1557,13 @@ function setupNowPlayingTab() {
       });
       let packets;
       try { packets = proto.buildImageTransfer(frame); }
-      catch (e) { setStatus(statusEl, 'Build failed: ' + ((e && e.message) || e), 'err'); return; }
+      catch (e) { setStatus(statusEl, 'Build failed: ' + ((e && e.message) || e), 'err'); return false; }
       const onProg = (f) => { progBar.style.width = Math.round(f * 100) + '%'; };
       const ok = await sendAckGatedWithProgress('Now Playing → card', statusEl, packets, onProg);
-      if (ok) {
-        setNowShowing('picture'); // the card lives on the picture page
-        setStatus(statusEl, `${np.isPlaying ? '▶' : '⏸'} ${np.title} — ${np.artist}`, 'ok');
-      }
+      if (!ok) return false;
+      setNowShowing('picture'); // the card lives on the picture page
+      setStatus(statusEl, `${np.isPlaying ? '▶' : '⏸'} ${np.title} — ${np.artist}`, 'ok');
+      return true;
     } finally {
       sending = false;
       setTimeout(() => { progWrap.hidden = true; }, 600);
@@ -1604,9 +1603,10 @@ function setupNowPlayingTab() {
           await fallBackHome('Paused a while — showing clock.'); // rest the screen instead of a frozen card
         } else if (willPush) {
           try {
-            await pushTrack(np);
-            lastKey = key;            // advance the change-key ONLY after a successful render+push
-            lastSentAt = Date.now();
+            if (await pushTrack(np)) {
+              lastKey = key;          // advance the change-key ONLY after a successful render+push
+              lastSentAt = Date.now();
+            }
           } catch (e) {
             // A push failure (art load / build / send) must not kill the loop or advance lastKey —
             // leave it stale so the very next poll retries this exact track.
@@ -1963,11 +1963,11 @@ async function rePushSlideshow(slot, { onStatus = () => {}, onProgress = () => {
     onStatus(`Uploading slide ${i + 1} of ${n}…`);
     const frame = await image.imageToFrame(files[i], s);
     const packets = proto.buildImageTransfer(frame);
-    const ok = await sendWithProgress(`Re-push slide ${i + 1}/${n}`, null, packets, (f) => onProgress((i + f) / n), { gap: 0 });
+    const ok = await sendAckGatedWithProgress(`Re-push slide ${i + 1}/${n}`, null, packets, (f) => onProgress((i + f) / n));
     if (!ok) throw new Error('Send failed on slide ' + (i + 1));
     if (i < n - 1) await sleep(200);
   }
-  await guardedSend('Slideshow → show', null, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+  if (!await guardedSend('Slideshow → show', null, proto.buildView(proto.VIEW.PICTURE), { gap: 1 })) throw new Error('Could not switch to the slideshow.');
   setNowShowing('picture');
   // Note: re-push uploads the ring + shows slide 1, but the auto-cycle lives in the Slideshow tab —
   // open it and press Play to cycle.
@@ -2668,7 +2668,6 @@ function setupLightingTab() {
     const freq = new Uint8Array(analyser.frequencyBinCount);
     const wave = new Uint8Array(analyser.fftSize);
     const state = music.newMapState();
-    const mode = musicMode.value;
     const token = ++audioToken;
     setStatus(musicStatus, `Music reacting (${fw}) — press Stop to end.`, 'ok');
 
@@ -2681,7 +2680,7 @@ function setupLightingTab() {
       const gain = Math.max(0, +musicGain.value || 0) / 100;
       const decay = 0.2 - Math.max(0, Math.min(100, +musicDecay.value || 0)) / 100 * 0.19;
       const accent = musicColor ? rgbToHueSat(musicColor.value) : { hue: 40, sat: 255 };
-      const hsv = music.mapAudioToHSV(freq, wave, mode, { cap, threshold, gain, decay, state, accentHue: accent.hue, accentSat: accent.sat });
+      const hsv = music.mapAudioToHSV(freq, wave, musicMode.value, { cap, threshold, gain, decay, state, accentHue: accent.hue, accentSat: accent.sat });
       renderMusicLevel(hsv.val);
       try {
         // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so

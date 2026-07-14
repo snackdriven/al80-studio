@@ -148,6 +148,23 @@ test('picked color mode keeps the selected color while audio drives brightness',
   assert.ok(active.val > quiet.val, `active val ${active.val} should exceed quiet ${quiet.val}`);
 });
 
+test('follow mode maps the loudest frequency to its hue', () => {
+  const state = newMapState();
+  const freq = new Uint8Array(BINS);
+  freq[200] = 255;
+  const hsv = settle(() => mapAudioToHSV(freq, loudWave(), MUSIC_MODE.FOLLOW_HUE, { cap: 1, state }), 12);
+  assert.ok(Math.abs(hsv.hue - 200) <= 2, `expected hue≈200, got ${hsv.hue}`);
+});
+
+test('pulse mode uses the accent color on an onset', () => {
+  const state = newMapState();
+  state.prevHue = 220;
+  mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.PULSE, { cap: 1, state, accentHue: 220, accentSat: 120 });
+  const hsv = mapAudioToHSV(flatFreq(230), loudWave(), MUSIC_MODE.PULSE, { cap: 1, state, accentHue: 220, accentSat: 120 });
+  assert.equal(hsv.hue, 220);
+  assert.equal(hsv.sat, 120);
+});
+
 test('slew limits value — a 0→loud step rises at most MAX_VAL_DELTA in one frame', () => {
   const state = newMapState(); // prevVal 0
   const hsv = mapAudioToHSV(flatFreq(255), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, state });
