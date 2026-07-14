@@ -437,55 +437,67 @@
 
   <!-- ============================ KEYMAP ============================ -->
   <div class="section" id="section-keymap" role="tabpanel" data-section-panel="keymap" hidden>
-    <section class="panel">
+    <section class="panel keymap-panel">
       <div class="panel-head">
         <h2>Keymap</h2>
         <p class="muted">Live VIA keymap editor. Click a key to remap it. It opens on the AL80 factory layout &mdash; ready to edit and export offline. Connect and <em>Read from keyboard</em> to load your board's actual keys.</p>
       </div>
 
-      <div class="row keymap-toolbar">
-        <div class="toolbar-group">
-          <span class="db-label">Layer</span>
-          <div class="layer-select" id="layerSelect" role="tablist" aria-label="Layer"></div>
-        </div>
-        <div class="toolbar-group toolbar-actions">
-          <button id="keymapRead" type="button" class="btn device-action" disabled title="Read the current keymap from the keyboard">Read from keyboard</button>
-          <label class="btn">Import JSON
-            <input id="keymapImport" type="file" accept="application/json,.json" hidden />
-          </label>
-          <button id="keymapExport" type="button" class="btn">Export JSON</button>
-        </div>
-      </div>
-      <span id="keymapStatus" class="statusline" role="status"></span>
+      <div class="keymap-workbench">
+        <div class="keymap-main">
+          <div class="row keymap-toolbar">
+            <div class="toolbar-group">
+              <span class="db-label">Layer</span>
+              <div class="layer-select" id="layerSelect" role="tablist" aria-label="Layer"></div>
+            </div>
+            <div class="toolbar-group toolbar-actions">
+              <button id="keymapRead" type="button" class="btn device-action" disabled title="Read the current keymap from the keyboard">Read from keyboard</button>
+              <label class="btn">Import JSON
+                <input id="keymapImport" type="file" accept="application/json,.json" hidden />
+              </label>
+              <button id="keymapExport" type="button" class="btn">Export JSON</button>
+            </div>
+          </div>
+          <span id="keymapStatus" class="statusline" role="status"></span>
 
-      <div id="keyGrid" class="key-grid" role="group" aria-label="Key layout"></div>
-
-      <h3>Encoder / knob</h3>
-      <div class="encoder-widget">
-        <div class="enc-key">
-          <span class="enc-cap">Turn left (CCW)</span>
-          <button id="encCcw" type="button" class="key enc-btn" title="Set the counter-clockwise action">&mdash;</button>
+          <div id="keyGrid" class="key-grid" role="group" aria-label="Key layout"></div>
         </div>
-        <div class="enc-dial" aria-hidden="true">&#9673;</div>
-        <div class="enc-key">
-          <span class="enc-cap">Turn right (CW)</span>
-          <button id="encCw" type="button" class="key enc-btn" title="Set the clockwise action">&mdash;</button>
-        </div>
-      </div>
 
-      <h3>Key tester</h3>
-      <div class="row">
-        <button id="testerToggle" type="button" class="btn device-action" disabled title="Poll the switch matrix and light up pressed keys">Start key tester</button>
-        <span id="testerStatus" class="muted small" role="status"></span>
-      </div>
+        <aside class="keymap-rail" aria-label="Keymap device tools">
+          <div class="tool-card">
+            <h3>Encoder / knob</h3>
+            <div class="encoder-widget">
+              <div class="enc-key">
+                <span class="enc-cap">Turn left (CCW)</span>
+                <button id="encCcw" type="button" class="key enc-btn" title="Set the counter-clockwise action">&mdash;</button>
+              </div>
+              <div class="enc-dial" aria-hidden="true">&#9673;</div>
+              <div class="enc-key">
+                <span class="enc-cap">Turn right (CW)</span>
+                <button id="encCw" type="button" class="key enc-btn" title="Set the clockwise action">&mdash;</button>
+              </div>
+            </div>
+          </div>
 
-      <h3>Device</h3>
-      <div class="row">
-        <button id="fwRead" type="button" class="btn device-action" disabled title="Read the VIA firmware version from the keyboard">Read firmware version</button>
-        <span id="fwVersion" class="muted small"></span>
-        <button id="identifyBtn" type="button" class="btn device-action" disabled title="Flash the keyboard's lights to identify which board this is">Identify board</button>
-        <button id="keymapResetBtn" type="button" class="btn danger device-action" disabled title="Restore the factory keymap on the device (recoverable — re-import your layout to undo)">Reset keymap</button>
-        <span id="deviceStatus" class="muted small" role="status"></span>
+          <div class="tool-card">
+            <h3>Key tester</h3>
+            <div class="row">
+              <button id="testerToggle" type="button" class="btn device-action" disabled title="Poll the switch matrix and light up pressed keys">Start key tester</button>
+              <span id="testerStatus" class="muted small" role="status"></span>
+            </div>
+          </div>
+
+          <div class="tool-card">
+            <h3>Device</h3>
+            <div class="row">
+              <button id="fwRead" type="button" class="btn device-action" disabled title="Read the VIA firmware version from the keyboard">Read firmware version</button>
+              <span id="fwVersion" class="muted small"></span>
+              <button id="identifyBtn" type="button" class="btn device-action" disabled title="Flash the keyboard's lights to identify which board this is">Identify board</button>
+              <button id="keymapResetBtn" type="button" class="btn danger device-action" disabled title="Restore the factory keymap on the device (recoverable — re-import your layout to undo)">Reset keymap</button>
+              <span id="deviceStatus" class="muted small" role="status"></span>
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
 
@@ -510,7 +522,7 @@
 
   <!-- ============================ LIGHTING ============================ -->
   <div class="section" id="section-lighting" role="tabpanel" data-section-panel="lighting" hidden>
-    <section class="panel" id="panel-lighting" role="tabpanel">
+    <section class="panel lighting-panel" id="panel-lighting" role="tabpanel">
       <div class="panel-head">
         <h2>Lighting</h2>
         <p class="muted">Three ways to color the board. Pick by how many colors you want.</p>
@@ -524,6 +536,8 @@
         </ul>
       </div>
 
+      <div class="lighting-grid">
+      <section class="tool-card lighting-card">
       <h3>Built-in effects</h3>
       <p class="muted small">The keyboard's own RGB effects. They run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow).</p>
 
@@ -564,7 +578,9 @@
       </div>
 
       <p id="lightStatus" class="statusline" role="status"></p>
+      </section>
 
+      <section class="tool-card lighting-card">
       <h3>Side LED bar</h3>
       <p class="muted small">The three LEDs in the side light bar. Give them their own color, independent of the key
         effect above &mdash; or untick to let them follow the keys. Saved to the keyboard.</p>
@@ -586,7 +602,10 @@
       </div>
 
       <p id="barStatus" class="statusline" role="status"></p>
+      </section>
+      </div>
 
+      <section class="tool-card lighting-card lighting-card-wide">
       <h3>Software effects &mdash; two or more colors</h3>
       <p class="muted small">These do what the built-in effects can't: <strong>multiple colors</strong>. They run from the
         browser (not the keyboard), whole-board (not per-key reactive), and stream live &mdash; so they stop on Stop,
@@ -635,7 +654,7 @@
       <div class="fx-mode">
         <div class="row">
           <strong>Music</strong>
-          <span class="muted small">reacts to PC audio &mdash; opt-in, gentle by default</span>
+          <span class="muted small">reacts to PC audio &mdash; opt-in, no EEPROM writes</span>
           <label class="inline">Style
             <select id="musicMode" class="device-action" disabled>
               <option value="breathe">Breathe (gentle)</option>
@@ -645,12 +664,13 @@
             </select>
           </label>
           <label class="inline">Color <input id="musicColor" type="color" value="#ff2d95" class="device-action" disabled /></label>
-          <label class="inline">Max brightness <output id="musicCapOut">60</output>%
-            <input id="musicCap" type="range" min="10" max="100" value="60" class="device-action" disabled />
+          <label class="inline">Max brightness <output id="musicCapOut">100</output>%
+            <input id="musicCap" type="range" min="10" max="100" value="100" class="device-action" disabled />
           </label>
-          <label class="inline">Threshold <output id="musicThresholdOut">6</output>%
-            <input id="musicThreshold" type="range" min="0" max="40" value="6" class="device-action" disabled />
+          <label class="inline">Ignore quiet audio <output id="musicThresholdOut">Normal (6%)</output>
+            <input id="musicThreshold" type="range" min="0" max="40" value="6" aria-describedby="musicThresholdHint" class="device-action" disabled />
           </label>
+          <span id="musicThresholdHint" class="muted small">Lower reacts sooner; higher waits for louder music.</span>
           <button id="musicStart" type="button" class="btn primary small device-action" disabled>Start</button>
           <button id="musicStop" type="button" class="btn small device-action" disabled>Stop</button>
         </div>
@@ -660,7 +680,9 @@
       </div>
 
       <p id="musicStatus" class="statusline" role="status"></p>
+      </section>
 
+      <section class="tool-card lighting-card lighting-card-wide">
       <h3>Palettes</h3>
       <p class="muted small">Build a multi-color palette, then animate the whole board through it &mdash;
         <strong>global</strong>, one color at a time. Save named presets to this browser. Runs live over
@@ -700,6 +722,7 @@
 
         <p id="paletteStatus" class="statusline" role="status"></p>
       </div>
+      </section>
     </section>
   </div>
 

@@ -49,7 +49,7 @@ test('silence → dim floor, sat pinned 255', () => {
   const state = newMapState();
   const hsv = settle(() => mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.BREATHE, { cap: DEFAULT_CAP, state }), 10);
   assert.equal(hsv.sat, 255);
-  const floor = Math.round(0.15 * DEFAULT_CAP * 255); // ~23
+  const floor = Math.round(0.15 * DEFAULT_CAP * 255); // ~38
   assert.ok(Math.abs(hsv.val - floor) <= 3, `expected val≈${floor}, got ${hsv.val}`);
   assert.ok(hsv.val > 0, 'floor is a gentle glow, not off');
 });
@@ -72,6 +72,14 @@ test('brightness cap respected — cap 0.6 never exceeds val 153', () => {
     const hsv = mapAudioToHSV(flatFreq(255), loudWave(), MUSIC_MODE.PULSE, { cap: 0.6, state });
     assert.ok(hsv.val <= Math.round(0.6 * 255), `val ${hsv.val} exceeded cap`);
   }
+});
+
+test('moderate audio reaches usable keyboard brightness instead of staying dim', () => {
+  const state = newMapState();
+  const w = new Uint8Array(WAVE);
+  for (let i = 0; i < WAVE; i++) w[i] = i % 2 ? 168 : 88; // RMS ~= 0.31 before threshold
+  const hsv = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state }), 8);
+  assert.ok(hsv.val >= 128, `expected moderate audio to reach at least half brightness, got ${hsv.val}`);
 });
 
 test('reactivity threshold treats quiet signal as silence and holds hue', () => {

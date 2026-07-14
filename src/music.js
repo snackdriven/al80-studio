@@ -15,7 +15,7 @@ export const MUSIC_MODE = Object.freeze({ BREATHE: 'breathe', PULSE: 'pulse', FO
 
 // Safety constants (R.3/R.4). The firmware imposes NO brightness ceiling, so the host is the only
 // clamp: DEFAULT_CAP scales every frame, and the slew limits keep a bass drop from strobing.
-export const DEFAULT_CAP = 0.6;             // ~60% brightness ceiling by default
+export const DEFAULT_CAP = 1.0;             // default to the keyboard's full 0-255 brightness scale
 export const DEFAULT_THRESHOLD = 0.06;       // ignore low-level noise; higher = less sensitive
 export const MAX_VAL_DELTA = 0.12;          // max value change per frame (0..1) — anti-strobe
 export const MAX_HUE_DELTA = 24;            // max hue change per frame on the 0..255 wheel
@@ -86,6 +86,7 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
   const rawRms = clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
   const active = rawRms > threshold;
   const rms = active ? clamp01((rawRms - threshold) / Math.max(1e-6, 1 - threshold)) : 0;
+  const level = Math.sqrt(rms); // audio RMS is usually small; sqrt matches perceived loudness better
 
   // Band energies → a target hue.
   const bass = meanRange(freq, 1, 8);
@@ -113,19 +114,19 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
     hueGoal = mode === MUSIC_MODE.PICKED ? accentHue : state.prevHue;
     if (mode === MUSIC_MODE.PICKED) satTarget = accentSat;
   } else if (mode === MUSIC_MODE.PULSE) {
-    const base = lerp(0.1, 0.55, rms);
+    const base = lerp(0.18, 0.75, level);
     valTarget = onset ? Math.min(1, base + 0.45) : base;
     hueGoal = onset ? accentHue : slewLimitWrap(state.prevHue, hueTarget, MAX_HUE_DELTA * 3);
     if (onset) satTarget = accentSat;
   } else if (mode === MUSIC_MODE.FOLLOW_HUE) {
-    valTarget = lerp(0.2, 1.0, rms);
+    valTarget = lerp(0.25, 1.0, level);
     hueGoal = dominantBinHue(freq);
   } else if (mode === MUSIC_MODE.PICKED) {
-    valTarget = lerp(FLOOR, 1.0, smoothstep(rms));
+    valTarget = lerp(FLOOR, 1.0, level);
     hueGoal = accentHue;
     satTarget = accentSat;
   } else { // BREATHE (gentle default)
-    valTarget = lerp(FLOOR, 1.0, smoothstep(rms));
+    valTarget = lerp(FLOOR, 1.0, level);
     hueGoal = hueTarget;
   }
 

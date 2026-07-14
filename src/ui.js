@@ -623,7 +623,7 @@ function setupClockTab() {
     const ok = await guardedSend('Clock set', statusEl, packets, { gap: 1 });
     if (!ok) return false;
     // Show it: the clock lives on the Homepage view. Switch so it's visible.
-    await guardedSend('View → Clock', statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 });
+    if (!await guardedSend('View → Clock', statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 })) return false;
     setNowShowing('clock');
     setStatus(statusEl, 'Clock set to ' + date.toLocaleTimeString(), 'ok');
     return true;
@@ -642,7 +642,14 @@ function setupClockTab() {
       // stops it the same way).
       nowPlayingCtl.stop?.();
       weatherCtl.stop?.(); // clock-sync flips the view home every 60s — it can't co-own the screen with weather either
-      await sendOnce(true);
+      stopClockSync();
+      e.target.checked = true;
+      if (!await sendOnce(true)) {
+        e.target.checked = false;
+        if (badge) badge.hidden = true;
+        return;
+      }
+      if (!e.target.checked) return;
       clockSyncTimer = setInterval(() => sendOnce(true), 60000);
       if (badge) badge.hidden = false;
       setStatus(statusEl, 'Syncing every 60s…', 'ok');
@@ -2549,12 +2556,24 @@ function setupLightingTab() {
   const musicCapOut = $('#musicCapOut');
   const musicThreshold = $('#musicThreshold');
   const musicThresholdOut = $('#musicThresholdOut');
+  const musicThresholdLabel = (value) => {
+    const pct = Math.max(0, Math.min(40, Math.round(+value || 0)));
+    if (pct === 0) return 'Off (0%)';
+    if (pct <= 3) return `Very sensitive (${pct}%)`;
+    if (pct <= 8) return `Normal (${pct}%)`;
+    if (pct <= 18) return `Less sensitive (${pct}%)`;
+    return `Only loud (${pct}%)`;
+  };
+  const renderMusicThreshold = () => {
+    if (musicThreshold && musicThresholdOut) musicThresholdOut.textContent = musicThresholdLabel(musicThreshold.value);
+  };
   persist(musicMode, 'musicMode');
   if (musicColor) persist(musicColor, 'musicColor');
   persist(musicCap, 'musicCap', (el) => { musicCapOut.textContent = el.value; });
-  if (musicThreshold) persist(musicThreshold, 'musicThreshold', (el) => { if (musicThresholdOut) musicThresholdOut.textContent = el.value; });
+  if (musicThreshold) persist(musicThreshold, 'musicThreshold', renderMusicThreshold);
   musicCap.addEventListener('input', () => { musicCapOut.textContent = musicCap.value; });
-  musicThreshold?.addEventListener('input', () => { if (musicThresholdOut) musicThresholdOut.textContent = musicThreshold.value; });
+  musicThreshold?.addEventListener('input', renderMusicThreshold);
+  renderMusicThreshold();
 
   let audioToken = 0, rafId = null, mediaStream = null, audioCtx = null;
 
@@ -3047,8 +3066,11 @@ function setupKeymap() {
   const U = 44, GAP = 4;
 
   function applyCap(el, kc) {
-    el.textContent = keyCapLabel(kc);
+    const label = keyCapLabel(kc);
+    el.textContent = label;
     el.title = `${kc}  (row ${el.dataset.row}, col ${el.dataset.col})`;
+    el.classList.toggle('key-tight', label.length > 3 && label.length <= 5);
+    el.classList.toggle('key-wrap', label.length > 5);
     el.classList.toggle('k-trns', kc === 'KC_TRNS' || kc === 'KC_TRANSPARENT');
     el.classList.toggle('k-no', !kc || kc === 'KC_NO');
   }
@@ -3313,13 +3335,18 @@ function setupKeymap() {
   // Best-effort decode of the switch-matrix reply. VIA packs each row into
   // ceil(COLS/8) big-endian bytes after the 2-byte header; bit `col` = pressed.
   // Column/row packing can vary by firmware, so this degrades gracefully.
+  let testerPollInFlight = false;
   async function pollMatrix() {
+    if (testerPollInFlight) return;
+    testerPollInFlight = true;
     let d;
     try {
       d = await viaTransact(proto.buildSwitchMatrixState(), (x) => x[0] === 0x02 && x[1] === 0x03, 250);
     } catch (err) {
       testerStatus.textContent = 'Tester: ' + ((err && err.message) || err);
       return;
+    } finally {
+      testerPollInFlight = false;
     }
     const bytesPerRow = Math.ceil(COLS / 8);
     keyEls.forEach((el, idx) => {
@@ -3344,11 +3371,16 @@ function setupKeymap() {
   $('#fwRead').addEventListener('click', async () => {
     if (!connected) return;
     setStatus(deviceStatus, 'Reading…');
-    const rep = await viaTransact(proto.buildFirmwareVersion(), (d) => d[0] === 0x02 && d[1] === 0x04, 500);
-    if (!rep) { $('#fwVersion').textContent = 'no reply'; setStatus(deviceStatus, 'No reply from the keyboard.', 'err'); return; }
-    const ver = ((rep[2] << 24) | (rep[3] << 16) | (rep[4] << 8) | rep[5]) >>> 0;
-    $('#fwVersion').textContent = `firmware v${ver}`;
-    setStatus(deviceStatus, '');
+    try {
+      const rep = await viaTransact(proto.buildFirmwareVersion(), (d) => d[0] === 0x02 && d[1] === 0x04, 500);
+      if (!rep) { $('#fwVersion').textContent = 'no reply'; setStatus(deviceStatus, 'No reply from the keyboard.', 'err'); return; }
+      const ver = ((rep[2] << 24) | (rep[3] << 16) | (rep[4] << 8) | rep[5]) >>> 0;
+      $('#fwVersion').textContent = `firmware v${ver}`;
+      setStatus(deviceStatus, '');
+    } catch (err) {
+      $('#fwVersion').textContent = 'no reply';
+      setStatus(deviceStatus, 'Firmware read failed: ' + ((err && err.message) || err), 'err');
+    }
   });
   $('#identifyBtn').addEventListener('click', async () => {
     if (!connected) return;

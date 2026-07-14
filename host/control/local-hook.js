@@ -22,7 +22,7 @@ export function startLocalHook(scheduler, { port = 7333, now = () => Date.now() 
     } else if (req.method === 'POST' && req.url === '/ack') {
       scheduler.ack(); send(200, 'ok');
     } else if (req.method === 'GET' && req.url === '/status') {
-      send(200, JSON.stringify({ active: scheduler.active().id, alerts: scheduler.alertCount }));
+      send(200, JSON.stringify({ active: scheduler.active()?.id ?? null, alerts: scheduler.alertCount }));
     } else {
       send(404, 'not found');
     }

@@ -8,6 +8,14 @@
 // the echo channel as a wedge watchdog. Pushes rendered frames to the picture-page store (no view
 // switch here — visual needs the byte-swap banding fix first; this validates the pipeline).
 //
+// NOW-PLAYING POLL (where Spotify art connects — see apps/nowplaying.js header for the full wiring):
+//   import { getAccessToken, getNowPlaying } from './lib/spotify.js';
+//   import { decodeToRGB96 } from './lib/art.js';
+//   Poll ~every 5s on its own timer: token = getAccessToken() (cache until expiry) ->
+//   np = getNowPlaying(token). On a new np.trackId, fetch np.artUrl, decodeToRGB96(jpeg) -> artRGB,
+//   cache by trackId (decode once per track). Feed makeNowPlayingApp(() => ({ ...np, artRGB })) into
+//   the scheduler. Proven device-free by apps/nowplaying-preview-realart.mjs.
+//
 //   node daemon.js [durationMs]   (omit duration to run until Ctrl-C)
 import { HidTransport } from './transport-hid.js';
 import { clockApp } from './apps/clock.js';

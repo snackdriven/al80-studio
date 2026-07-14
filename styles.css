@@ -278,7 +278,7 @@ body {
 label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
 label.inline { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
 
-input[type="time"], input[type="date"], select {
+input[type="time"], input[type="date"], input[type="text"], input[type="search"], select {
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
@@ -286,8 +286,9 @@ input[type="time"], input[type="date"], select {
   border-radius: var(--radius-sm);
   font-size: 14px;
 }
-input[type="time"]:hover, input[type="date"]:hover, select:hover { border-color: var(--border-2); }
-input[type="range"] { accent-color: var(--accent); width: 100%; }
+input[type="time"]:hover, input[type="date"]:hover, input[type="text"]:hover, input[type="search"]:hover, select:hover { border-color: var(--border-2); }
+input::placeholder { color: var(--muted); opacity: 1; }
+input[type="range"] { accent-color: var(--accent); width: 100%; margin: 0; }
 
 /* One-line slider: label-left / value-right header, track below.
    .slider is a column <label>; .slider-head is the space-between header row. */
@@ -358,9 +359,59 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   padding: 12px 16px;
   margin: 0 0 24px;
 }
-.guide ul { margin: 8px 0 0; padding-left: 16px; }
-.guide li { font-size: 13px; color: var(--muted); margin: 4px 0; }
+.guide ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.guide li {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
 .guide li strong { color: var(--text); }
+
+.tool-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  padding: 16px;
+}
+.tool-card h3:first-child { margin-top: 0; }
+.tool-card .row:first-of-type { margin-top: 12px; }
+.tool-card .row:last-child { margin-bottom: 0; }
+
+.lighting-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.8fr);
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+.lighting-card { margin-top: 16px; }
+.lighting-grid .lighting-card { margin-top: 0; }
+.lighting-card-wide { margin-top: 16px; }
+.lighting-card .effect-customize,
+.lighting-card .palette-editor,
+.lighting-card .fx-mode {
+  background: var(--panel);
+}
+
+@media (max-width: 1100px) {
+  .keymap-workbench,
+  .lighting-grid {
+    grid-template-columns: 1fr;
+  }
+  .keymap-workbench { gap: 16px; }
+  .guide ul { grid-template-columns: 1fr; }
+}
 
 /* Empty picture preview: hide the src-less <img> (it would show its alt text like a broken image)
    and show a quiet placeholder in the frame instead, until a file is chosen. */
@@ -904,6 +955,30 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .toolbar-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .toolbar-actions { margin-left: auto; }
 
+.keymap-workbench {
+  display: grid;
+  grid-template-columns: minmax(720px, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+.keymap-main { min-width: 0; }
+.keymap-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.keymap-rail .row {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+.keymap-rail .btn { width: 100%; }
+.keymap-rail .statusline,
+.keymap-rail .muted[role="status"] {
+  min-height: 18px;
+}
+
 .layer-select { display: inline-flex; gap: 4px; padding: 4px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .layer-btn {
   min-width: 34px; padding: 4px 8px; font: inherit; font-size: 13px;
@@ -927,11 +1002,13 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
   display: flex; align-items: center; justify-content: center;
   padding: 2px;
   font: inherit; font-size: 12px; line-height: 1.05;
-  text-align: center; word-break: break-word;
+  text-align: center; white-space: nowrap; word-break: normal;
   background: var(--panel-2); color: var(--text);
   border: 1px solid var(--border-2); border-radius: 6px;
   cursor: pointer; overflow: hidden;
 }
+.key.key-tight { font-size: 11px; }
+.key.key-wrap { font-size: 10px; white-space: normal; overflow-wrap: anywhere; }
 .key:hover { border-color: var(--accent); }
 .key.selected { border-color: var(--accent); box-shadow: var(--focus); }
 .key.k-trns { color: var(--muted); background: var(--panel); }
@@ -939,10 +1016,10 @@ output { color: var(--text); font-variant-numeric: tabular-nums; }
 .key.pressed { background: var(--ok); color: var(--accent-ink); border-color: var(--ok); }
 
 /* Encoder widget */
-.encoder-widget { display: flex; align-items: flex-end; gap: 16px; margin: 8px 0 4px; }
+.encoder-widget { display: flex; align-items: flex-end; gap: 12px; margin: 8px 0 4px; }
 .enc-key { display: flex; flex-direction: column; gap: 4px; }
 .enc-cap { font-size: 12px; color: var(--muted); }
-.enc-btn { position: static; min-width: 120px; height: 40px; }
+.enc-btn { position: static; min-width: 104px; height: 40px; }
 .enc-dial { font-size: 30px; color: var(--muted); padding-bottom: 4px; }
 
 /* Keycode picker overlay */
