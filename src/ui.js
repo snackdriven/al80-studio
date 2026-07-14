@@ -2541,9 +2541,8 @@ function setupLightingTab() {
   });
 
   // ---- music-reactive lighting (opt-in) -------------------------------------
-  // Captures shared audio in the browser (getDisplayMedia, behind the Start gesture), reduces each frame
-  // to ONE global HSV (src/music.js — pure + tested), and streams it save-less at rAF rate. Works on
-  // stock and custom firmware via pickSaveLessCommand; the only new protocol bit is a firmware detect.
+  // Captures shared audio in the browser (getDisplayMedia, behind the Start gesture), maps each frame
+  // to global HSV or, on custom firmware, three physical RGB zones. Every stream is save-less.
   // Twin of startFx: an audio color source and an rAF clock. Registered into lightingFxCtl.stop so every teardown point
   // (Stop, tab-away ui.js:445/467, disconnect ui.js:161) also tears the audio stream down.
   const musicStatus = $('#musicStatus');
@@ -2575,16 +2574,25 @@ function setupLightingTab() {
     if (musicLevelOut) musicLevelOut.textContent = active ? String(Math.round(value)) : '--';
   };
   const MUSIC_STYLE_NOTES = {
-    breathe: 'Bass pulls red, mids green, and treble blue. Accent color is not used.',
+    breathe: 'Bass hits go red, mids green, and treble blue. Accent color is not used.',
+    zones: 'Left tracks bass in red, center mids in green, and right treble in blue. Requires custom firmware.',
     pulse: 'Bass, mids, and treble set the color, then Accent color flashes on beat hits.',
     follow: 'The loudest frequency sets the hue across the color wheel. Accent color is not used.',
     picked: 'Uses Accent color all the time; only brightness reacts.',
   };
   const renderMusicStyle = () => {
     if (musicStyleNote) musicStyleNote.textContent = MUSIC_STYLE_NOTES[musicMode.value] || '';
+    const usesAccent = musicMode.value === music.MUSIC_MODE.PULSE || musicMode.value === music.MUSIC_MODE.PICKED;
+    musicColor?.closest('.music-control')?.toggleAttribute('hidden', !usesAccent);
   };
   persist(musicMode, 'musicMode');
-  musicMode.addEventListener('change', renderMusicStyle);
+  musicMode.addEventListener('change', () => {
+    renderMusicStyle();
+    if (rafId) {
+      stopMusic();
+      setStatus(musicStatus, 'Style changed. Press Start to apply it.', '');
+    }
+  });
   renderMusicStyle();
   if (musicColor) persist(musicColor, 'musicColor');
   persist(musicCap, 'musicCap255', (el) => { musicCapOut.textContent = el.value; });
@@ -2670,12 +2678,17 @@ function setupLightingTab() {
     const srcNode = audioCtx.createMediaStreamSource(mediaStream);
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.7;
+    analyser.smoothingTimeConstant = 0.45;
     srcNode.connect(analyser);                                    // NEVER analyser.connect(destination)
 
     setStatus(musicStatus, 'Detecting firmware…');
     const fw = await fwPromise;
     if (startToken !== audioToken) { stopMusic(); return; }
+    if (musicMode.value === music.MUSIC_MODE.ZONES && fw !== 'custom') {
+      stopMusic();
+      setStatus(musicStatus, 'Zones need the custom keyboard firmware.', 'err');
+      return;
+    }
 
     // Custom live frames set Solid Color themselves. Stock needs one temporary, save-less effect pin.
     const STOCK_SOLID_EFFECT = 1;
@@ -2687,7 +2700,7 @@ function setupLightingTab() {
     const wave = new Uint8Array(analyser.fftSize);
     const state = music.newMapState();
     const token = ++audioToken;
-    const MUSIC_FRAME_MS = 1000 / 45;
+    const MUSIC_FRAME_MS = musicMode.value === music.MUSIC_MODE.ZONES ? 1000 / 20 : 1000 / 45;
     let lastFrameAt = null;
     setStatus(musicStatus, `Music reacting (${fw}). Press Stop to end.`, 'ok');
 
@@ -2705,12 +2718,15 @@ function setupLightingTab() {
       const threshold = musicThreshold ? +musicThreshold.value / 100 : music.DEFAULT_THRESHOLD;
       const decay = 0.2 - Math.max(0, Math.min(100, +musicDecay.value || 0)) / 100 * 0.19;
       const accent = musicColor ? rgbToHueSat(musicColor.value) : { hue: 40, sat: 255 };
-      const hsv = music.mapAudioToHSV(freq, wave, musicMode.value, { cap, threshold, decay, frameScale, state, accentHue: accent.hue, accentSat: accent.sat });
-      renderMusicLevel(hsv.val);
+      const zones = musicMode.value === music.MUSIC_MODE.ZONES
+        ? music.mapAudioToZones(freq, wave, { cap, threshold, decay, frameScale, state })
+        : null;
+      const hsv = zones ? null : music.mapAudioToHSV(freq, wave, musicMode.value, { cap, threshold, decay, frameScale, state, accentHue: accent.hue, accentSat: accent.sat });
+      renderMusicLevel(zones ? zones.level : hsv.val);
       try {
         // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so
         // animation frames don't flood the device log; only errors surface.
-        await hid.send(music.pickSaveLessCommand(fw, hsv), { gap: 0 });
+        await hid.send(zones ? music.buildZoneFrame(zones.values) : music.pickSaveLessCommand(fw, hsv), { gap: 0 });
       } catch (err) {
         const msg = (err && err.message) || String(err);
         devLog('Music FX frame', { error: msg });

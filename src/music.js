@@ -8,10 +8,10 @@
 // per-frame report is save-less (never buildLightBrightness/buildLightColor which append a 0x09 save).
 
 import {
-  buildVialRGBColorLive, buildLightColorLive, buildLightBrightnessLive, buildBarGet,
+  buildVialRGBColorLive, buildLightColorLive, buildLightBrightnessLive, buildBarGet, buildLiveFrame,
 } from './protocol.js';
 
-export const MUSIC_MODE = Object.freeze({ BREATHE: 'breathe', PULSE: 'pulse', FOLLOW_HUE: 'follow', PICKED: 'picked' });
+export const MUSIC_MODE = Object.freeze({ BREATHE: 'breathe', PULSE: 'pulse', FOLLOW_HUE: 'follow', PICKED: 'picked', ZONES: 'zones' });
 
 // Safety constants (R.3/R.4). The firmware imposes NO brightness ceiling, so the host is the only
 // clamp: DEFAULT_CAP scales every frame, and the slew limits keep a bass drop from strobing.
@@ -25,10 +25,22 @@ const LEVEL_GAMMA = 0.35;                   // lifts normal shared-audio levels 
 
 // Hue anchors on the 0..255 VIA wheel: bass=red(0), mid=green(85), treble=blue(170).
 const HUE_BASS = 0, HUE_MID = 85, HUE_TREB = 170;
+const BAND_GAMMA = 0.55;
+// keyboard.json's 82 RGB-matrix layout x positions. 0=left/bass, 1=center/mids,
+// 2=right/treble. This is logical LED order, which is what 0x49 uses.
+const LED_X = new Uint8Array([
+  0, 19, 34, 49, 63, 82, 97, 112, 127, 146, 161, 175, 190, 209,
+  0, 15, 30, 45, 60, 75, 89, 104, 119, 135, 149, 164, 179, 202, 224,
+  4, 22, 37, 52, 67, 82, 97, 112, 127, 142, 157, 172, 187, 202, 224,
+  5, 26, 41, 56, 71, 86, 101, 116, 131, 146, 161, 176, 190,
+  9, 34, 49, 63, 78, 93, 108, 123, 138, 153, 168, 189, 209,
+  2, 21, 39, 95, 151, 170, 183, 183, 183, 194, 209, 224,
+]);
+const ZONE_BY_LED = Uint8Array.from(LED_X, (x) => (x < 75 ? 0 : x < 150 ? 1 : 2));
 
 /** Fresh per-run state for the mapper. Kept outside the pure fn so it can accumulate across frames. */
 export function newMapState() {
-  return { prevVal: 0, prevHue: 0, prevFreq: null, fluxAvg: 0 };
+  return { prevVal: 0, prevHue: 0, prevFreq: null, fluxAvg: 0, bandAvg: [0, 0, 0], zoneVals: [0, 0, 0] };
 }
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -92,12 +104,19 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
   const rms = active ? clamp01((rawRms - threshold) / Math.max(1e-6, 1 - threshold)) : 0;
   const level = Math.pow(rms, LEVEL_GAMMA);
 
-  // Band energies → a target hue.
+  // Color follows the band rising most above its recent level, not the average spectrum.
+  // Averaging anchors 0/85/170 makes balanced music permanently green.
   const bass = meanRange(freq, 1, 8);
   const mid = meanRange(freq, 9, 40);
   const treb = meanRange(freq, 41, 120);
-  const total = bass + mid + treb + 1;
-  const hueTarget = (bass * HUE_BASS + mid * HUE_MID + treb * HUE_TREB) / total;
+  const bands = [bass, mid, treb];
+  const bandHues = [HUE_BASS, HUE_MID, HUE_TREB];
+  const bandActivity = bands.map((value, i) => Math.max(0, value - state.bandAvg[i]));
+  const activityTotal = bandActivity[0] + bandActivity[1] + bandActivity[2];
+  const hueTarget = activityTotal > 1
+    ? (bandActivity[0] * bandHues[0] + bandActivity[1] * bandHues[1] + bandActivity[2] * bandHues[2]) / activityTotal
+    : state.prevHue;
+  if (active) state.bandAvg = state.bandAvg.map((average, i) => lerp(average, bands[i], 0.05));
 
   // Spectral flux → adaptive onset detection.
   let flux = 0;
@@ -145,6 +164,47 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
   state.prevHue = hue;
 
   return { hue: Math.round(hue), sat: satTarget, val: Math.round(clamp01(val) * 255) };
+}
+
+/**
+ * Map a frame to physical keyboard-zone brightnesses. The three values drive red on the left,
+ * green through the middle, and blue on the right via the custom firmware's 0x49 live LED path.
+ * @returns {{values:number[], level:number}} RGB values are 0..255; level is the loudest zone.
+ */
+export function mapAudioToZones(freq, wave, opts = {}) {
+  const cap = opts.cap == null ? DEFAULT_CAP : clamp01(opts.cap);
+  const threshold = opts.threshold == null ? DEFAULT_THRESHOLD : clamp01(opts.threshold);
+  const decay = opts.decay == null ? DEFAULT_DECAY : clamp01(opts.decay);
+  const frameScale = opts.frameScale == null ? 1 : Math.max(0.1, Math.min(3, +opts.frameScale || 1));
+  const state = opts.state || newMapState();
+
+  let ss = 0;
+  for (let i = 0; i < wave.length; i++) { const d = wave[i] - 128; ss += d * d; }
+  const rawRms = clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
+  const active = rawRms > threshold;
+  const rms = active ? clamp01((rawRms - threshold) / Math.max(1e-6, 1 - threshold)) : 0;
+  const loudness = Math.pow(rms, LEVEL_GAMMA);
+  const bands = [meanRange(freq, 1, 8), meanRange(freq, 9, 40), meanRange(freq, 41, 120)];
+
+  const values = bands.map((band, i) => {
+    const spectral = Math.pow(band / 255, BAND_GAMMA);
+    const target = active ? cap * lerp(FLOOR, 1, 0.4 * loudness + 0.6 * spectral) : 0;
+    const previous = state.zoneVals[i] || 0;
+    const value = slewLimit(previous, target, MAX_VAL_DELTA * frameScale, decay * frameScale);
+    state.zoneVals[i] = value;
+    return Math.round(clamp01(value) * 255);
+  });
+  return { values, level: Math.max(...values) };
+}
+
+/** Build the custom-firmware 0x49 LED field for the bass/mids/treble keyboard zones. */
+export function buildZoneFrame(values) {
+  const rgb = new Uint8Array(ZONE_BY_LED.length * 3);
+  for (let led = 0; led < ZONE_BY_LED.length; led++) {
+    const channel = ZONE_BY_LED[led];
+    rgb[led * 3 + channel] = Math.max(0, Math.min(255, Math.round(values[channel] || 0)));
+  }
+  return buildLiveFrame(rgb);
 }
 
 /**

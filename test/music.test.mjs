@@ -9,7 +9,7 @@ import {
 } from '../src/protocol.js';
 import {
   mapAudioToHSV, newMapState, pickSaveLessCommand, detectFirmware,
-  MUSIC_MODE, DEFAULT_CAP, MAX_VAL_DELTA,
+  mapAudioToZones, buildZoneFrame, MUSIC_MODE, DEFAULT_CAP, MAX_VAL_DELTA,
 } from '../src/music.js';
 
 // ---- fixtures ---------------------------------------------------------------
@@ -64,6 +64,24 @@ test('treble spike → hue ≈ 170 (blue)', () => {
   const state = newMapState();
   const hsv = settle(() => mapAudioToHSV(bandFreq(41, 120), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, state }), 40);
   assert.ok(Math.abs(hsv.hue - 170) <= 6, `expected hue≈170, got ${hsv.hue}`);
+});
+
+test('bass and treble rises break out of a balanced green baseline', () => {
+  const wave = loudWave();
+  const balanced = flatFreq(140);
+  const burst = (lo, hi) => {
+    const freq = flatFreq(140);
+    for (let i = lo; i <= hi; i++) freq[i] = 255;
+    return freq;
+  };
+  const bassState = newMapState();
+  const trebState = newMapState();
+  settle(() => mapAudioToHSV(balanced, wave, MUSIC_MODE.BREATHE, { cap: 1, state: bassState }), 60);
+  settle(() => mapAudioToHSV(balanced, wave, MUSIC_MODE.BREATHE, { cap: 1, state: trebState }), 60);
+  const bass = settle(() => mapAudioToHSV(burst(1, 8), wave, MUSIC_MODE.BREATHE, { cap: 1, state: bassState }), 4);
+  const treb = settle(() => mapAudioToHSV(burst(41, 120), wave, MUSIC_MODE.BREATHE, { cap: 1, state: trebState }), 4);
+  assert.ok(bass.hue <= 20, `bass rise should turn red, got hue ${bass.hue}`);
+  assert.ok(treb.hue >= 150, `treble rise should turn blue, got hue ${treb.hue}`);
 });
 
 test('brightness cap respected — cap 0.6 never exceeds val 153', () => {
@@ -194,6 +212,26 @@ test('PULSE onset bumps brightness above the quiet baseline', () => {
   // a sudden loud, spectrally-rich frame → large flux vs the low average → onset
   const onset = mapAudioToHSV(flatFreq(230), loudWave(), MUSIC_MODE.PULSE, { cap: 1, state });
   assert.ok(onset.val > quiet.val, `onset val ${onset.val} should exceed quiet ${quiet.val}`);
+});
+
+test('zones keep bass, mids, and treble in separate physical color channels', () => {
+  const state = newMapState();
+  const zones = settle(() => mapAudioToZones(flatFreq(180), loudWave(), { cap: 1, state }), 20);
+  assert.equal(zones.values.length, 3);
+  assert.ok(zones.values.every((value) => value > 0), `expected three active zones, got ${zones.values}`);
+  const reports = buildZoneFrame(zones.values);
+  assert.equal(reports.length, 5, '82 LEDs require five live-frame reports');
+  const first = reports[0];
+  assert.deepEqual([first[0], first[1], first[2]], [0x49, 0, 20]);
+  assert.deepEqual(Array.from(first.slice(3, 6)), [zones.values[0], 0, 0], 'left-side LED is red');
+  assert.deepEqual(Array.from(first.slice(18, 21)), [0, zones.values[1], 0], 'center LED is green');
+});
+
+test('zones fall to black after audio stops', () => {
+  const state = newMapState();
+  settle(() => mapAudioToZones(flatFreq(220), loudWave(), { cap: 1, state }), 20);
+  const quiet = settle(() => mapAudioToZones(silenceFreq(), silenceWave(), { cap: 1, state, decay: 0.2 }), 20);
+  assert.ok(quiet.values.every((value) => value === 0), `expected silent zones to turn off, got ${quiet.values}`);
 });
 
 // ---- pickSaveLessCommand ----------------------------------------------------
