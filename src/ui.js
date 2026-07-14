@@ -2541,11 +2541,10 @@ function setupLightingTab() {
   });
 
   // ---- music-reactive lighting (opt-in) -------------------------------------
-  // Captures PC audio in the browser (getDisplayMedia, behind the Start gesture), reduces each frame
+  // Captures shared audio in the browser (getDisplayMedia, behind the Start gesture), reduces each frame
   // to ONE global HSV (src/music.js — pure + tested), and streams it save-less at rAF rate. Works on
   // stock and custom firmware via pickSaveLessCommand; the only new protocol bit is a firmware detect.
-  // Twin of startFx: same one-time Solid-Color pin, same "no EEPROM on the audio path" contract, but
-  // an audio color source and an rAF clock. Registered into lightingFxCtl.stop so every teardown point
+  // Twin of startFx: an audio color source and an rAF clock. Registered into lightingFxCtl.stop so every teardown point
   // (Stop, tab-away ui.js:445/467, disconnect ui.js:161) also tears the audio stream down.
   const musicStatus = $('#musicStatus');
   const musicMode = $('#musicMode');
@@ -2555,8 +2554,6 @@ function setupLightingTab() {
   const musicCapOut = $('#musicCapOut');
   const musicLevel = $('#musicLevel');
   const musicLevelOut = $('#musicLevelOut');
-  const musicGain = $('#musicGain');
-  const musicGainOut = $('#musicGainOut');
   const musicDecay = $('#musicDecay');
   const musicDecayOut = $('#musicDecayOut');
   const musicThreshold = $('#musicThreshold');
@@ -2591,11 +2588,9 @@ function setupLightingTab() {
   renderMusicStyle();
   if (musicColor) persist(musicColor, 'musicColor');
   persist(musicCap, 'musicCap255', (el) => { musicCapOut.textContent = el.value; });
-  persist(musicGain, 'musicGain', (el) => { musicGainOut.textContent = el.value + '%'; });
   persist(musicDecay, 'musicDecay', (el) => { musicDecayOut.textContent = el.value + '%'; });
   if (musicThreshold) persist(musicThreshold, 'musicThreshold', renderMusicThreshold);
   musicCap.addEventListener('input', () => { musicCapOut.textContent = musicCap.value; });
-  musicGain.addEventListener('input', () => { musicGainOut.textContent = musicGain.value + '%'; });
   musicDecay.addEventListener('input', () => { musicDecayOut.textContent = musicDecay.value + '%'; });
   musicThreshold?.addEventListener('input', renderMusicThreshold);
   renderMusicThreshold();
@@ -2605,9 +2600,12 @@ function setupLightingTab() {
   function stopMusic() {
     audioToken++;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    try { mediaStream?.getTracks().forEach((t) => t.stop()); } catch { /* already gone */ }
-    try { audioCtx?.close(); } catch { /* already closed */ }
-    mediaStream = null; audioCtx = null;
+    const stream = mediaStream;
+    const context = audioCtx;
+    mediaStream = null;
+    audioCtx = null;
+    try { stream?.getTracks().forEach((t) => t.stop()); } catch { /* already gone */ }
+    try { context?.close(); } catch { /* already closed */ }
     renderMusicLevel();
   }
   // Chain into the shared lighting-stop so tab-away / disconnect / section-switch cover music too.
@@ -2627,15 +2625,14 @@ function setupLightingTab() {
     // leaving a live screen-capture / zombie loop. Re-checked after every await in the setup path.
     const startToken = audioToken;
     if (!connected) { setStatus(musicStatus, 'Connect first.', 'err'); return; }
-    setStatus(musicStatus, 'Detecting firmware…');
-    const fw = await detectFw();
-    if (startToken !== audioToken) { stopMusic(); return; }   // cancelled during detect
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setStatus(musicStatus, 'This browser can\'t capture system audio (Chrome/Edge on Windows).', 'err');
       return;
     }
+    setStatus(musicStatus, 'Choose an audio source…');
+    const fwPromise = detectFw();
     try {
-      mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, systemAudio: 'include' });
+      mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, systemAudio: 'include', windowAudio: 'system' });
     } catch {
       setStatus(musicStatus, 'Screen/audio share was cancelled.', 'err');
       return;
@@ -2644,43 +2641,71 @@ function setupLightingTab() {
     if (startToken !== audioToken) { stopMusic(); return; }
     if (!mediaStream.getAudioTracks().length) {
       stopMusic();
-      setStatus(musicStatus, 'No system audio — re-Start and tick “Share system audio”.', 'err');
+      setStatus(musicStatus, 'No shared audio. Start again and choose a source with audio.', 'err');
       return;
     }
     mediaStream.getVideoTracks().forEach((t) => t.stop());       // we only want the audio track
-    mediaStream.getAudioTracks()[0].addEventListener('ended', stopMusic);
+    const audioTrack = mediaStream.getAudioTracks()[0];
+    audioTrack.addEventListener('ended', () => {
+      if (!mediaStream?.getAudioTracks().includes(audioTrack)) return;
+      stopMusic();
+      setStatus(musicStatus, 'Shared audio ended. Start again to resume.', 'err');
+    });
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    try {
+      await audioCtx.resume();
+    } catch (err) {
+      if (startToken === audioToken) {
+        stopMusic();
+        setStatus(musicStatus, 'Could not start audio input: ' + ((err && err.message) || err), 'err');
+      }
+      return;
+    }
+    if (startToken !== audioToken) { stopMusic(); return; }
+    if (audioCtx.state !== 'running') {
+      stopMusic();
+      setStatus(musicStatus, 'Audio input did not start. Try Start again.', 'err');
+      return;
+    }
     const srcNode = audioCtx.createMediaStreamSource(mediaStream);
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
     analyser.smoothingTimeConstant = 0.7;
     srcNode.connect(analyser);                                    // NEVER analyser.connect(destination)
 
-    // The ONE and ONLY EEPROM write: pin the base effect to Solid Color so live frames show through.
-    // Custom uses the VialRGB ordinal (SOLID=2); stock uses the QMK RGB-matrix Solid Color id (1).
+    setStatus(musicStatus, 'Detecting firmware…');
+    const fw = await fwPromise;
+    if (startToken !== audioToken) { stopMusic(); return; }
+
+    // Custom live frames set Solid Color themselves. Stock needs one temporary, save-less effect pin.
     const STOCK_SOLID_EFFECT = 1;
-    const pin = fw === 'custom'
-      ? proto.buildVialRGB(SOLID_COLOR_EFFECT, { val: 255 })
-      : proto.buildLightEffect(STOCK_SOLID_EFFECT);
-    if (!await guardedSend('Music → Solid Color', musicStatus, pin)) { stopMusic(); return; }
+    const pin = fw === 'stock' ? [proto.buildLightSet(proto.LIGHT.EFFECT, STOCK_SOLID_EFFECT)] : null;
+    if (pin && !await guardedSend('Music → Solid Color', musicStatus, pin)) { stopMusic(); return; }
     if (startToken !== audioToken) { stopMusic(); return; }   // cancelled during the pin send
 
     const freq = new Uint8Array(analyser.frequencyBinCount);
     const wave = new Uint8Array(analyser.fftSize);
     const state = music.newMapState();
     const token = ++audioToken;
-    setStatus(musicStatus, `Music reacting (${fw}) — press Stop to end.`, 'ok');
+    const MUSIC_FRAME_MS = 1000 / 45;
+    let lastFrameAt = null;
+    setStatus(musicStatus, `Music reacting (${fw}). Press Stop to end.`, 'ok');
 
-    const tick = async () => {
+    const tick = async (now) => {
       if (token !== audioToken) return;
+      if (lastFrameAt != null && now - lastFrameAt < MUSIC_FRAME_MS) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const frameScale = lastFrameAt == null ? 1 : Math.max(0.1, Math.min(3, (now - lastFrameAt) / (1000 / 60)));
+      lastFrameAt = now;
       analyser.getByteFrequencyData(freq);
       analyser.getByteTimeDomainData(wave);
       const cap = Math.max(0, Math.min(255, +musicCap.value || 0)) / 255;
       const threshold = musicThreshold ? +musicThreshold.value / 100 : music.DEFAULT_THRESHOLD;
-      const gain = Math.max(0, +musicGain.value || 0) / 100;
       const decay = 0.2 - Math.max(0, Math.min(100, +musicDecay.value || 0)) / 100 * 0.19;
       const accent = musicColor ? rgbToHueSat(musicColor.value) : { hue: 40, sat: 255 };
-      const hsv = music.mapAudioToHSV(freq, wave, musicMode.value, { cap, threshold, gain, decay, state, accentHue: accent.hue, accentSat: accent.sat });
+      const hsv = music.mapAudioToHSV(freq, wave, musicMode.value, { cap, threshold, decay, frameScale, state, accentHue: accent.hue, accentSat: accent.sat });
       renderMusicLevel(hsv.val);
       try {
         // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so
@@ -2696,15 +2721,17 @@ function setupLightingTab() {
       if (token !== audioToken) return;
       rafId = requestAnimationFrame(tick);
     };
-    tick();
+    rafId = requestAnimationFrame(tick);
   }
 
   $('#musicStart').addEventListener('click', startMusic);
   $('#musicStop').addEventListener('click', () => { stopMusic(); setStatus(musicStatus, 'Stopped.'); });
 
-  // Manual effect/color changes take over from any running animation.
-  effect.addEventListener('change', stopFx);
-  color.addEventListener('input', stopFx);
+  // Manual lighting changes take control before their own send handlers run.
+  effect.addEventListener('change', () => lightingFxCtl.stop(), { capture: true });
+  color.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
+  brightness.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
+  speed.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
 
   // ---- palettes (multi-color presets, GLOBAL board animation) ---------------
   // A palette is an ordered list of color stops. Three modes animate the WHOLE board through them,

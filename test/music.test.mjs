@@ -82,34 +82,31 @@ test('moderate audio reaches usable keyboard brightness instead of staying dim',
   assert.ok(hsv.val >= 128, `expected moderate audio to reach at least half brightness, got ${hsv.val}`);
 });
 
-test('moderate sustained audio can reach the selected maximum brightness', () => {
-  const state = newMapState();
+test('sustained audio remains proportional instead of flattening at the cap', () => {
+  const quietState = newMapState();
+  const moderateState = newMapState();
+  const loudState = newMapState();
+  const quiet = new Uint8Array(WAVE);
+  for (let i = 0; i < WAVE; i++) quiet[i] = i % 2 ? 136 : 120; // RMS 6.25%, just above the default threshold
   const w = new Uint8Array(WAVE);
   for (let i = 0; i < WAVE; i++) w[i] = i % 2 ? 168 : 88; // RMS ~= 0.31 before threshold
-  const hsv = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state }), 12);
-  assert.equal(hsv.val, 255, `expected max cap to reach 255, got ${hsv.val}`);
+  const quietOut = settle(() => mapAudioToHSV(flatFreq(180), quiet, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state: quietState }), 14);
+  const moderateOut = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state: moderateState }), 14);
+  const loudOut = settle(() => mapAudioToHSV(flatFreq(180), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state: loudState }), 14);
+  assert.ok(quietOut.val < moderateOut.val, `quiet ${quietOut.val} should be below moderate ${moderateOut.val}`);
+  assert.ok(moderateOut.val < loudOut.val, `moderate ${moderateOut.val} should be below loud ${loudOut.val}`);
+  assert.equal(loudOut.val, 255, `full-scale input should reach the selected cap, got ${loudOut.val}`);
 });
 
-test('strong music stays bright after a louder peak', () => {
-  const state = newMapState();
-  settle(() => mapAudioToHSV(flatFreq(180), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state }), 12);
+test('a prior louder peak does not flatten later moderate audio', () => {
+  const afterPeak = newMapState();
+  const fresh = newMapState();
+  settle(() => mapAudioToHSV(flatFreq(180), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state: afterPeak }), 12);
   const w = new Uint8Array(WAVE);
   for (let i = 0; i < WAVE; i++) w[i] = i % 2 ? 168 : 88; // RMS ~= 0.31 before threshold
-  const hsv = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state }), 12);
-  assert.ok(hsv.val >= 220, `expected strong post-peak audio to stay bright, got ${hsv.val}`);
-});
-
-test('gain raises active music without exceeding the selected cap', () => {
-  const lowGain = newMapState();
-  const highGain = newMapState();
-  settle(() => mapAudioToHSV(flatFreq(180), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, gain: 1, state: lowGain }), 12);
-  settle(() => mapAudioToHSV(flatFreq(180), loudWave(), MUSIC_MODE.BREATHE, { cap: 1, gain: 1.75, state: highGain }), 12);
-  const w = new Uint8Array(WAVE);
-  for (let i = 0; i < WAVE; i++) w[i] = i % 2 ? 168 : 88;
-  const low = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, gain: 1, state: lowGain }), 6);
-  const high = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, gain: 1.75, state: highGain }), 6);
-  assert.ok(high.val > low.val, `expected gain to raise output, got ${low.val} -> ${high.val}`);
-  assert.ok(high.val <= 255, `gain exceeded full cap: ${high.val}`);
+  const postPeakOut = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state: afterPeak }), 12);
+  const freshOut = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state: fresh }), 12);
+  assert.equal(postPeakOut.val, freshOut.val, `previous peak changed moderate output: ${postPeakOut.val} vs ${freshOut.val}`);
 });
 
 test('slower decay holds brightness longer after music stops', () => {
@@ -119,6 +116,16 @@ test('slower decay holds brightness longer after music stops', () => {
   const fastFrame = mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.BREATHE, { cap: 1, decay: 0.2, state: fast });
   const slowFrame = mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.BREATHE, { cap: 1, decay: 0.02, state: slow });
   assert.ok(slowFrame.val > fastFrame.val, `expected slow decay to hold brightness, got ${fastFrame.val} vs ${slowFrame.val}`);
+});
+
+test('frame scaling keeps hold duration stable across refresh rates', () => {
+  const lowRate = newMapState();
+  const highRate = newMapState();
+  lowRate.prevVal = highRate.prevVal = 1;
+  let low, high;
+  for (let i = 0; i < 15; i++) low = mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.BREATHE, { cap: 1, decay: 0.01, frameScale: 2, state: lowRate });
+  for (let i = 0; i < 72; i++) high = mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.BREATHE, { cap: 1, decay: 0.01, frameScale: 60 / 144, state: highRate });
+  assert.ok(Math.abs(low.val - high.val) <= 1, `same elapsed time diverged: ${low.val} vs ${high.val}`);
 });
 
 test('reactivity threshold treats quiet signal as silence and holds hue', () => {
@@ -156,12 +163,12 @@ test('follow mode maps the loudest frequency to its hue', () => {
   assert.ok(Math.abs(hsv.hue - 200) <= 2, `expected hue≈200, got ${hsv.hue}`);
 });
 
-test('pulse mode uses the accent color on an onset', () => {
+test('pulse mode sends the exact accent color on an onset', () => {
   const state = newMapState();
-  state.prevHue = 220;
-  mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.PULSE, { cap: 1, state, accentHue: 220, accentSat: 120 });
-  const hsv = mapAudioToHSV(flatFreq(230), loudWave(), MUSIC_MODE.PULSE, { cap: 1, state, accentHue: 220, accentSat: 120 });
-  assert.equal(hsv.hue, 220);
+  state.prevHue = 0;
+  mapAudioToHSV(silenceFreq(), silenceWave(), MUSIC_MODE.PULSE, { cap: 1, state, accentHue: 180, accentSat: 120 });
+  const hsv = mapAudioToHSV(flatFreq(230), loudWave(), MUSIC_MODE.PULSE, { cap: 1, state, accentHue: 180, accentSat: 120 });
+  assert.equal(hsv.hue, 180);
   assert.equal(hsv.sat, 120);
 });
 

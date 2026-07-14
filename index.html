@@ -650,7 +650,7 @@
         <div class="music-head">
           <div class="music-title">
             <strong>Music</strong>
-            <span class="muted small">reacts to PC audio</span>
+            <span class="muted small">reacts to shared audio</span>
           </div>
           <div class="music-actions">
             <button id="musicStart" type="button" class="btn primary device-action" disabled>Start</button>
@@ -679,12 +679,8 @@
           </div>
         </div>
         <details class="music-tune disclosure" open>
-          <summary><strong>Response tuning</strong><span class="muted small">sensitivity, hold, and noise filtering</span></summary>
+          <summary><strong>Response tuning</strong><span class="muted small">hold and noise filtering</span></summary>
           <div class="music-tune-grid">
-            <label class="music-control music-range">Input gain <output id="musicGainOut">125%</output>
-              <input id="musicGain" type="range" min="50" max="250" value="125" class="device-action" disabled />
-              <span class="music-control-note">Higher makes quieter audio react more.</span>
-            </label>
             <label class="music-control music-range">Hold after beat <output id="musicDecayOut">60%</output>
               <input id="musicDecay" type="range" min="0" max="100" value="60" class="device-action" disabled />
               <span class="music-control-note">Higher keeps the light bright longer between beats.</span>
@@ -695,7 +691,7 @@
             </label>
           </div>
         </details>
-        <p class="muted small music-setup">Start opens the share picker. Choose <strong>Entire screen</strong> and tick <strong>Share system audio</strong>, or share the tab playing music. Nothing is recorded; audio only controls the lights. Chrome or Edge on Windows. Stops on Stop, when you leave this tab, or on disconnect.</p>
+        <p class="muted small music-setup">Start opens the share picker. Choose a music tab, or choose <strong>Entire screen</strong> and tick <strong>Share system audio</strong>. Nothing is recorded; shared audio only controls the lights. Chrome or Edge on Windows. Stops on Stop, when you leave this tab, on disconnect, or when sharing ends.</p>
         <p id="musicStatus" class="statusline" role="status"></p>
       </div>
 
