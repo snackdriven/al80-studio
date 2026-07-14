@@ -9,7 +9,7 @@ import {
 } from '../src/protocol.js';
 import {
   mapAudioToHSV, newMapState, pickSaveLessCommand, detectFirmware,
-  mapAudioToZones, buildZoneFrame, MUSIC_MODE, DEFAULT_CAP, MAX_VAL_DELTA,
+  mapAudioToZones, buildZoneFrame, resetTracking, MUSIC_MODE, DEFAULT_CAP, MAX_VAL_DELTA,
 } from '../src/music.js';
 
 // ---- fixtures ---------------------------------------------------------------
@@ -137,6 +137,36 @@ test('music at real playback level reaches the top of the range, not a ~43% ceil
   assert.ok(peakOut.val >= 240, `an ordinary -12 dBFS peak should reach the top, got ${peakOut.val}`);
   assert.ok(averageOut.val >= 130, `a -20 dBFS average should be well lit, got ${averageOut.val}`);
   assert.ok(averageOut.val < peakOut.val, 'louder must still be brighter');
+});
+
+test('a style switch does not fake an onset out of the gap it left', () => {
+  // Style switching is live (ui.js re-reads the dropdown per frame), and mapAudioToZones never
+  // touches prevFreq — so without resetTracking the first frame back diffs against the spectrum from
+  // whenever HSV last ran and reports the whole intervening change as one transient. PULSE sets hue
+  // EXACTLY to accentHue only on an onset (bypassing the slew limit), which makes onsets detectable.
+  const ACCENT = 200;
+  const spectrum = (bassV, trebV) => {
+    const f = new Uint8Array(BINS);
+    for (let i = 1; i <= 8; i++) f[i] = bassV;
+    for (let i = 41; i <= 120; i++) f[i] = trebV;
+    return f;
+  };
+  const w = waveAtRms(0.2);
+  const pulse = (f, st) => mapAudioToHSV(f, w, MUSIC_MODE.PULSE, { cap: 1, state: st, accentHue: ACCENT });
+
+  // Control: the same bass→treble drift, watched every frame, is gradual and must NOT read as a hit.
+  const watched = newMapState();
+  settle(() => pulse(spectrum(200, 20), watched), 60);
+  let gradual;
+  for (let i = 0; i <= 40; i++) gradual = pulse(spectrum(200 - 180 * i / 40, 20 + 180 * i / 40), watched);
+  assert.notEqual(gradual.hue, ACCENT, 'a gradual spectral drift is not an onset');
+
+  // Same drift, but spent in Zones — the frame back must not flash the accent.
+  const switched = newMapState();
+  settle(() => pulse(spectrum(200, 20), switched), 60);
+  for (let i = 0; i <= 40; i++) mapAudioToZones(spectrum(200 - 180 * i / 40, 20 + 180 * i / 40), w, { cap: 1, state: switched });
+  resetTracking(switched); // what ui.js does on a style change
+  assert.notEqual(pulse(spectrum(20, 200), switched).hue, ACCENT, 'the gap itself must not read as a transient');
 });
 
 test('zones ramp in across the threshold instead of snapping dark→bright', () => {

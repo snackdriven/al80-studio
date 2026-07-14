@@ -2654,7 +2654,25 @@ function setupLightingTab() {
   const detectFw = () =>
     music.detectFirmware((report, match, ms) => viaTransact(report, match, ms), 400);
 
+  // Re-entry guard, same shape as the slideshow sender's. Without it a second Start during setup
+  // deadlocks BOTH attempts: every "I was superseded" branch below cleans up via stopMusic(), which
+  // bumps the same audioToken the newer call is holding — so the stale call's cleanup cancels the
+  // newer one, and neither ever reaches the rAF loop. Nothing starts and the status sits on a stale
+  // line. The window is small (the share picker is modal, so it's really just the ~400ms firmware
+  // probe) but the button stays live throughout it.
+  let musicStarting = false;
+
   async function startMusic() {
+    if (musicStarting) return;
+    musicStarting = true;
+    try {
+      await startMusicSetup();
+    } finally {
+      musicStarting = false;
+    }
+  }
+
+  async function startMusicSetup() {
     stopFx(); stopMusic();                          // exclusive with every other effect
     // stopMusic() just bumped audioToken; snapshot it so any Stop/disconnect/section-switch that
     // fires DURING an await below (the picker can sit open for seconds) is detectable afterward.
@@ -2732,7 +2750,7 @@ function setupLightingTab() {
     const wave = new Uint8Array(analyser.fftSize);
     const state = music.newMapState();
     const token = ++audioToken;
-    let lastFrameAt = null;
+    let lastFrameAt = null, lastMode = null;
     setStatus(musicStatus, `Music reacting (${fw}). Press Stop to end.`, 'ok');
 
     const tick = async (now) => {
@@ -2748,6 +2766,10 @@ function setupLightingTab() {
       }
       const frameScale = lastFrameAt == null ? 1 : Math.max(0.1, Math.min(3, (now - lastFrameAt) / (1000 / 60)));
       lastFrameAt = now;
+      // A style change means the mapper we're about to call has not seen the last N frames. Tell it,
+      // or it diffs against a stale spectrum and reports the gap itself as a transient.
+      if (lastMode !== null && mode !== lastMode) music.resetTracking(state);
+      lastMode = mode;
       analyser.getByteFrequencyData(freq);
       analyser.getByteTimeDomainData(wave);
       const cap = Math.max(0, Math.min(255, +musicCap.value || 0)) / 255;

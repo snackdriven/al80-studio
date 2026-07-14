@@ -57,6 +57,23 @@ export function newMapState() {
   return { prevVal: 0, prevHue: 0, prevFreq: null, fluxAvg: 0, bandAvg: [0, 0, 0], zoneVals: [0, 0, 0] };
 }
 
+/**
+ * Forget the cross-frame tracking that only mapAudioToHSV maintains. Call when the style changes.
+ *
+ * mapAudioToZones never touches prevFreq, so after a stint in Zones it still holds the spectrum from
+ * whenever an HSV style last ran. Differencing the current frame against that reports every change
+ * the song made in between as one instantaneous flux — a false onset, which PULSE renders as an
+ * accent flash that no transient in the audio asked for. Nulling it says "there was a gap"; the flux
+ * guard already reads that as no-previous-frame. prevVal/prevHue/zoneVals are deliberately KEPT, so
+ * brightness and color stay continuous across the switch instead of jumping.
+ *
+ * bandAvg is intentionally left alone: it's an EMA that re-converges on its own within ~1s, and hue
+ * is slew-limited anyway, so it drifts back rather than flashing.
+ */
+export function resetTracking(state) {
+  state.prevFreq = null;
+}
+
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const lerp = (a, b, t) => a + (b - a) * t;
 const smoothstep = (x) => { const t = clamp01(x); return t * t * (3 - 2 * t); };
