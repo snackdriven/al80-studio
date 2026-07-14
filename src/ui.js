@@ -713,11 +713,11 @@ function setupImageTab() {
     if (readDest() === 'main') {
       previewLabel.innerHTML = 'Preview (96&times;64 main page)';
       previewImg.style.width = '288px'; previewImg.style.height = '192px'; // inline beats the #imagePreview CSS rule
-      destNote.textContent = 'Shows on the home screen — the display path this firmware renders.';
+      destNote.textContent = 'Shows beside the clock on the home screen.';
     } else {
       previewLabel.innerHTML = 'Preview (96&times;160 picture page)';
       previewImg.style.width = '144px'; previewImg.style.height = '240px';
-      destNote.textContent = 'Full-screen still image on the picture page — the upload shows it as an image-only view.';
+      destNote.textContent = 'Fills the picture view with your image.';
     }
     refreshPreview();
   }
@@ -928,10 +928,10 @@ function setupGifTab() {
   function applyDest() {
     const dst = readDest();
     destNote.textContent = dst === 'main'
-      ? 'Plays on the home screen — the display path this firmware renders (96×64, up to 42 frames).'
+      ? 'Plays beside the clock on the home screen (96×64, up to 42 frames).'
       : dst === 'startup'
       ? 'Plays once when the keyboard powers on (96×160, up to 64 frames).'
-      : 'Separate GIF page (96×160, up to 160 frames) — a full-screen animated GIF view.';
+      : 'Fills the GIF view (96×160, up to 160 frames).';
     if (currentFile) decodeAndPreview(); // re-decode at the new resolution
   }
   $$('input[name="gifDest"]').forEach((r) => r.addEventListener('change', applyDest));
@@ -2549,9 +2549,12 @@ function setupLightingTab() {
   // (Stop, tab-away ui.js:445/467, disconnect ui.js:161) also tears the audio stream down.
   const musicStatus = $('#musicStatus');
   const musicMode = $('#musicMode');
+  const musicStyleNote = $('#musicStyleNote');
   const musicColor = $('#musicColor');
   const musicCap = $('#musicCap');
   const musicCapOut = $('#musicCapOut');
+  const musicLevel = $('#musicLevel');
+  const musicLevelOut = $('#musicLevelOut');
   const musicGain = $('#musicGain');
   const musicGainOut = $('#musicGainOut');
   const musicDecay = $('#musicDecay');
@@ -2569,7 +2572,23 @@ function setupLightingTab() {
   const renderMusicThreshold = () => {
     if (musicThreshold && musicThresholdOut) musicThresholdOut.textContent = musicThresholdLabel(musicThreshold.value);
   };
+  const renderMusicLevel = (value = null) => {
+    const active = value != null;
+    if (musicLevel) musicLevel.value = active ? Math.max(0, Math.min(255, value)) : 0;
+    if (musicLevelOut) musicLevelOut.textContent = active ? String(Math.round(value)) : '--';
+  };
+  const MUSIC_STYLE_NOTES = {
+    breathe: 'Bass pulls red, mids green, and treble blue. Accent color is not used.',
+    pulse: 'Bass, mids, and treble set the color, then Accent color flashes on beat hits.',
+    follow: 'The loudest frequency sets the hue across the color wheel. Accent color is not used.',
+    picked: 'Uses Accent color all the time; only brightness reacts.',
+  };
+  const renderMusicStyle = () => {
+    if (musicStyleNote) musicStyleNote.textContent = MUSIC_STYLE_NOTES[musicMode.value] || '';
+  };
   persist(musicMode, 'musicMode');
+  musicMode.addEventListener('change', renderMusicStyle);
+  renderMusicStyle();
   if (musicColor) persist(musicColor, 'musicColor');
   persist(musicCap, 'musicCap255', (el) => { musicCapOut.textContent = el.value; });
   persist(musicGain, 'musicGain', (el) => { musicGainOut.textContent = el.value + '%'; });
@@ -2589,6 +2608,7 @@ function setupLightingTab() {
     try { mediaStream?.getTracks().forEach((t) => t.stop()); } catch { /* already gone */ }
     try { audioCtx?.close(); } catch { /* already closed */ }
     mediaStream = null; audioCtx = null;
+    renderMusicLevel();
   }
   // Chain into the shared lighting-stop so tab-away / disconnect / section-switch cover music too.
   const prevLightingStop = lightingFxCtl.stop;
@@ -2662,6 +2682,7 @@ function setupLightingTab() {
       const decay = 0.2 - Math.max(0, Math.min(100, +musicDecay.value || 0)) / 100 * 0.19;
       const accent = musicColor ? rgbToHueSat(musicColor.value) : { hue: 40, sat: 255 };
       const hsv = music.mapAudioToHSV(freq, wave, mode, { cap, threshold, gain, decay, state, accentHue: accent.hue, accentSat: accent.sat });
+      renderMusicLevel(hsv.val);
       try {
         // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so
         // animation frames don't flood the device log; only errors surface.

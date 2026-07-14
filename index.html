@@ -22,10 +22,6 @@
     </div>
   </header>
 
-  <p id="connectWarn" class="warn" role="note" data-device-chrome>
-    <strong>Only one app can hold the keyboard at a time.</strong> Close the YUNZII web app (yunzii-game.com) and VIA before you connect.
-  </p>
-
   <!-- Top-level sections: live device control vs. offline file tool -->
   <nav class="sections" role="tablist" aria-label="AL80 Studio sections">
     <button class="section-btn" role="tab" data-section="lcd" aria-selected="true" aria-controls="section-lcd">LCD</button>
@@ -39,13 +35,13 @@
          This is a READOUT + shortcuts, not the editor nav (that's .tabs below). -->
     <div class="device-bar" role="status" aria-label="Device state">
       <div class="device-bar-state">
-        <span class="db-live">LIVE</span>
-        <span class="db-label" title="Studio can't read the screen — this is the last thing it sent.">Last set from Studio</span>
+        <span class="db-live">LCD</span>
+        <span class="db-label" title="Studio can't read the screen — this is the last thing it sent.">Last set by Studio</span>
         <span id="nsState" class="ns-state">unknown</span>
         <span id="nsTrack" class="ns-track-meta" hidden></span>
       </div>
       <div class="device-bar-actions">
-        <span class="db-hint">switch:</span>
+        <span class="db-hint">show:</span>
         <div class="ns-switch">
           <button id="nsClock" type="button" class="ns-chip device-action" data-view="clock" aria-pressed="false" title="Switch the LCD to the clock view" disabled>Clock</button>
           <button id="nsPicture" type="button" class="ns-chip device-action" data-view="picture" aria-pressed="false" title="Switch the LCD to the picture view" disabled>Picture</button>
@@ -69,7 +65,7 @@
     <div id="lcdGate" class="gate" hidden>
       <div class="gate-text">
         <strong>Not connected.</strong>
-        <span>Prepare and preview anything below &mdash; <em>Send</em> unlocks once your AL80 is connected.</span>
+        <span>Preview is available. To send, connect your AL80. Close YUNZII Web and VIA first; only one app can connect at once.</span>
       </div>
     </div>
 
@@ -89,7 +85,7 @@
         <section class="panel" id="panel-clock" role="tabpanel" data-panel="clock">
           <div class="panel-head">
             <h2>Clock</h2>
-            <p class="muted">Push your computer's current time to the LCD home screen. Keep it synced so the keyboard's clock can't drift.</p>
+            <p class="muted">Send your computer's current time to the keyboard. Keep it synced to correct the clock automatically.</p>
           </div>
 
           <div class="image-grid clock-grid">
@@ -105,11 +101,11 @@
                 <input id="clockSync" type="checkbox" class="device-action" disabled />
                 Keep synced &mdash; re-send every 60s
               </label>
-              <p class="muted small clock-note">The board's clock drifts a few seconds a day left alone. Sync re-pushes the time each minute so the screen stays honest.</p>
+              <p class="muted small clock-note">The keyboard clock can drift a few seconds each day. Sync sends the current time every minute to keep it accurate.</p>
 
               <details class="disclosure clock-manual">
                 <summary>Set a specific time instead</summary>
-                <p class="muted small">For staging a photo or setting the clock ahead. Leave this closed for normal use &mdash; <em>Send current time</em> is what you want.</p>
+                <p class="muted small">Use this to show a different date or time. For normal use, choose <em>Send current time</em>.</p>
                 <div class="row">
                   <label>Time
                     <input id="clockTime" type="time" step="1" />
@@ -143,8 +139,8 @@
           <div class="guide">
             <span class="db-label">Which page?</span>
             <ul>
-              <li><strong>Main page</strong> &mdash; shows on the home screen with the clock. The display path this firmware renders most reliably.</li>
-              <li><strong>Picture page</strong> &mdash; the full-screen picture view (Fn + picture key), stored in one of the board's 16 slots.</li>
+              <li><strong>Main page</strong> &mdash; shows beside the clock on the home screen.</li>
+              <li><strong>Picture page</strong> &mdash; fills the picture view (Fn + Picture) and uses one of the keyboard's 16 picture slots.</li>
             </ul>
           </div>
           <div class="slot-cards" id="cardsPicture" hidden></div>
@@ -178,7 +174,7 @@
 
               <div class="row">
                 <label class="inline"><input id="imageGray" type="checkbox" /> Grayscale</label>
-                <label class="inline"><input id="imageDither" type="checkbox" /> Dither</label>
+                <label class="inline"><input id="imageDither" type="checkbox" /> Dither (blend colors with a fine pattern)</label>
               </div>
             </div>
 
@@ -207,7 +203,7 @@
 
           <details id="storedPictures" class="disclosure" open>
             <summary>Stored pictures</summary>
-            <p class="muted small">The keyboard holds up to 16 pictures in a ring. Studio can't read them back, so you're the eyes: press <strong>Next</strong> to rotate the LCD to the one you want gone (watch the screen), then <strong>Delete shown</strong>.</p>
+            <p class="muted small">The keyboard holds up to 16 pictures, but Studio cannot see which one is on screen. Press <strong>Next</strong> while watching the keyboard, then use <strong>Delete shown</strong> when the picture you want to remove appears.</p>
             <div class="row">
               <button id="picNext" type="button" class="btn device-action" disabled>Next</button>
               <button id="picDeleteShown" type="button" class="btn danger device-action" disabled>Delete shown</button>
@@ -226,9 +222,9 @@
           <div class="guide">
             <span class="db-label">Which page?</span>
             <ul>
-              <li><strong>Main page</strong> &mdash; plays on the home screen (96&times;64, up to 42 frames).</li>
-              <li><strong>GIF page</strong> &mdash; the full-screen GIF view (96&times;160, up to 160 frames).</li>
-              <li><strong>Startup</strong> &mdash; replaces the boot animation the keyboard plays when it powers on.</li>
+              <li><strong>Main page</strong> &mdash; plays beside the clock on the home screen (96&times;64, up to 42 frames).</li>
+              <li><strong>GIF page</strong> &mdash; fills the GIF view (96&times;160, up to 160 frames).</li>
+              <li><strong>Startup</strong> &mdash; replaces the animation shown when the keyboard turns on.</li>
             </ul>
           </div>
           <div class="slot-cards" id="cardsGif" hidden></div>
@@ -243,7 +239,7 @@
               </div>
               <p id="gifCount" class="muted"></p>
 
-              <label class="slider"><span class="slider-head">FPS <output id="gifFpsOut">30</output></span>
+              <label class="slider"><span class="slider-head">Playback speed (FPS) <output id="gifFpsOut">30</output></span>
                 <input id="gifFps" type="range" min="1" max="60" value="30" />
               </label>
 
@@ -257,7 +253,7 @@
             </div>
 
             <div class="image-preview">
-              <p class="muted small">Live preview at the selected FPS</p>
+              <p class="muted small">Preview at the selected playback speed</p>
               <div class="preview-frame">
                 <canvas id="gifPreview" width="96" height="64" aria-label="GIF preview at selected FPS"></canvas>
               </div>
@@ -283,7 +279,7 @@
           <div class="danger-zone">
             <span class="danger-label">Danger</span>
             <button id="clearGif" type="button" class="btn danger device-action" disabled>Clear stored GIF</button>
-            <span class="muted small">erases the GIF on the keyboard</span>
+            <span class="muted small">permanently erases the GIF saved on the keyboard</span>
           </div>
         </section>
 
@@ -291,7 +287,7 @@
         <section class="panel" id="panel-slideshow" role="tabpanel" data-panel="slideshow" hidden>
           <div class="panel-head">
             <h2>Slideshow</h2>
-            <p class="muted">Upload up to 16 stills to the picture slots and auto-cycle them on the LCD.</p>
+            <p class="muted">Send up to 16 pictures to the keyboard, then cycle through them on the LCD.</p>
           </div>
           <div class="slot-cards" id="cardsSlideshow" hidden></div>
 
@@ -301,7 +297,7 @@
                 <label class="btn">Choose files
                   <input id="slideFile" type="file" accept="image/*" multiple hidden />
                 </label>
-                <span class="muted small">or drop images here &middot; <span id="slideCounter">0/16</span> slots used</span>
+                <span class="muted small">or drop images here &middot; <span id="slideCounter">0/16</span> pictures selected</span>
               </div>
               <div id="slideStrip" class="slide-strip"></div>
 
@@ -346,7 +342,7 @@
         <section class="panel" id="panel-nowplaying" role="tabpanel" data-panel="nowplaying" hidden>
           <div class="panel-head">
             <h2>Now Playing</h2>
-            <p class="muted">Push a live Spotify track card (cover art + title + artist) to the LCD. Runs in this tab over WebHID — close the Node host first, only one app can own the keyboard.</p>
+            <p class="muted">Show the current Spotify track, artist, and cover art on the LCD. It updates while this tab is open. Only one app can control the keyboard at a time.</p>
           </div>
 
           <div class="image-grid">
@@ -355,9 +351,9 @@
                 <span class="db-label">Spotify setup</span>
                 <button id="npConnectSpotify" type="button" class="btn">Connect Spotify</button>
                 <p id="npAuthStatus" class="statusline" role="status">Not connected to Spotify.</p>
-                <p class="muted small">Redirect URI to register in your Spotify app dashboard:</p>
+                <p class="muted small">Paste this URL into Spotify Developer Dashboard &gt; Redirect URIs:</p>
                 <code id="npRedirectUri" class="np-redirect small"></code>
-                <p class="muted small">Add it under your app's Redirect URIs (must match exactly). Spotify requires https or a 127.0.0.1 loopback.</p>
+                <p class="muted small">It must match exactly. Spotify accepts HTTPS addresses or a 127.0.0.1 local address.</p>
                 <p><button id="npForgetSpotify" type="button" class="btn small" hidden>Forget Spotify</button></p>
               </div>
             </div>
@@ -384,7 +380,7 @@
         <section class="panel" id="panel-weather" role="tabpanel" data-panel="weather" hidden>
           <div class="panel-head">
             <h2>Weather</h2>
-            <p class="muted">A live weather card on the LCD &mdash; condition, current temp, today's hi/lo, from Open-Meteo (no API key). Set a location and it self-arms while this tab is open; opening it hands the screen off from Now Playing. Refreshes every 10 minutes.</p>
+            <p class="muted">Show current conditions and today's high and low from Open-Meteo. Set a location to start. Weather stays active while this tab is open, replaces Now Playing, and refreshes every 10 minutes.</p>
           </div>
 
           <div class="image-grid wx-grid">
@@ -420,7 +416,7 @@
     <details id="recentsDrawer" class="recents-drawer disclosure">
       <summary>Recents <span id="recentsCount" class="log-count">0</span></summary>
       <div class="recents-toolbar">
-        <span class="muted small">Thumbnails of what Studio last pushed &mdash; not a read of the panel. Click one to load it into its tab, re-push it, or pin it so the cap can't evict it.</span>
+        <span class="muted small">Things Studio last sent, not a read of the keyboard. Click one to load or send it again. Pin items you want to keep when the list fills.</span>
       </div>
       <div id="recentsGallery" class="recents-gallery" aria-live="polite"></div>
     </details>
@@ -429,7 +425,7 @@
     <details id="deviceLog" class="device-log disclosure">
       <summary>Device log <span id="logCount" class="log-count">0</span></summary>
       <div class="log-toolbar">
-        <span class="muted small">Every command this app sends. The device is write-only, so there are no replies to show.</span>
+        <span class="muted small">Every command Studio sends. The keyboard does not return confirmations for these commands.</span>
         <button id="logClear" type="button" class="btn small">Clear log</button>
       </div>
       <ol id="logList" class="log-list" aria-live="polite"></ol>
@@ -441,7 +437,7 @@
     <section class="panel keymap-panel">
       <div class="panel-head">
         <h2>Keymap</h2>
-        <p class="muted">Live VIA keymap editor. Click a key to remap it. It opens on the AL80 factory layout &mdash; ready to edit and export offline. Connect and <em>Read from keyboard</em> to load your board's actual keys.</p>
+        <p class="muted">Click a key to change what it does. This starts with the AL80 factory layout, so you can edit or export it offline. Connect and choose <em>Read from keyboard</em> to load your current layout.</p>
       </div>
 
       <div class="keymap-workbench">
@@ -466,15 +462,15 @@
 
         <aside class="keymap-rail" aria-label="Keymap device tools">
           <div class="tool-card">
-            <h3>Encoder / knob</h3>
+            <h3>Knob actions</h3>
             <div class="encoder-widget">
               <div class="enc-key">
-                <span class="enc-cap">Turn left (CCW)</span>
+                <span class="enc-cap">Turn left</span>
                 <button id="encCcw" type="button" class="key enc-btn" title="Set the counter-clockwise action">&mdash;</button>
               </div>
               <div class="enc-dial" aria-hidden="true">&#9673;</div>
               <div class="enc-key">
-                <span class="enc-cap">Turn right (CW)</span>
+                <span class="enc-cap">Turn right</span>
                 <button id="encCw" type="button" class="key enc-btn" title="Set the clockwise action">&mdash;</button>
               </div>
             </div>
@@ -482,6 +478,7 @@
 
           <div class="tool-card">
             <h3>Key tester</h3>
+            <p class="muted small">Press keys to see them light up here.</p>
             <div class="row">
               <button id="testerToggle" type="button" class="btn device-action" disabled title="Poll the switch matrix and light up pressed keys">Start key tester</button>
               <span id="testerStatus" class="muted small" role="status"></span>
@@ -491,10 +488,10 @@
           <div class="tool-card">
             <h3>Device</h3>
             <div class="row">
-              <button id="fwRead" type="button" class="btn device-action" disabled title="Read the VIA firmware version from the keyboard">Read firmware version</button>
+              <button id="fwRead" type="button" class="btn device-action" disabled title="Read the VIA firmware version from the keyboard">Check firmware version</button>
               <span id="fwVersion" class="muted small"></span>
-              <button id="identifyBtn" type="button" class="btn device-action" disabled title="Flash the keyboard's lights to identify which board this is">Identify board</button>
-              <button id="keymapResetBtn" type="button" class="btn danger device-action" disabled title="Restore the factory keymap on the device (recoverable — re-import your layout to undo)">Reset keymap</button>
+              <button id="identifyBtn" type="button" class="btn device-action" disabled title="Flash the keyboard's lights to identify which board this is">Flash keyboard lights</button>
+              <button id="keymapResetBtn" type="button" class="btn danger device-action" disabled title="Restore the factory keymap on the device (recoverable — re-import your layout to undo)">Restore factory keymap</button>
               <span id="deviceStatus" class="muted small" role="status"></span>
             </div>
           </div>
@@ -526,21 +523,21 @@
     <section class="panel lighting-panel" id="panel-lighting" role="tabpanel">
       <div class="panel-head">
         <h2>Lighting</h2>
-        <p class="muted">Three ways to color the board. Pick by how many colors you want.</p>
+        <p class="muted">Choose a lighting mode based on the colors and behavior you want.</p>
       </div>
       <div class="guide">
         <span class="db-label">Which one?</span>
         <ul>
-          <li><strong>Built-in</strong> &mdash; one color, runs on the board, keeps going after you close this.</li>
-          <li><strong>Software</strong> &mdash; two colors, quick strobe / cycle / breathe, from the browser.</li>
-          <li><strong>Palettes</strong> &mdash; two to six colors, save your own presets, from the browser.</li>
+          <li><strong>Built-in</strong> &mdash; keyboard effects that keep running after you close the browser.</li>
+          <li><strong>Software</strong> &mdash; browser-run strobe, color cycle, breathing, and music response.</li>
+          <li><strong>Palettes</strong> &mdash; make a sequence of 2&ndash;6 colors and save it in this browser.</li>
         </ul>
       </div>
 
       <div class="lighting-grid">
       <section class="tool-card lighting-card">
       <h3>Built-in effects</h3>
-      <p class="muted small">The keyboard's own RGB effects. They run on the board and keep going after you close this. Each takes <strong>one color</strong> (or its own rainbow).</p>
+      <p class="muted small">Effects stored on the keyboard. They keep running after you close this. Single-color and reactive effects use the color below; rainbow effects choose their own colors.</p>
 
       <div class="row">
         <label>Effect
@@ -553,7 +550,7 @@
       <details id="effectCustomize" class="effect-customize disclosure">
         <summary>Customize effects <span id="effectCount" class="log-count"></span></summary>
         <div class="ec-toolbar">
-          <span class="muted small">Pick which effects show in the dropdown above. Firmware still supports all of them &mdash; this only tidies the list.</span>
+          <span class="muted small">Choose which effects appear in the list above. This only changes the list, not what the keyboard supports.</span>
           <span class="ec-presets">
             <button id="effectsAll" type="button" class="btn small">All</button>
             <button id="effectsRecommended" type="button" class="btn small">Recommended</button>
@@ -575,7 +572,7 @@
         <label>Color
           <input id="lightColor" type="color" value="#5b9dff" class="device-action" disabled />
         </label>
-        <span class="muted small">The single color for the effect above. Reactive effects (Splash, Solid Reactive) ripple in this color; rainbow/cycle effects ignore it.</span>
+        <span class="muted small">Sets the color for single-color and reactive effects. Rainbow and color-cycle effects ignore it.</span>
       </div>
 
       <p id="lightStatus" class="statusline" role="status"></p>
@@ -583,13 +580,12 @@
 
       <section class="tool-card lighting-card">
       <h3>Side LED bar</h3>
-      <p class="muted small">The three LEDs in the side light bar. Give them their own color, independent of the key
-        effect above &mdash; or untick to let them follow the keys. Saved to the keyboard.</p>
+      <p class="muted small">The three lights on the side of the keyboard. Give them their own color and brightness, or let them match the keys. Changes stay on the keyboard.</p>
 
       <div class="row">
         <label>
           <input id="barIndependent" type="checkbox" class="device-action" checked disabled />
-          Independent color (unticked = follow keys)
+          Use a separate color and brightness
         </label>
       </div>
 
@@ -607,17 +603,15 @@
       </div>
 
       <section class="tool-card lighting-card lighting-card-wide">
-      <h3>Software effects &mdash; two or more colors</h3>
-      <p class="muted small">These do what the built-in effects can't: <strong>multiple colors</strong>. They run from the
-        browser (not the keyboard), whole-board (not per-key reactive), and stream live &mdash; so they stop on Stop,
-        on leaving this tab, or on disconnect. One plays at a time.</p>
+      <h3>Software effects</h3>
+      <p class="muted small">These animate the whole keyboard from this browser. They stop when you press Stop, leave this tab, or disconnect. Only one can run at a time.</p>
 
       <div class="fx-mode">
         <div class="row">
           <strong>Strobe</strong>
           <label class="inline">A <input id="strobeColorA" type="color" value="#ff0000" class="device-action" disabled /></label>
           <label class="inline">B <input id="strobeColorB" type="color" value="#0000ff" class="device-action" disabled /></label>
-          <label class="inline">ms/color <output id="strobeSpeedOut">120</output>
+          <label class="inline">Time per color (ms) <output id="strobeSpeedOut">120</output>
             <input id="strobeSpeed" type="range" min="40" max="500" value="120" class="device-action" disabled />
           </label>
           <button id="strobeStart" type="button" class="btn primary small device-action" disabled>Start</button>
@@ -628,8 +622,8 @@
       <div class="fx-mode">
         <div class="row">
           <strong>Cycle</strong>
-          <span class="muted small">rainbow hue sweep</span>
-          <label class="inline">ms/step <output id="cycleSpeedOut">30</output>
+          <span class="muted small">sweeps through the color wheel</span>
+          <label class="inline">Time per color step (ms) <output id="cycleSpeedOut">30</output>
             <input id="cycleSpeed" type="range" min="10" max="200" value="30" class="device-action" disabled />
           </label>
           <button id="cycleStart" type="button" class="btn primary small device-action" disabled>Start</button>
@@ -642,7 +636,7 @@
           <strong>Breathe</strong>
           <label class="inline">A <input id="breatheColorA" type="color" value="#ff2d95" class="device-action" disabled /></label>
           <label class="inline">B <input id="breatheColorB" type="color" value="#2d9dff" class="device-action" disabled /></label>
-          <label class="inline">ms/step <output id="breatheSpeedOut">40</output>
+          <label class="inline">Time per blend step (ms) <output id="breatheSpeedOut">40</output>
             <input id="breatheSpeed" type="range" min="10" max="200" value="40" class="device-action" disabled />
           </label>
           <button id="breatheStart" type="button" class="btn primary small device-action" disabled>Start</button>
@@ -652,54 +646,68 @@
 
       <p id="fxStatus" class="statusline" role="status"></p>
 
-      <div class="fx-mode">
-        <div class="row">
-          <strong>Music</strong>
-          <span class="muted small">reacts to PC audio &mdash; opt-in, no EEPROM writes</span>
-          <label class="inline">Style
+      <div class="fx-mode music-mode">
+        <div class="music-head">
+          <div class="music-title">
+            <strong>Music</strong>
+            <span class="muted small">reacts to PC audio</span>
+          </div>
+          <div class="music-actions">
+            <button id="musicStart" type="button" class="btn primary device-action" disabled>Start</button>
+            <button id="musicStop" type="button" class="btn device-action" disabled>Stop</button>
+          </div>
+        </div>
+        <div class="music-basic">
+          <label class="music-control">Style
             <select id="musicMode" class="device-action" disabled>
-              <option value="breathe">Breathe (gentle)</option>
-              <option value="pulse">Pulse (beat pops)</option>
-              <option value="follow">Follow hue</option>
-              <option value="picked">Picked color</option>
+              <option value="breathe">Breathe (bass / mids / treble)</option>
+              <option value="pulse">Pulse (accent on beats)</option>
+              <option value="follow">Follow (frequency colors)</option>
+              <option value="picked">Picked color (always)</option>
             </select>
+            <span id="musicStyleNote" class="music-control-note"></span>
           </label>
-          <label class="inline">Color <input id="musicColor" type="color" value="#ff2d95" class="device-action" disabled /></label>
-          <label class="inline">Max brightness <output id="musicCapOut">255</output>
+          <label class="music-control">Accent color <input id="musicColor" type="color" value="#ff2d95" class="device-action" disabled /></label>
+          <label class="music-control music-range">Brightness <output id="musicCapOut">255</output>
             <input id="musicCap" type="range" min="0" max="255" value="255" class="device-action" disabled />
           </label>
-          <label class="inline">Gain <output id="musicGainOut">125%</output>
-            <input id="musicGain" type="range" min="50" max="250" value="125" class="device-action" disabled />
-          </label>
-          <label class="inline">Decay <output id="musicDecayOut">60%</output>
-            <input id="musicDecay" type="range" min="0" max="100" value="60" class="device-action" disabled />
-          </label>
-          <label class="inline">Ignore quiet audio <output id="musicThresholdOut">Normal (6%)</output>
-            <input id="musicThreshold" type="range" min="0" max="40" value="6" aria-describedby="musicThresholdHint" class="device-action" disabled />
-          </label>
-          <span id="musicThresholdHint" class="muted small">Lower reacts sooner; higher waits for louder music.</span>
-          <button id="musicStart" type="button" class="btn primary small device-action" disabled>Start</button>
-          <button id="musicStop" type="button" class="btn small device-action" disabled>Stop</button>
+          <div class="music-output">
+            <span id="musicLevelLabel">Live output <output id="musicLevelOut">--</output></span>
+            <meter id="musicLevel" min="0" max="255" value="0" aria-labelledby="musicLevelLabel"></meter>
+          </div>
         </div>
-        <p class="muted small">Start opens the screen/audio share picker &mdash; pick <strong>Entire screen</strong> and
-          tick <strong>Share system audio</strong> (or share the tab your music plays in). Nothing is recorded; the
-          audio only drives color. Chrome/Edge on Windows. Stops on Stop, leaving this tab, or disconnect.</p>
+        <details class="music-tune disclosure" open>
+          <summary>Response tuning <span class="muted small">shape how the lights follow audio</span></summary>
+          <div class="music-tune-grid">
+            <label class="music-control music-range">Input gain <output id="musicGainOut">125%</output>
+              <input id="musicGain" type="range" min="50" max="250" value="125" class="device-action" disabled />
+              <span class="music-control-note">Higher makes quieter audio react more.</span>
+            </label>
+            <label class="music-control music-range">Hold after beat <output id="musicDecayOut">60%</output>
+              <input id="musicDecay" type="range" min="0" max="100" value="60" class="device-action" disabled />
+              <span class="music-control-note">Higher keeps the light bright longer between beats.</span>
+            </label>
+            <label class="music-control music-range">Ignore quiet audio <output id="musicThresholdOut">Normal (6%)</output>
+              <input id="musicThreshold" type="range" min="0" max="40" value="6" class="device-action" disabled />
+              <span class="music-control-note">Higher filters more background noise and softer detail.</span>
+            </label>
+          </div>
+        </details>
+        <p class="muted small">Start opens the share picker. Choose <strong>Entire screen</strong> and tick <strong>Share system audio</strong>, or share the tab playing music. Nothing is recorded; audio only controls the lights. Chrome or Edge on Windows. Stops on Stop, when you leave this tab, or on disconnect.</p>
+        <p id="musicStatus" class="statusline" role="status"></p>
       </div>
 
-      <p id="musicStatus" class="statusline" role="status"></p>
       </section>
 
       <section class="tool-card lighting-card lighting-card-wide">
       <h3>Palettes</h3>
-      <p class="muted small">Build a multi-color palette, then animate the whole board through it &mdash;
-        <strong>global</strong>, one color at a time. Save named presets to this browser. Runs live over
-        the connection (no EEPROM writes), so it stops on Stop, on leaving this tab, and on disconnect.</p>
+      <p class="muted small">Create a sequence of colors, then animate the whole keyboard through it. Saved presets stay in this browser. The animation stops on Stop, when you leave this tab, or on disconnect.</p>
 
       <div class="palette-editor">
         <div class="row">
-          <span class="db-label">Stops</span>
+          <span class="db-label">Palette colors</span>
           <div id="paletteStops" class="palette-stops" aria-label="Palette color stops"></div>
-          <button id="paletteAddStop" type="button" class="btn small device-action" disabled>+ Add stop</button>
+          <button id="paletteAddStop" type="button" class="btn small device-action" disabled>+ Add color</button>
           <span class="muted small">2&ndash;6 colors</span>
         </div>
 
@@ -707,8 +715,8 @@
           <label>Mode
             <select id="paletteMode" class="device-action" disabled>
               <option value="cycle" selected>Cycle (smooth loop)</option>
-              <option value="breathe">Breathe / Pulse</option>
-              <option value="strobe">Strobe (hard switch)</option>
+              <option value="breathe">Breathe (ease at each color)</option>
+              <option value="strobe">Strobe (switch colors instantly)</option>
             </select>
           </label>
           <label class="slider"><span class="slider-head">Speed <output id="paletteSpeedOut">40</output></span>
