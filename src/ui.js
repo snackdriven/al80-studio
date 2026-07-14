@@ -2568,10 +2568,18 @@ function setupLightingTab() {
   const renderMusicThreshold = () => {
     if (musicThreshold && musicThresholdOut) musicThresholdOut.textContent = musicThresholdLabel(musicThreshold.value);
   };
-  const renderMusicLevel = (value = null) => {
-    const active = value != null;
-    if (musicLevel) musicLevel.value = active ? Math.max(0, Math.min(255, value)) : 0;
-    if (musicLevelOut) musicLevelOut.textContent = active ? String(Math.round(value)) : '--';
+  // Shows the INPUT level, not the brightness we produced. Those two look identical when something
+  // is wrong ("the lights are dim" vs "the audio is quiet"), and telling them apart is the whole
+  // point of the meter. Read in dB like any audio meter: shared-tab music sits near -20 dBFS, so a
+  // linear 0..1 RMS bar would sit at ~10% and read as broken. The brightness we sent trails it.
+  const renderMusicLevel = (input = null, sent = 0) => {
+    const db = input ? 20 * Math.log10(input) : -Infinity;
+    const live = input != null && Number.isFinite(db);
+    if (musicLevel) musicLevel.value = live ? Math.max(0, Math.min(100, (db + 60) / 60 * 100)) : 0;
+    if (musicLevelOut) {
+      musicLevelOut.textContent = input == null ? '--'
+        : live ? `${Math.round(db)} dB → ${Math.round(sent)}` : `silent → ${Math.round(sent)}`;
+    }
   };
   const MUSIC_STYLE_NOTES = {
     breathe: 'Bass hits go red, mids green, and treble blue. Accent color is not used.',
@@ -2586,13 +2594,11 @@ function setupLightingTab() {
     musicColor?.closest('.music-control')?.toggleAttribute('hidden', !usesAccent);
   };
   persist(musicMode, 'musicMode');
-  musicMode.addEventListener('change', () => {
-    renderMusicStyle();
-    if (rafId) {
-      stopMusic();
-      setStatus(musicStatus, 'Style changed. Press Start to apply it.', '');
-    }
-  });
+  // The tick reads musicMode.value every frame, so a style change applies live — no Stop/Start
+  // re-arm. Zones is the one style needing custom firmware; startMusic disables the option for the
+  // run once a stock board answers the probe, so it can't be selected into mid-stream.
+  const musicZonesOption = musicMode.querySelector(`option[value="${music.MUSIC_MODE.ZONES}"]`);
+  musicMode.addEventListener('change', renderMusicStyle);
   renderMusicStyle();
   if (musicColor) persist(musicColor, 'musicColor');
   persist(musicCap, 'musicCap255', (el) => { musicCapOut.textContent = el.value; });
@@ -2603,7 +2609,17 @@ function setupLightingTab() {
   musicThreshold?.addEventListener('input', renderMusicThreshold);
   renderMusicThreshold();
 
-  let audioToken = 0, rafId = null, mediaStream = null, audioCtx = null;
+  let audioToken = 0, rafId = null, mediaStream = null, audioCtx = null, zonesLive = false;
+
+  // Zones drive the firmware's live-LED override (0x49), which the board holds until it idles out
+  // after AL80_LIVE_IDLE_MS. Clear it explicitly so the previous effect resumes now instead of half
+  // a second later with a stale zone frame frozen on the keys. Fire-and-forget: if this fails
+  // (already disconnected, which is one of the paths that gets us here) the idle timeout still clears it.
+  function clearLiveZones() {
+    if (!zonesLive) return;
+    zonesLive = false;
+    hid.send([proto.buildLiveStop()], { gap: 0 }).catch(() => {});
+  }
 
   function stopMusic() {
     audioToken++;
@@ -2612,6 +2628,8 @@ function setupLightingTab() {
     const context = audioCtx;
     mediaStream = null;
     audioCtx = null;
+    clearLiveZones();
+    if (musicZonesOption) musicZonesOption.disabled = false;
     try { stream?.getTracks().forEach((t) => t.stop()); } catch { /* already gone */ }
     try { context?.close(); } catch { /* already closed */ }
     renderMusicLevel();
@@ -2689,6 +2707,9 @@ function setupLightingTab() {
       setStatus(musicStatus, 'Zones need the custom keyboard firmware.', 'err');
       return;
     }
+    // Style switching is live, so a stock board must not be able to reach Zones mid-run at all.
+    // stopMusic() re-enables it.
+    if (musicZonesOption) musicZonesOption.disabled = fw !== 'custom';
 
     // Custom live frames set Solid Color themselves. Stock needs one temporary, save-less effect pin.
     const STOCK_SOLID_EFFECT = 1;
@@ -2700,13 +2721,17 @@ function setupLightingTab() {
     const wave = new Uint8Array(analyser.fftSize);
     const state = music.newMapState();
     const token = ++audioToken;
-    const MUSIC_FRAME_MS = musicMode.value === music.MUSIC_MODE.ZONES ? 1000 / 20 : 1000 / 45;
     let lastFrameAt = null;
     setStatus(musicStatus, `Music reacting (${fw}). Press Stop to end.`, 'ok');
 
     const tick = async (now) => {
       if (token !== audioToken) return;
-      if (lastFrameAt != null && now - lastFrameAt < MUSIC_FRAME_MS) {
+      // Re-read the style every frame so the dropdown applies live. Zones costs five 0x49 reports
+      // per frame against one for the HSV styles, hence its slower clock — so the budget has to be
+      // picked per frame too, not captured once at Start.
+      const mode = musicMode.value;
+      const frameMs = mode === music.MUSIC_MODE.ZONES ? 1000 / 20 : 1000 / 45;
+      if (lastFrameAt != null && now - lastFrameAt < frameMs) {
         rafId = requestAnimationFrame(tick);
         return;
       }
@@ -2718,15 +2743,17 @@ function setupLightingTab() {
       const threshold = musicThreshold ? +musicThreshold.value / 100 : music.DEFAULT_THRESHOLD;
       const decay = 0.2 - Math.max(0, Math.min(100, +musicDecay.value || 0)) / 100 * 0.19;
       const accent = musicColor ? rgbToHueSat(musicColor.value) : { hue: 40, sat: 255 };
-      const zones = musicMode.value === music.MUSIC_MODE.ZONES
+      const zones = mode === music.MUSIC_MODE.ZONES
         ? music.mapAudioToZones(freq, wave, { cap, threshold, decay, frameScale, state })
         : null;
-      const hsv = zones ? null : music.mapAudioToHSV(freq, wave, musicMode.value, { cap, threshold, decay, frameScale, state, accentHue: accent.hue, accentSat: accent.sat });
-      renderMusicLevel(zones ? zones.level : hsv.val);
+      const hsv = zones ? null : music.mapAudioToHSV(freq, wave, mode, { cap, threshold, decay, frameScale, state, accentHue: accent.hue, accentSat: accent.sat });
+      renderMusicLevel(music.frameLevel(wave), zones ? zones.level : hsv.val);
       try {
+        if (!zones) clearLiveZones();   // switched away from Zones — drop the firmware override first
         // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so
         // animation frames don't flood the device log; only errors surface.
         await hid.send(zones ? music.buildZoneFrame(zones.values) : music.pickSaveLessCommand(fw, hsv), { gap: 0 });
+        if (zones) zonesLive = true;
       } catch (err) {
         const msg = (err && err.message) || String(err);
         devLog('Music FX frame', { error: msg });

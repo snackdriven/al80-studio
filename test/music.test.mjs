@@ -22,6 +22,17 @@ function loudWave() { const w = new Uint8Array(WAVE); for (let i = 0; i < WAVE; 
 function flatFreq(v) { return new Uint8Array(BINS).fill(v); }
 function settle(fn, frames) { let r; for (let i = 0; i < frames; i++) r = fn(); return r; } // run N frames, return last
 
+// A sine wave at a given RMS as a fraction of full scale — i.e. a level a real player can produce.
+// This matters: loudWave() above is a full-scale square wave (rms ~1.0), an input shared-tab audio
+// CANNOT produce, so every assertion written against it passed while ordinary music topped out near
+// 43% brightness on the device. Real shared audio sits near rms 0.10 (~-20 dBFS) with peaks ~0.25.
+function waveAtRms(rms) {
+  const w = new Uint8Array(WAVE);
+  const amp = rms * Math.SQRT2 * 127; // peak amplitude for a sine at that RMS
+  for (let i = 0; i < WAVE; i++) w[i] = Math.max(0, Math.min(255, Math.round(128 + amp * Math.sin(2 * Math.PI * i * 8 / WAVE))));
+  return w;
+}
+
 // ---- the crux: save-less brightness builder --------------------------------
 test('buildLightBrightnessLive is the BARE noeeprom set — single 07 03 01 <val>, no 0x09 save', () => {
   const r = buildLightBrightnessLive(200);
@@ -114,6 +125,27 @@ test('sustained audio remains proportional instead of flattening at the cap', ()
   assert.ok(quietOut.val < moderateOut.val, `quiet ${quietOut.val} should be below moderate ${moderateOut.val}`);
   assert.ok(moderateOut.val < loudOut.val, `moderate ${moderateOut.val} should be below loud ${loudOut.val}`);
   assert.equal(loudOut.val, 255, `full-scale input should reach the selected cap, got ${loudOut.val}`);
+});
+
+test('music at real playback level reaches the top of the range, not a ~43% ceiling', () => {
+  // The regression these tests missed for three commits: with rms^0.35 an ordinary -12 dBFS peak
+  // asked for ~64% brightness with the slider already pinned at 255, and full brightness needed a
+  // clipping square wave. Assert against levels a player can actually produce.
+  const average = newMapState(), peak = newMapState();
+  const averageOut = settle(() => mapAudioToHSV(flatFreq(180), waveAtRms(0.10), MUSIC_MODE.BREATHE, { cap: 1, state: average }), 20);
+  const peakOut = settle(() => mapAudioToHSV(flatFreq(180), waveAtRms(0.25), MUSIC_MODE.BREATHE, { cap: 1, state: peak }), 20);
+  assert.ok(peakOut.val >= 240, `an ordinary -12 dBFS peak should reach the top, got ${peakOut.val}`);
+  assert.ok(averageOut.val >= 130, `a -20 dBFS average should be well lit, got ${averageOut.val}`);
+  assert.ok(averageOut.val < peakOut.val, 'louder must still be brighter');
+});
+
+test('zones ramp in across the threshold instead of snapping dark→bright', () => {
+  // A binary active/inactive gate made a 6 dB change swing the board between off and ~81%.
+  const edge = newMapState(), clear = newMapState();
+  const edgeOut = settle(() => mapAudioToZones(flatFreq(200), waveAtRms(0.065), { cap: 1, state: edge }), 20);
+  const clearOut = settle(() => mapAudioToZones(flatFreq(200), waveAtRms(0.12), { cap: 1, state: clear }), 20);
+  assert.ok(edgeOut.level < 40, `audio barely over the threshold should ramp in, got ${edgeOut.level}`);
+  assert.ok(clearOut.level > 180, `audio clearly over the threshold should be bright, got ${clearOut.level}`);
 });
 
 test('a prior louder peak does not flatten later moderate audio', () => {

@@ -21,11 +21,25 @@ export const DEFAULT_DECAY = 0.086;          // brightness fall per nominal 60fp
 export const MAX_VAL_DELTA = 0.12;          // max value change per frame (0..1) — anti-strobe
 export const MAX_HUE_DELTA = 24;            // max hue change per frame on the 0..255 wheel
 export const FLOOR = 0.15;                  // dim floor so silence still shows a gentle glow
-const LEVEL_GAMMA = 0.35;                   // lifts normal shared-audio levels without flattening loudness
+
+// Brightness curve. Shared-tab audio never arrives near full scale: ordinary music sits around
+// -20 dBFS RMS (rawRms ~0.10), and a full-scale waveform is a clipping square wave that playback
+// cannot produce. The previous rms^0.35 mapped [0,1]→[0,1] against that, so normal music topped out
+// near 43% brightness with the Brightness slider already pinned at 255 — and no exponent fixes it,
+// because reaching 1.0 required an input that cannot occur. A saturating soft knee scaled to REAL
+// music levels reaches the top on ordinary peaks while staying strictly monotonic in loudness.
+//
+// Deliberately history-free: an auto-gain normalizing against a rolling peak also reaches full, but
+// it makes brightness depend on what played seconds ago and flattens sustained passages. That was
+// tried and rejected — see the 'prior louder peak' and 'sustained audio' tests, which exist to keep
+// it from coming back. This frame's brightness depends only on this frame.
+export const LEVEL_KNEE = 0.06;             // post-threshold RMS reaching ~63% — calibrated to real playback
+const levelCurve = (rms) => 1 - Math.exp(-rms / LEVEL_KNEE);
 
 // Hue anchors on the 0..255 VIA wheel: bass=red(0), mid=green(85), treble=blue(170).
 const HUE_BASS = 0, HUE_MID = 85, HUE_TREB = 170;
-const BAND_GAMMA = 0.55;
+const BAND_GAMMA = 0.55;                    // see the double-compression note on bandLevel
+const GATE_KNEE = 0.05;                     // normalized-rms span over which zones ramp in (soft gate)
 // keyboard.json's 82 RGB-matrix layout x positions. 0=left/bass, 1=center/mids,
 // 2=right/treble. This is logical LED order, which is what 0x49 uses.
 const LED_X = new Uint8Array([
@@ -46,6 +60,18 @@ export function newMapState() {
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const lerp = (a, b, t) => a + (b - a) * t;
 const smoothstep = (x) => { const t = clamp01(x); return t * t * (3 - 2 * t); };
+
+/**
+ * Raw input loudness as an RMS fraction of full scale (0..1), straight off the waveform.
+ * This is what the analyser is ACTUALLY receiving, before any threshold or curve — the number the
+ * on-screen meter shows, so "the lights are dim" and "the audio is quiet" stop looking identical.
+ * Ordinary shared-tab playback lands near 0.10; 1.0 is a clipping square wave.
+ */
+export function frameLevel(wave) {
+  let ss = 0;
+  for (let i = 0; i < wave.length; i++) { const d = wave[i] - 128; ss += d * d; }
+  return clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
+}
 
 function meanRange(arr, lo, hi) {
   let sum = 0, n = 0;
@@ -68,6 +94,21 @@ function slewLimitWrap(prev, target, maxDelta) {
   if (d > 128) d -= 256; else if (d < -128) d += 256; // shortest path
   if (d > maxDelta) d = maxDelta; else if (d < -maxDelta) d = -maxDelta;
   return ((prev + d) % 256 + 256) % 256;
+}
+
+/**
+ * One band's brightness (0..1).
+ *
+ * KNOWN DEFECT, deliberately left alone: getByteFrequencyData bytes are ALREADY logarithmic (the
+ * analyser maps its -100..-30 dB window onto 0..255), so powering them compresses an already-log
+ * value a second time — an 18 dB input swing moves a zone by under 15%, which is why the zones read
+ * as a static picture of the spectrum's tilt rather than a reaction to it. The honest fix is a
+ * dB-window map with a per-band tilt offset, but choosing that window needs REAL captured audio:
+ * synthetic signals put treble near -98 dB, and constants fitted to that would be fitted to a
+ * fiction. Left as-is pending a look at the desk with real playback, rather than replaced by a guess.
+ */
+function bandLevel(band) {
+  return Math.pow(band / 255, BAND_GAMMA);
 }
 
 /** Index of the loudest FFT bin above the DC bin → its hue on the wheel (FOLLOW_HUE). */
@@ -96,13 +137,10 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
   const accentHue = opts.accentHue == null ? 40 : ((Math.round(opts.accentHue) % 256) + 256) % 256;
   const accentSat = opts.accentSat == null ? 255 : Math.max(0, Math.min(255, Math.round(opts.accentSat)));
 
-  // RMS loudness (0..1) from the time-domain waveform.
-  let ss = 0;
-  for (let i = 0; i < wave.length; i++) { const d = wave[i] - 128; ss += d * d; }
-  const rawRms = clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
+  const rawRms = frameLevel(wave);
   const active = rawRms > threshold;
   const rms = active ? clamp01((rawRms - threshold) / Math.max(1e-6, 1 - threshold)) : 0;
-  const level = Math.pow(rms, LEVEL_GAMMA);
+  const level = levelCurve(rms);
 
   // Color follows the band rising most above its recent level, not the average spectrum.
   // Averaging anchors 0/85/170 makes balanced music permanently green.
@@ -178,17 +216,19 @@ export function mapAudioToZones(freq, wave, opts = {}) {
   const frameScale = opts.frameScale == null ? 1 : Math.max(0.1, Math.min(3, +opts.frameScale || 1));
   const state = opts.state || newMapState();
 
-  let ss = 0;
-  for (let i = 0; i < wave.length; i++) { const d = wave[i] - 128; ss += d * d; }
-  const rawRms = clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
+  const rawRms = frameLevel(wave);
   const active = rawRms > threshold;
+  const rms = active ? clamp01((rawRms - threshold) / Math.max(1e-6, 1 - threshold)) : 0;
+  // Soft gate. A binary active/inactive flip meant a 6 dB change swung the whole board between
+  // fully dark and ~81% — the threshold was a cliff in the SETTLED response, not just in how fast
+  // it got there, so the slew limiter could not hide it. Ramp in over the first stretch instead.
+  const gate = smoothstep(rms / GATE_KNEE);
   const bands = [meanRange(freq, 1, 8), meanRange(freq, 9, 40), meanRange(freq, 41, 120)];
 
   const values = bands.map((band, i) => {
-    const spectral = Math.pow(band / 255, BAND_GAMMA);
     // Each physical zone is its own VU channel. Do not mix in overall loudness here: that makes
     // all three thirds flash together whenever any band is present.
-    const target = active ? cap * spectral : 0;
+    const target = active ? cap * bandLevel(band) * gate : 0;
     const previous = state.zoneVals[i] || 0;
     const value = slewLimit(previous, target, MAX_VAL_DELTA * frameScale, decay * frameScale);
     state.zoneVals[i] = value;
