@@ -657,16 +657,18 @@
             <button id="musicStop" type="button" class="btn device-action" disabled>Stop</button>
           </div>
         </div>
-        <div class="music-basic">
-          <label class="music-control">Style
+        <div class="music-style-row">
+          <label class="music-control music-style-picker">Style
             <select id="musicMode" class="device-action" disabled>
               <option value="breathe">Breathe (bass / mids / treble)</option>
               <option value="pulse">Pulse (accent on beats)</option>
               <option value="follow">Follow (frequency colors)</option>
               <option value="picked">Picked color (always)</option>
             </select>
-            <span id="musicStyleNote" class="music-control-note"></span>
           </label>
+          <p id="musicStyleNote" class="music-style-note"></p>
+        </div>
+        <div class="music-output-row">
           <label class="music-control">Accent color <input id="musicColor" type="color" value="#ff2d95" class="device-action" disabled /></label>
           <label class="music-control music-range">Brightness <output id="musicCapOut">255</output>
             <input id="musicCap" type="range" min="0" max="255" value="255" class="device-action" disabled />
@@ -677,7 +679,7 @@
           </div>
         </div>
         <details class="music-tune disclosure" open>
-          <summary>Response tuning <span class="muted small">shape how the lights follow audio</span></summary>
+          <summary><strong>Response tuning</strong><span class="muted small">sensitivity, hold, and noise filtering</span></summary>
           <div class="music-tune-grid">
             <label class="music-control music-range">Input gain <output id="musicGainOut">125%</output>
               <input id="musicGain" type="range" min="50" max="250" value="125" class="device-action" disabled />
@@ -693,7 +695,7 @@
             </label>
           </div>
         </details>
-        <p class="muted small">Start opens the share picker. Choose <strong>Entire screen</strong> and tick <strong>Share system audio</strong>, or share the tab playing music. Nothing is recorded; audio only controls the lights. Chrome or Edge on Windows. Stops on Stop, when you leave this tab, or on disconnect.</p>
+        <p class="muted small music-setup">Start opens the share picker. Choose <strong>Entire screen</strong> and tick <strong>Share system audio</strong>, or share the tab playing music. Nothing is recorded; audio only controls the lights. Chrome or Edge on Windows. Stops on Stop, when you leave this tab, or on disconnect.</p>
         <p id="musicStatus" class="statusline" role="status"></p>
       </div>
 
