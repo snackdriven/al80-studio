@@ -2610,15 +2610,26 @@ function setupLightingTab() {
   renderMusicThreshold();
 
   let audioToken = 0, rafId = null, mediaStream = null, audioCtx = null, zonesLive = false;
+  // Serializes this loop's sends. hid.send has no write queue, so two concurrent calls interleave
+  // their sendReport()s in arbitrary order — see clearLiveZones for why that ordering is load-bearing.
+  let musicInFlight = Promise.resolve();
 
   // Zones drive the firmware's live-LED override (0x49), which the board holds until it idles out
   // after AL80_LIVE_IDLE_MS. Clear it explicitly so the previous effect resumes now instead of half
-  // a second later with a stale zone frame frozen on the keys. Fire-and-forget: if this fails
-  // (already disconnected, which is one of the paths that gets us here) the idle timeout still clears it.
+  // a second later with a stale zone frame frozen on the keys.
+  //
+  // This MUST be ordered after any frame already on the wire: the firmware re-arms on ANY 0x49
+  // (`case AP_LIVE_LEDS: … g_live_active = true`), so a stop that overtakes a stale zone frame gets
+  // undone by it and we wait out the full idle timeout anyway — the exact thing this is here to
+  // prevent. Chain rather than race. Failure is fine (the disconnect path gets here with the device
+  // already gone); the idle timeout is the backstop.
   function clearLiveZones() {
     if (!zonesLive) return;
     zonesLive = false;
-    hid.send([proto.buildLiveStop()], { gap: 0 }).catch(() => {});
+    musicInFlight = musicInFlight
+      .catch(() => {})
+      .then(() => hid.send([proto.buildLiveStop()], { gap: 0 }))
+      .catch(() => {});
   }
 
   function stopMusic() {
@@ -2750,10 +2761,15 @@ function setupLightingTab() {
       renderMusicLevel(music.frameLevel(wave), zones ? zones.level : hsv.val);
       try {
         if (!zones) clearLiveZones();   // switched away from Zones — drop the firmware override first
-        // 1 report on custom, 2 on stock — all save-less. Direct hid.send (not guardedSend) so
-        // animation frames don't flood the device log; only errors surface.
-        await hid.send(zones ? music.buildZoneFrame(zones.values) : music.pickSaveLessCommand(fw, hsv), { gap: 0 });
+        // 1 report on custom, 2 on stock, 5 for a zone frame — all save-less. Direct hid.send (not
+        // guardedSend) so animation frames don't flood the device log; only errors surface.
+        musicInFlight = musicInFlight.catch(() => {}).then(() =>
+          hid.send(zones ? music.buildZoneFrame(zones.values) : music.pickSaveLessCommand(fw, hsv), { gap: 0 }));
+        // Set BEFORE the await: this frame is committed to the wire, so a Stop landing mid-send
+        // must still know to clear the override. Setting it after lets the resolving send resurrect
+        // the flag that stopMusic just cleared.
         if (zones) zonesLive = true;
+        await musicInFlight;
       } catch (err) {
         const msg = (err && err.message) || String(err);
         devLog('Music FX frame', { error: msg });
