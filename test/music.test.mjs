@@ -82,6 +82,14 @@ test('moderate audio reaches usable keyboard brightness instead of staying dim',
   assert.ok(hsv.val >= 128, `expected moderate audio to reach at least half brightness, got ${hsv.val}`);
 });
 
+test('moderate sustained audio can reach the selected maximum brightness', () => {
+  const state = newMapState();
+  const w = new Uint8Array(WAVE);
+  for (let i = 0; i < WAVE; i++) w[i] = i % 2 ? 168 : 88; // RMS ~= 0.31 before threshold
+  const hsv = settle(() => mapAudioToHSV(flatFreq(180), w, MUSIC_MODE.BREATHE, { cap: 1, threshold: 0.06, state }), 12);
+  assert.equal(hsv.val, 255, `expected max cap to reach 255, got ${hsv.val}`);
+});
+
 test('reactivity threshold treats quiet signal as silence and holds hue', () => {
   const state = newMapState();
   state.prevHue = 85;

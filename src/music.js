@@ -26,7 +26,7 @@ const HUE_BASS = 0, HUE_MID = 85, HUE_TREB = 170;
 
 /** Fresh per-run state for the mapper. Kept outside the pure fn so it can accumulate across frames. */
 export function newMapState() {
-  return { prevVal: 0, prevHue: 0, prevFreq: null, fluxAvg: 0 };
+  return { prevVal: 0, prevHue: 0, prevFreq: null, fluxAvg: 0, levelPeak: 0 };
 }
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -86,7 +86,10 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
   const rawRms = clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
   const active = rawRms > threshold;
   const rms = active ? clamp01((rawRms - threshold) / Math.max(1e-6, 1 - threshold)) : 0;
-  const level = Math.sqrt(rms); // audio RMS is usually small; sqrt matches perceived loudness better
+  // Display-capture audio rarely reaches a full-scale waveform. Track the recent peak so the
+  // slider's ceiling is reachable with ordinary playback volume, not only clipped input.
+  state.levelPeak = Math.max(rms, state.levelPeak * 0.995);
+  const level = Math.sqrt(rms / Math.max(1e-6, state.levelPeak));
 
   // Band energies → a target hue.
   const bass = meanRange(freq, 1, 8);
