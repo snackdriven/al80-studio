@@ -1,8 +1,11 @@
 // Offline now-playing / host tests — no network, no device. Covers the pure logic that bit us
 // during the Spotify work: dominantColor's vivid-vs-white filter, HSV, and the PKCE helpers.
 import assert from 'node:assert/strict';
-import { dominantColor, rgbToHsv, hsvToRgb } from '../lib/art.js';
+import { createRequire } from 'node:module';
+import { ART_RGB_BYTES, decodeToRGB96, dominantColor, rgbToHsv, hsvToRgb } from '../lib/art.js';
 import { codeChallenge, buildAuthUrl, generateCodeVerifier, getNowPlayingMock } from '../lib/spotify.js';
+
+const require = createRequire(import.meta.url);
 
 let pass = 0;
 const ok = async (name, fn) => { await fn(); pass++; console.log('  ok -', name); };
@@ -51,6 +54,25 @@ await ok('hsvToRgb round-trips a primary through rgbToHsv', () => {
   const hsv = rgbToHsv(arr[0], arr[1], arr[2]);
   assert.equal(Math.round(hsv.h), 120);
   assert.equal(Math.round(hsv.s), 1);
+});
+
+await ok('decodeToRGB96 decodes a JPEG through the installed jpeg-js dependency', () => {
+  const jpeg = require('jpeg-js');
+  const width = 12, height = 8;
+  const data = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const o = (y * width + x) * 4;
+      data[o] = x * 20;
+      data[o + 1] = y * 28;
+      data[o + 2] = 180;
+      data[o + 3] = 255;
+    }
+  }
+  const encoded = jpeg.encode({ data, width, height }, 80).data;
+  const art = decodeToRGB96(encoded);
+  assert.equal(art.length, ART_RGB_BYTES);
+  assert.ok(art.some((b) => b !== 0), 'decoded art should not be all black');
 });
 
 // ---- Spotify PKCE + mock ----------------------------------------------------

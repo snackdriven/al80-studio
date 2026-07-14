@@ -1,20 +1,18 @@
-// Device-free preview for the now-playing app. Renders sample states (mock Spotify data + a real
-// cover JPEG decoded through lib/art.js), writes each as a PNG so the LAYOUT is visible, and ALSO
+// Device-free preview for the now-playing app. Renders sample states (mock Spotify data + generated
+// cover art), writes each as a PNG so the LAYOUT is visible, and ALSO
 // validates the real protocol.js packet stream: it pushes every frame through buildImageTransfer,
 // lets the mock transport reassemble the packets exactly like the panel would, and asserts the
-// reassembly equals the column-major WIRE form of the frame (buildImageTransfer transposes row-major
-// -> column-major for the AttackShark scan order). The PNG is written from the canonical row-major
-// frame — that's what the panel actually shows after its column-major scan un-does the transpose.
+// reassembly equals the canonical row-major frame.
 //
 //   node host/apps/nowplaying-preview.mjs
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { MockTransport } from '../transport-mock.js';
 import { render } from './nowplaying.js';
-import { decodeToRGB96, ART_RGB_BYTES, dominantColor } from '../lib/art.js';
+import { ART, ART_RGB_BYTES, dominantColor } from '../lib/art.js';
 import { getNowPlayingMock } from '../lib/spotify.js';
-import { buildImageTransfer, transposeToColMajor, WIDTH, HEIGHT, FRAME_BYTES } from '../../src/protocol.js';
+import { buildImageTransfer, WIDTH, HEIGHT, FRAME_BYTES } from '../../src/protocol.js';
 import { encodePNG, rgb565ToRGB } from '../lib/png.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -25,18 +23,25 @@ function savePNG(path, fb, scale = 3) {
   writeFileSync(path, encodePNG(width, height, rgb));
 }
 
-/** Decode a cover JPEG next to this file into the 96x96 artRGB buffer render() blits. */
-function coverArt(name) {
-  const rgb = decodeToRGB96(readFileSync(join(HERE, name)));
-  if (rgb.length !== ART_RGB_BYTES) throw new Error(`bad artRGB length ${rgb.length}, want ${ART_RGB_BYTES}`);
+/** Synthetic 96x96 artRGB buffer. Keeps this preview clone-safe without tracked album art. */
+function generatedArt(seed) {
+  const rgb = new Uint8Array(ART_RGB_BYTES);
+  for (let y = 0; y < ART; y++) {
+    for (let x = 0; x < ART; x++) {
+      const o = (y * ART + x) * 3;
+      rgb[o] = (seed + x * 3 + y) & 0xff;
+      rgb[o + 1] = (seed * 2 + x + y * 2) & 0xff;
+      rgb[o + 2] = (seed * 3 + x * 2 + y * 4) & 0xff;
+    }
+  }
   return rgb;
 }
 
 // Base sample: a real mock track from spotify.getNowPlayingMock() (no creds, no network).
 const mock = getNowPlayingMock();
 
-const daftArt = coverArt('cover-daftpunk-ram.jpg');
-const drakeArt = coverArt('cover-drake-scorpion.jpg');
+const blueArt = generatedArt(41);
+const warmArt = generatedArt(117);
 
 const samples = [
   { file: 'nowplaying-preview-1-short.png', label: 'short title + placeholder art',
@@ -45,10 +50,10 @@ const samples = [
     state: { title: 'Everything In Its Right Place (Live From The Basement Extended Reprise)', artist: 'Radiohead', progress: 0.08, paused: false, elapsedMs: 20000, durationMs: 251000 } },
   { file: 'nowplaying-preview-3-paused.png', label: 'paused state + placeholder art',
     state: { title: 'Nights', artist: 'Frank Ocean', progress: 0.73, paused: true, elapsedMs: 227000, durationMs: 307000 } },
-  { file: 'nowplaying-preview-4-realart.png', label: 'mock track + REAL cover (Daft Punk)',
-    state: { ...mock, artRGB: daftArt } },
-  { file: 'nowplaying-preview-5-realart-drake.png', label: 'real cover (Drake) — accent from art',
-    state: { title: "God's Plan", artist: 'Drake', artRGB: drakeArt, progress: 0.61, paused: false, elapsedMs: 121000, durationMs: 199000 } },
+  { file: 'nowplaying-preview-4-art.png', label: 'mock track + generated art',
+    state: { ...mock, artRGB: blueArt } },
+  { file: 'nowplaying-preview-5-art-warm.png', label: 'generated warm art — accent from art',
+    state: { title: 'Synthetic Love', artist: 'Local Fixture', artRGB: warmArt, progress: 0.61, paused: false, elapsedMs: 121000, durationMs: 199000 } },
 ];
 
 console.log('AL80 now-playing preview (no device)\n');
@@ -57,12 +62,11 @@ for (const s of samples) {
   const fb = render(s.state);
   if (fb.length !== FRAME_BYTES) { console.log(`  *** ${s.file}: frame is ${fb.length}B, want ${FRAME_BYTES}`); allOk = false; continue; }
 
-  // protocol round-trip: reassembled packets must equal the column-major wire form of the frame.
+  // protocol round-trip: reassembled packets must equal the row-major frame.
   const mockT = new MockTransport();            // fresh panel -> forces a full transfer
   const packets = buildImageTransfer(fb);
   mockT.send(packets);
-  const wire = transposeToColMajor(fb, WIDTH, HEIGHT);
-  const ok = Buffer.compare(Buffer.from(mockT.frame()), Buffer.from(wire)) === 0;
+  const ok = Buffer.compare(Buffer.from(mockT.frame()), Buffer.from(fb)) === 0;
 
   savePNG(join(HERE, s.file), fb, 3);           // PNG from the row-major frame = the visible layout
   allOk = allOk && ok && mockT.stats.badChecksums === 0;

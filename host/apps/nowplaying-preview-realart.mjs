@@ -1,18 +1,17 @@
 // Device-free preview proving REAL Spotify album art renders on the now-playing screen. Decodes an
 // actual i.scdn.co cover JPEG -> 96x96 RGB (lib/art.js) -> feeds it as state.artRGB into the real
 // render(), pushes the frame through the REAL protocol.js packet builders, reassembles via the mock
-// transport (same as the device), asserts the reassembly equals the column-major WIRE form of the
-// frame (buildImageTransfer transposes for the AttackShark scan order), and writes the preview PNG
-// from the canonical row-major frame (what the panel shows once its scan un-does the transpose).
+// transport (same as the device), asserts the reassembly equals the canonical row-major frame, and
+// writes the preview PNG.
 //
 //   node host/apps/nowplaying-preview-realart.mjs
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { MockTransport } from '../transport-mock.js';
 import { render } from './nowplaying.js';
 import { decodeToRGB96, ART_RGB_BYTES, dominantColor } from '../lib/art.js';
-import { buildImageTransfer, transposeToColMajor, WIDTH, HEIGHT } from '../../src/protocol.js';
+import { buildImageTransfer, WIDTH, HEIGHT } from '../../src/protocol.js';
 import { encodePNG, rgb565ToRGB } from '../lib/png.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -31,8 +30,13 @@ const samples = [
 ];
 
 console.log('AL80 now-playing — REAL album art preview (no device)\n');
+const available = samples.filter((s) => existsSync(join(HERE, s.jpg)));
+if (!available.length) {
+  console.log('No local cover JPEGs found. Put sample JPGs next to this script to run the real-art preview.');
+  process.exit(0);
+}
 let allOk = true;
-for (const s of samples) {
+for (const s of available) {
   const jpegBuf = readFileSync(join(HERE, s.jpg));
   const artRGB = decodeToRGB96(jpegBuf);
   if (artRGB.length !== ART_RGB_BYTES) throw new Error(`bad artRGB length ${artRGB.length}, want ${ART_RGB_BYTES}`);
@@ -43,8 +47,7 @@ for (const s of samples) {
   const mock = new MockTransport();               // fresh panel -> full transfer
   const packets = buildImageTransfer(fb);
   mock.send(packets);
-  const wire = transposeToColMajor(fb, WIDTH, HEIGHT);
-  const ok = Buffer.compare(Buffer.from(mock.frame()), Buffer.from(wire)) === 0;
+  const ok = Buffer.compare(Buffer.from(mock.frame()), Buffer.from(fb)) === 0;
   savePNG(join(HERE, s.out), fb, 3);              // PNG from the row-major frame = the visible layout
   allOk = allOk && ok && mock.stats.badChecksums === 0;
   const { hue, sat } = dominantColor(artRGB);

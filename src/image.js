@@ -1,15 +1,15 @@
 // AL80 Studio — still-image processing. Browser-only (Canvas 2D). No dependencies.
 //
-// Turns an arbitrary image source into the exact 30,688-byte RGB565-BE frame the
-// LCD expects (112x137). The RGB565 quantization itself lives in protocol.js; this
+// Turns an arbitrary image source into the exact 30,720-byte RGB565-BE frame the
+// LCD expects (96x160). The RGB565 quantization itself lives in protocol.js; this
 // module only handles decode, fit/scale, colour adjustment, optional dithering, and
 // the RGBA -> rgb565BE hand-off.
 //
 // Pipeline:  source -> ImageBitmap/HTMLImageElement
-//                   -> draw onto 112x137 canvas (cover / contain / stretch, smoothing on)
+//                   -> draw onto 96x160 canvas (cover / contain / stretch, smoothing on)
 //                   -> ctx.filter (brightness / contrast / saturate / grayscale)
 //                   -> [optional] Floyd-Steinberg dither snapped to 5/6/5 levels
-//                   -> getImageData -> protocol.rgb565BE -> Uint8Array(30688)
+//                   -> getImageData -> protocol.rgb565BE -> Uint8Array(30720)
 
 import { WIDTH, HEIGHT, FRAME_BYTES, MP_W, MP_H, MP_FRAME_BYTES, rgb565BE } from './protocol.js';
 
@@ -42,7 +42,7 @@ const expand6 = (l) => (l << 2) | (l >> 4); // 6-bit level -> 8-bit
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 /**
- * Create a 112x137 drawing surface. Prefers OffscreenCanvas (works in workers too),
+ * Create a drawing surface. Prefers OffscreenCanvas (works in workers too),
  * falls back to a detached <canvas>.
  * @param {number} w
  * @param {number} h
@@ -218,7 +218,7 @@ function ditherFloydSteinberg(data, w, h) {
 }
 
 /**
- * Shared core: render `source` to a 112x137 RGBA buffer with all opts applied
+ * Shared core: render `source` to an RGBA buffer with all opts applied
  * (fit, filters, optional dither). Returns the Uint8ClampedArray from getImageData.
  * @param {File|Blob|HTMLImageElement|ImageBitmap} source
  * @param {ImageOpts} [opts]
@@ -245,14 +245,14 @@ async function renderRGBA(source, opts = {}, w = WIDTH, h = HEIGHT) {
 }
 
 /**
- * Turn any image source into the LCD's 30,688-byte RGB565-BE frame.
+ * Turn any image source into the LCD's 30,720-byte RGB565-BE frame.
  * @param {File|Blob|HTMLImageElement|ImageBitmap} source
  * @param {ImageOpts} [opts]
  * @returns {Promise<Uint8Array>}  exactly FRAME_BYTES long
  */
 export async function imageToFrame(source, opts = {}) {
   const rgba = await renderRGBA(source, opts);
-  const frame = rgb565BE(rgba); // canonical row-major; buildImageTransfer transposes for the wire
+  const frame = rgb565BE(rgba); // canonical row-major; buildImageTransfer sends row-major
   if (frame.length !== FRAME_BYTES) {
     throw new Error(`imageToFrame: expected ${FRAME_BYTES} bytes, produced ${frame.length}`);
   }
@@ -277,7 +277,7 @@ export async function imageToMainPageFrame(source, opts = {}) {
 }
 
 /**
- * Expand a 30,688-byte RGB565-BE frame back to RGBA (the real, quantized colours).
+ * Expand an RGB565-BE frame back to RGBA (the real, quantized colours).
  * @param {Uint8Array} frame
  * @returns {Uint8ClampedArray}  length WIDTH*HEIGHT*4
  */
@@ -307,7 +307,7 @@ async function canvasToDataURL(canvas) {
 }
 
 /**
- * Produce a 112x137 PNG data URL of exactly what will be sent to the LCD. The pixels
+ * Produce a 96x160 PNG data URL of exactly what will be sent to the LCD. The pixels
  * are round-tripped through RGB565 so the preview shows the real device quantization
  * (and, if enabled, the dither pattern).
  * @param {File|Blob|HTMLImageElement|ImageBitmap} source

@@ -3,15 +3,9 @@
 // contract here is EXACT: a Uint8Array of length 96*96*3 = 27648, row-major, 3 bytes/px (R,G,B),
 // no alpha, no padding.
 //
-// DECODE APPROACH — the host/ package is deliberately zero-dependency (only node-hid, native, for
-// the real transport). We use `jpeg-js` (pure JS, no native build) for the decode and a hand-written
-// box-average downscale here. jpeg-js.decode returns RGBA (4 bytes/px), so we drop alpha while we
-// average.
-//
-//   Dep status: `npm install --no-save jpeg-js` for the spike (dev only, not written to
-//   package.json). For production, vendor lib/jpeg-js/ (copy node_modules/jpeg-js into host/lib/,
-//   MIT) and import from there so there's still no *runtime* npm dependency. This file already
-//   imports lazily so a missing decoder fails loudly only when art is actually requested.
+// DECODE APPROACH — `jpeg-js` is pure JS (no native build). We use it for decode and a
+// hand-written box-average downscale here. jpeg-js.decode returns RGBA (4 bytes/px), so we drop
+// alpha while we average.
 
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
@@ -26,7 +20,7 @@ function jpeg() {
   for (const id of ['./jpeg-js/index.js', 'jpeg-js']) {
     try { _jpeg = require(id); return _jpeg; } catch { /* try next */ }
   }
-  throw new Error('art.js: no JPEG decoder found. Run `npm install --no-save jpeg-js` (spike) or vendor host/lib/jpeg-js/ (prod).');
+  throw new Error('art.js: no JPEG decoder found. Run `npm install` in host/ or vendor host/lib/jpeg-js/.');
 }
 
 /**

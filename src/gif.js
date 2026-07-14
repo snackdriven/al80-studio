@@ -1,7 +1,7 @@
 // AL80 Studio — animated GIF processing. Browser-only (WebCodecs ImageDecoder + Canvas 2D).
 //
-// Decodes an animated GIF into an array of 30,688-byte RGB565-BE frames, each drawn
-// centre-fit (cover) onto a 112x137 canvas. The RGB565 quantization lives in
+// Decodes an animated GIF into an array of 30,720-byte RGB565-BE frames, each drawn
+// centre-fit (cover) onto a 96x160 canvas. The RGB565 quantization lives in
 // protocol.js; this module handles decode + fit + the RGBA -> rgb565BE hand-off.
 //
 // ImageDecoder (WebCodecs) is required. It is exposed on Window and DedicatedWorker in
@@ -21,7 +21,7 @@ function hasImageDecoder() {
   return typeof ImageDecoder !== 'undefined';
 }
 
-/** Create a 112x137 surface (OffscreenCanvas preferred, DOM canvas fallback). */
+/** Create a drawing surface (OffscreenCanvas preferred, DOM canvas fallback). */
 function makeCanvas(w, h) {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
   if (typeof document !== 'undefined') {

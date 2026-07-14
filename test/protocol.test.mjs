@@ -9,7 +9,7 @@ import {
   buildMainPageGif, buildMainPageImage, MP_FRAME_BYTES, MP_MAX_FRAMES,
   buildGifPage, buildStartupAnimation, GP_FRAME_BYTES, SA_FRAME_BYTES,
   buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightSave, buildLightGet,
-  buildLightColorLive, transposeToColMajor,
+  buildLightColorLive,
   buildVialRGBMode, buildVialRGBSave, buildVialRGB, buildVialRGBColorLive, VIALRGB_EFFECT,
   buildBarColor, buildBarSave, buildBarGet, AP_BAR,
   buildKeymapGet, buildKeymapSet, buildEncoderSet, buildSwitchMatrixState, buildViaLayerCount,
@@ -66,21 +66,6 @@ ok('rgb565 big-endian: red = F8 00, green = 07 E0, blue = 00 1F', () => {
   assert.deepEqual(Array.from(rgb565BE([255, 0, 0, 255])), [0xf8, 0x00]);
   assert.deepEqual(Array.from(rgb565BE([0, 255, 0, 255])), [0x07, 0xe0]);
   assert.deepEqual(Array.from(rgb565BE([0, 0, 255, 255])), [0x00, 0x1f]);
-});
-
-ok('transposeToColMajor maps row-major pixel (x,y) to column-major slot x*h+y', () => {
-  // tiny 2x3 frame; tag each pixel's 2 bytes so we can trace placement
-  const w = 2, h = 3, frame = new Uint8Array(w * h * 2);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 2; frame[o] = x; frame[o + 1] = y; }
-  const t = transposeToColMajor(frame, w, h);
-  assert.equal(t.length, frame.length);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const dst = (x * h + y) * 2;
-    assert.equal(t[dst], x); assert.equal(t[dst + 1], y);
-  }
-  // a solid frame is transpose-invariant (why solids never revealed the banding)
-  const solid = new Uint8Array(w * h * 2).fill(0xf8);
-  assert.deepEqual(Array.from(transposeToColMajor(solid, w, h)), Array.from(solid));
 });
 
 ok('VIA keymap builders emit the standard command layout, padded to 64', () => {

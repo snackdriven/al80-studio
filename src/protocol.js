@@ -91,32 +91,11 @@ export function rgb565BE(rgba) {
   return out;
 }
 
-/**
- * Transpose a row-major RGB565 frame to COLUMN-major (x-first) for the picture stream.
- * The AL80 screen is the AttackShark smart-display family, which scans column-major
- * (confirmed against the x85pro reference encoder: `for x: for y:`). Row-major shears a
- * photo into red/blue banding while leaving solids clean. Frames stay canonical row-major
- * everywhere (previews, processing); only the wire is transposed, right before chunking.
- * w*h*2 bytes in and out.
- */
-export function transposeToColMajor(frame, w, h) {
-  const out = new Uint8Array(frame.length);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const src = (y * w + x) * 2;
-      const dst = (x * h + y) * 2;
-      out[dst] = frame[src];
-      out[dst + 1] = frame[src + 1];
-    }
-  }
-  return out;
-}
-
 // ---- still image (capture-verified: announce + 548 data + finish; NO 0x0C length packet) ----
 
 /**
  * The 0x41 setup/length descriptor the device needs BETWEEN the announce and the pixel data.
- * Captured verbatim for the 112x137 panel: A5 5A 0C 78 00 <crc>. The 0x78 is a fixed panel
+ * Captured verbatim for the 96x160 panel: A5 5A 0C 78 00 <crc>. The 0x78 is a fixed panel
  * param (recurs in still + GIF setup), so this is a constant for our resolution.
  * (Omitting it uploads pixels that never render — the bug that made images not display.)
  */
@@ -250,7 +229,7 @@ export function buildClearGif() {
 /**
  * @param {Uint8Array[]} frames  each FRAME_BYTES of RGB565-BE
  * @param {number} fps           1..60
- * @param {number} mode          0 (full 112x137) default
+ * @param {number} mode          0 (full 96x160) default
  * NOTE: experimental. Source uses subcmd 0x02/0x03; our capture showed 0x09/0x0A/0x07 banked.
  * Verify on-device before trusting; the still-image path is the proven one.
  */

@@ -790,7 +790,7 @@ function setupImageTab() {
     setStatus(statusEl, 'Rendering frame…');
     let frame;
     try {
-      // main page = 96x64 mode-2 (the surface that displays); picture page = 112x137 slot.
+      // main page = 96x64 mode-2 (the surface that displays); picture page = 96x160 slot.
       frame = dest === 'main'
         ? await image.imageToMainPageFrame(currentFile, readOpts())
         : await image.imageToFrame(currentFile, readOpts());
@@ -3125,7 +3125,10 @@ function setupKeymap() {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'preset-chip';
-        chip.innerHTML = `${it.label} <code>${it.keycode}</code>`;
+        chip.append(document.createTextNode(it.label + ' '));
+        const code = document.createElement('code');
+        code.textContent = it.keycode;
+        chip.appendChild(code);
         chip.addEventListener('click', () => applyKeycode(it.keycode));
         chips.appendChild(chip);
       });
