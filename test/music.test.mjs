@@ -227,6 +227,14 @@ test('zones keep bass, mids, and treble in separate physical color channels', ()
   assert.deepEqual(Array.from(first.slice(18, 21)), [0, zones.values[1], 0], 'center LED is green');
 });
 
+test('zones react to their own spectrum instead of flashing together on global volume', () => {
+  const state = newMapState();
+  const bass = settle(() => mapAudioToZones(bandFreq(1, 8), loudWave(), { cap: 1, state }), 20);
+  assert.ok(bass.values[0] >= 250, `bass zone should be bright, got ${bass.values}`);
+  assert.equal(bass.values[1], 0, `mids should stay dark on bass-only audio, got ${bass.values}`);
+  assert.equal(bass.values[2], 0, `treble should stay dark on bass-only audio, got ${bass.values}`);
+});
+
 test('zones fall to black after audio stops', () => {
   const state = newMapState();
   settle(() => mapAudioToZones(flatFreq(220), loudWave(), { cap: 1, state }), 20);

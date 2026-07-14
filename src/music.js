@@ -182,13 +182,13 @@ export function mapAudioToZones(freq, wave, opts = {}) {
   for (let i = 0; i < wave.length; i++) { const d = wave[i] - 128; ss += d * d; }
   const rawRms = clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
   const active = rawRms > threshold;
-  const rms = active ? clamp01((rawRms - threshold) / Math.max(1e-6, 1 - threshold)) : 0;
-  const loudness = Math.pow(rms, LEVEL_GAMMA);
   const bands = [meanRange(freq, 1, 8), meanRange(freq, 9, 40), meanRange(freq, 41, 120)];
 
   const values = bands.map((band, i) => {
     const spectral = Math.pow(band / 255, BAND_GAMMA);
-    const target = active ? cap * lerp(FLOOR, 1, 0.4 * loudness + 0.6 * spectral) : 0;
+    // Each physical zone is its own VU channel. Do not mix in overall loudness here: that makes
+    // all three thirds flash together whenever any band is present.
+    const target = active ? cap * spectral : 0;
     const previous = state.zoneVals[i] || 0;
     const value = slewLimit(previous, target, MAX_VAL_DELTA * frameScale, decay * frameScale);
     state.zoneVals[i] = value;
