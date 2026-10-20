@@ -48,3 +48,7 @@ python -m http.server 8137      # then open http://localhost:8137
 - **Picture commit:** a still needs a short settle after the setup packet and no trailing view-toggle, or the frame lands in scratch and the old picture stays.
 - **Encoder direction:** the array is `[ccw, cw]` per VIA/QMK. Earlier builds read index 0 as cw and had the two directions swapped; fixed.
 - **Safety:** the builder only ever emits `0x40/0x41/0x42` (+ status). It can't send the `0xB0–0xB7` bootloader/DFU commands.
+
+## Commits and releases
+
+See [RELEASE.md](RELEASE.md) for Commitizen commands, SemVer and changelog maintenance.
