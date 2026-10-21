@@ -9,15 +9,11 @@
 import http from 'node:http';
 import { writeFileSync } from 'node:fs';
 import {
-  generateCodeVerifier, codeChallenge, buildAuthUrl, exchangeCodeForToken, DEFAULT_SCOPES,
+  generateCodeVerifier, codeChallenge, buildAuthUrl, exchangeCodeForToken, DEFAULT_SCOPES, DEFAULT_CLIENT_ID,
 } from './lib/spotify.js';
 
-const clientId = process.env.SPOTIFY_CLIENT_ID || process.argv[2];
+const clientId = process.env.SPOTIFY_CLIENT_ID || process.argv[2] || DEFAULT_CLIENT_ID;
 const REDIRECT = 'http://127.0.0.1:8888/callback';
-if (!clientId) {
-  console.error('Set SPOTIFY_CLIENT_ID (env var or first arg). Get it from https://developer.spotify.com/dashboard');
-  process.exit(1);
-}
 
 const verifier = generateCodeVerifier();
 const challenge = await codeChallenge(verifier);
