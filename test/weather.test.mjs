@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {
   weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast,
-  getWeatherMock, shapeGeocode,
+  getWeatherMock, shapeGeocode, loadLocation, saveLocation,
 } from '../src/weather/weather.js';
 import { render as renderCard } from '../src/weather/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -150,6 +150,62 @@ ok('renderCard handles every icon + a partial state without throwing', () => {
   // partial state (no hi/lo, no label) still renders
   const bare = renderCard({ tempF: 5, units: 'F', icon: 'moon' });
   assert.equal(bare.length, FRAME_BYTES);
+});
+
+
+// ── LOCATION PERSISTENCE ─────────────────────────────────────────────────────────────
+ok('loadLocation throws/catches localStorage errors and falls back to default', () => {
+  global.localStorage = {
+    getItem: () => { throw new Error('Simulated localStorage error'); }
+  };
+  try {
+    const loc = loadLocation();
+    assert.equal(loc.label, 'DETROIT');
+    assert.equal(loc.units, 'F');
+    assert.equal(loc.lat, 42.33);
+    assert.equal(loc.lon, -83.05);
+  } finally {
+    delete global.localStorage;
+  }
+});
+
+ok('loadLocation and saveLocation handles normal persistence', () => {
+  let store = {};
+  global.localStorage = {
+    getItem: (k) => store[k] || null,
+    setItem: (k, v) => { store[k] = String(v); }
+  };
+  try {
+    const defaultLoc = loadLocation();
+    assert.equal(defaultLoc.label, 'DETROIT');
+    assert.equal(defaultLoc.units, 'F');
+
+    const next = saveLocation({ lat: 40.71, lon: -74.00, label: 'New York', units: 'c' });
+    assert.equal(next.lat, 40.71);
+    assert.equal(next.lon, -74.00);
+    assert.equal(next.label, 'NEW YORK');
+    assert.equal(next.units, 'C');
+
+    const loaded = loadLocation();
+    assert.deepEqual(loaded, next);
+  } finally {
+    delete global.localStorage;
+  }
+});
+
+ok('loadLocation recovers from missing/corrupt fields in localStorage', () => {
+  let store = {};
+  global.localStorage = {
+    getItem: (k) => store[k] || null,
+    setItem: (k, v) => { store[k] = String(v); }
+  };
+  try {
+    store['al80.weather.location'] = JSON.stringify({ label: 'Nowhere' }); // missing lat/lon
+    const loaded = loadLocation();
+    assert.equal(loaded.label, 'DETROIT'); // fell back to default
+  } finally {
+    delete global.localStorage;
+  }
 });
 
 console.log(`\n${pass} checks passed.`);
