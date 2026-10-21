@@ -5,11 +5,12 @@
 import assert from 'node:assert/strict';
 import {
   SLOT_AREAS, RECENTS_CAP, SETTINGS_KEYS,
-  newId, normalizeSettings, makeRecord, capRecents, isQuotaError,
+  newId, normalizeSettings, makeRecord, capRecents, isQuotaError, getSlot,
 } from '../src/slots.js';
 
 let pass = 0;
 const ok = (name, fn) => { fn(); pass++; console.log('  ok -', name); };
+const okAsync = async (name, fn) => { await fn(); pass++; console.log('  ok -', name); };
 
 console.log('AL80 Studio slot-cache tests\n');
 
@@ -127,6 +128,11 @@ ok('isQuotaError recognizes QuotaExceededError by name and message', () => {
   assert.equal(isQuotaError({ message: 'The quota has been exceeded.' }), true);
   assert.equal(isQuotaError({ name: 'AbortError' }), false);
   assert.equal(isQuotaError(null), false);
+});
+
+// ---- slots CRUD -------------------------------------------------------------
+await okAsync('getSlot catches exceptions (e.g. no IndexedDB) and returns null', async () => {
+  assert.equal(await getSlot('main'), null);
 });
 
 console.log(`\n${pass} checks passed.`);
