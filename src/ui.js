@@ -2215,6 +2215,15 @@ function rgbToHueSat(hex) {
 }
 
 function setupLightingTab() {
+  const controls = setupLightingControls();
+  setupLightingCatalog(controls);
+  setupLightingSideLed();
+  setupLightingSoftFx(controls);
+  setupLightingMusic(controls);
+  setupLightingPalettes(controls);
+}
+
+function setupLightingControls() {
   const statusEl = $('#lightStatus');
   const brightness = $('#lightBrightness');
   const brightnessOut = $('#lightBrightnessOut');
@@ -2222,10 +2231,16 @@ function setupLightingTab() {
   const speed = $('#lightSpeed');
   const speedOut = $('#lightSpeedOut');
   const color = $('#lightColor');
-  // Remember the built-in lighting choices across reloads (UI only; no auto-send on load).
+
   persist(brightness, 'lightBrightness', (el) => { brightnessOut.textContent = el.value; });
   persist(speed, 'lightSpeed', (el) => { speedOut.textContent = el.value; });
   persist(color, 'lightColor');
+
+  return { statusEl, brightness, brightnessOut, effect, speed, speedOut, color };
+}
+
+function setupLightingCatalog(controls) {
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- effect catalog + user curation --------------------------------------
   // The #lightEffect dropdown and the "Customize effects" toggle list both render from the same
@@ -2381,6 +2396,9 @@ function setupLightingTab() {
   const sendColor = debounce(() => pushLight(`Color set to ${color.value}.`));
   color.addEventListener('input', sendColor);
 
+}
+
+function setupLightingSideLed() {
   // ---- side LED bar (independent color for the three bar LEDs, indices 76-78) ----
   // Custom firmware raw-HID 0x47 (set color/mode) + 0x48 (save). Sends both so the choice sticks
   // across reboots — same guardedSend path as the built-in controls. When "independent" is off the
@@ -2409,6 +2427,11 @@ function setupLightingTab() {
     sendBarDebounced();
   });
   barIndependent.addEventListener('change', sendBar);
+
+}
+
+function setupLightingSoftFx(controls) {
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- software effects (host-driven color animation) -----------------------
   // These stream SAVE-LESS color reports (proto.buildLightColorLive) so they never touch the EEPROM;
@@ -2539,6 +2562,11 @@ function setupLightingTab() {
     setStatus(fxStatus, 'Stopped.');
     await restTo(breatheColorA);                  // rest on the last A
   });
+
+}
+
+function setupLightingMusic(controls) {
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- music-reactive lighting (opt-in) -------------------------------------
   // Captures shared audio in the browser (getDisplayMedia, behind the Start gesture), maps each frame
@@ -2813,6 +2841,11 @@ function setupLightingTab() {
   color.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
   brightness.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
   speed.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
+
+}
+
+function setupLightingPalettes(controls) {
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- palettes (multi-color presets, GLOBAL board animation) ---------------
   // A palette is an ordered list of color stops. Three modes animate the WHOLE board through them,
