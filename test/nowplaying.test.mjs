@@ -3,7 +3,7 @@
 // a valid buildImageTransfer-ready frame. Run: node test/nowplaying.test.mjs
 import assert from 'node:assert/strict';
 import {
-  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying
+  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -307,4 +307,63 @@ await okAsync('getNowPlaying parses and returns playing track on 200', async () 
 });
 
 
+// ── TOKEN EXCHANGE ───────────────────────────────────────────────────────────────
+await okAsync('exchangeCodeForToken calls fetch correctly and shapes token', async () => {
+  const originalFetch = global.fetch;
+  try {
+    let fetchArgs = null;
+    global.fetch = async (url, options) => {
+      fetchArgs = { url, options };
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: 'acc', refresh_token: 'ref', expires_in: 3600, scope: 'sc', token_type: 'Bearer'
+        })
+      };
+    };
+
+    const token = await exchangeCodeForToken({
+      clientId: 'cid', code: 'c', redirectUri: 'r', codeVerifier: 'v'
+    });
+
+    assert.equal(fetchArgs.url, 'https://accounts.spotify.com/api/token');
+    assert.equal(fetchArgs.options.method, 'POST');
+    assert.equal(fetchArgs.options.headers['Content-Type'], 'application/x-www-form-urlencoded');
+
+    const body = fetchArgs.options.body;
+    assert.ok(body instanceof URLSearchParams);
+    assert.equal(body.get('grant_type'), 'authorization_code');
+    assert.equal(body.get('code'), 'c');
+    assert.equal(body.get('redirect_uri'), 'r');
+    assert.equal(body.get('client_id'), 'cid');
+    assert.equal(body.get('code_verifier'), 'v');
+
+    assert.deepEqual(token, {
+      accessToken: 'acc', refreshToken: 'ref', expiresInSec: 3600, scope: 'sc', tokenType: 'Bearer'
+    });
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('exchangeCodeForToken throws on non-ok fetch response', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => ({
+      ok: false,
+      status: 400,
+      text: async () => 'Bad Request'
+    });
+
+    await assert.rejects(
+      exchangeCodeForToken({ clientId: 'cid', code: 'c', redirectUri: 'r', codeVerifier: 'v' }),
+      (err) => {
+        assert.match(err.message, /spotify: code exchange failed 400 Bad Request/);
+        return true;
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
 console.log(`\n${pass} checks passed.`);
