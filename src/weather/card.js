@@ -178,22 +178,64 @@ function drawDegree(fb, x, y, color) {
  * has only '.'). Same trick nowplaying/card.js uses so long condition text never spills.
  */
 function wrapClamped(str, maxWidth, maxLines, scale = 1, gap = 1) {
-  const words = String(str || '').split(/\s+/).filter(Boolean);
+  const s = String(str || '');
   const lines = [];
   let line = '';
-  for (const w of words) {
-    const test = line ? line + ' ' + w : w;
-    if (line && textWidth(test, scale, gap) > maxWidth) { lines.push(line); line = w; }
-    else line = test;
-    if (lines.length === maxLines) break;
+  let wordStart = -1;
+  let usedWords = 0;
+  let totalWords = 0;
+
+  let inWord = false;
+  for (let i = 0; i < s.length; i++) {
+    if (s.charCodeAt(i) > 32) {
+      if (!inWord) { inWord = true; totalWords++; }
+    } else {
+      inWord = false;
+    }
   }
-  if (lines.length < maxLines && line) lines.push(line);
-  const usedWords = lines.join(' ').split(/\s+/).filter(Boolean).length;
-  if (usedWords < words.length) {
+
+  for (let i = 0; i <= s.length; i++) {
+    const isSpace = i === s.length || s.charCodeAt(i) <= 32;
+    if (isSpace) {
+      if (wordStart !== -1) {
+        const w = s.substring(wordStart, i);
+        wordStart = -1;
+
+        const test = line ? line + ' ' + w : w;
+        if (line && textWidth(test, scale, gap) > maxWidth) {
+          lines.push(line);
+          if (lines.length === maxLines) {
+            break;
+          }
+          line = w;
+        } else {
+          line = test;
+        }
+        usedWords++;
+      }
+    } else {
+      if (wordStart === -1) {
+        wordStart = i;
+      }
+    }
+  }
+
+  if (lines.length < maxLines && line) {
+    lines.push(line);
+  }
+
+  if (usedWords < totalWords) {
     let last = lines[lines.length - 1] || '';
-    while (last && textWidth(last + '.', scale, gap) > maxWidth) last = last.slice(0, -1);
-    lines[lines.length - 1] = last.replace(/\s+$/, '') + '.';
+    while (last && textWidth(last + '.', scale, gap) > maxWidth) {
+      last = last.slice(0, -1);
+    }
+    let trimIdx = last.length - 1;
+    while (trimIdx >= 0 && last.charCodeAt(trimIdx) <= 32) {
+      trimIdx--;
+    }
+    lines[lines.length - 1] = last.substring(0, trimIdx + 1) + '.';
   }
+
   return lines;
 }
 
