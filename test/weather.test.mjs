@@ -3,7 +3,7 @@
 // card renderer produces a valid buildImageTransfer-ready frame. Run: node test/weather.test.mjs
 import assert from 'node:assert/strict';
 import {
-  weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock, shapeGeocode, loadLocation, saveLocation, DEFAULT_LOCATION, getWeather
+  weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock, shapeGeocode, loadLocation, saveLocation, DEFAULT_LOCATION, getWeather, geocode
 } from '../src/weather/weather.js';
 import { render as renderCard } from '../src/weather/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -298,6 +298,92 @@ await okAsync('getWeather returns parsed forecast on success', async () => {
     assert.equal(res.tempF, 72);
     assert.equal(res.condition, 'PARTLY CLOUDY');
     assert.equal(res.label, 'DETROIT');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+// ── GEOCODE SHAPER ─────────────────────────────────────────────────────────────────
+ok('shapeGeocode builds {lat,lon,label,detail} — label is the city (fits the card), detail carries the rest', () => {
+  const g = shapeGeocode({
+    results: [{ name: 'Detroit', admin1: 'Michigan', country_code: 'US', latitude: 42.33, longitude: -83.05 }],
+  });
+  assert.equal(g.lat, 42.33);
+  assert.equal(g.lon, -83.05);
+  assert.equal(g.label, 'DETROIT');            // city only — the 96px card can't fit region + country
+  assert.equal(g.detail, 'MICHIGAN, US');      // fuller place for Studio's "Showing …" line
+});
+
+ok('shapeGeocode throws a clear error when nothing matches', () => {
+  assert.throws(() => shapeGeocode({ results: [] }), /no place matched/i);
+  assert.throws(() => shapeGeocode({}), /no place matched/i);
+  assert.throws(() => shapeGeocode({ results: [{ name: 'X' }] }), /no place matched/i); // no lat/lon
+});
+
+// ── CARD RENDER (pure — no document) ───────────────────────────────────────────────
+ok('renderCard produces a FRAME_BYTES frame that buildImageTransfer accepts (mock state)', () => {
+  const frame = renderCard(getWeatherMock());
+  assert.equal(frame.length, FRAME_BYTES);
+  assert.doesNotThrow(() => buildImageTransfer(frame));
+});
+
+ok('renderCard handles every icon + a partial state without throwing', () => {
+  for (const code of [0, 1, 2, 3, 45, 51, 61, 71, 80, 95]) {
+    const frame = renderCard(getWeatherMock({ code, isDay: code % 2 === 0 }));
+    assert.equal(frame.length, FRAME_BYTES);
+  }
+  // partial state (no hi/lo, no label) still renders
+  const bare = renderCard({ tempF: 5, units: 'F', icon: 'moon' });
+  assert.equal(bare.length, FRAME_BYTES);
+});
+
+
+// ── GEOCODE (network fetch) ────────────────────────────────────────────────────────
+await okAsync('geocode resolves a place name (mocked fetch)', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async (url) => {
+      assert.match(url, /geocoding-api.open-meteo.com.*name=Detroit/);
+      return {
+        ok: true,
+        json: async () => ({
+          results: [{ name: 'Detroit', admin1: 'Michigan', country_code: 'US', latitude: 42.33, longitude: -83.05 }]
+        })
+      };
+    };
+    const res = await geocode('Detroit');
+    assert.equal(res.lat, 42.33);
+    assert.equal(res.lon, -83.05);
+    assert.equal(res.label, 'DETROIT');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('geocode throws on empty name', async () => {
+  await assert.rejects(() => geocode('   '), /needs a place name/);
+  await assert.rejects(() => geocode(), /needs a place name/);
+});
+
+await okAsync('geocode throws on network error', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => { throw new Error('network down'); };
+    await assert.rejects(() => geocode('Detroit'), /geocoding request failed \(network\): network down/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('geocode throws on non-ok HTTP status', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => ({
+      ok: false,
+      status: 500,
+      text: async () => 'Internal Server Error'
+    });
+    await assert.rejects(() => geocode('Detroit'), /geocoding HTTP 500 Internal Server Error/);
   } finally {
     global.fetch = originalFetch;
   }
