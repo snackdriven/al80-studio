@@ -2233,6 +2233,15 @@ function rgbToHueSat(hex) {
 }
 
 function setupLightingTab() {
+  const controls = setupLightingControls();
+  setupLightingCatalog(controls);
+  setupLightingSideLed(controls);
+  const fx = setupLightingSoftFx(controls);
+  setupLightingMusic(controls, fx);
+  setupLightingPalettes(controls, fx);
+}
+
+function setupLightingControls() {
   const statusEl = $('#lightStatus');
   const brightness = $('#lightBrightness');
   const brightnessOut = $('#lightBrightnessOut');
@@ -2240,10 +2249,21 @@ function setupLightingTab() {
   const speed = $('#lightSpeed');
   const speedOut = $('#lightSpeedOut');
   const color = $('#lightColor');
-  // Remember the built-in lighting choices across reloads (UI only; no auto-send on load).
+
   persist(brightness, 'lightBrightness', (el) => { brightnessOut.textContent = el.value; });
   persist(speed, 'lightSpeed', (el) => { speedOut.textContent = el.value; });
   persist(color, 'lightColor');
+
+  const debounce = (fn, ms = 120) => {
+    let t = null;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  };
+
+  return { statusEl, brightness, brightnessOut, effect, speed, speedOut, color, debounce };
+}
+
+function setupLightingCatalog(controls) {
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color, debounce } = controls;
 
   // ---- effect catalog + user curation --------------------------------------
   // The #lightEffect dropdown and the "Customize effects" toggle list both render from the same
@@ -2357,10 +2377,7 @@ function setupLightingTab() {
   $('#effectsAll')?.addEventListener('click', () => { enabledEffects = new Set(effects.ALL_IDS); applyEnabledChange(); });
   $('#effectsRecommended')?.addEventListener('click', () => { enabledEffects = new Set(effects.RECOMMENDED_IDS); applyEnabledChange(); });
 
-  const debounce = (fn, ms = 120) => {
-    let t = null;
-    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-  };
+
 
   // guardedSend only writes the status line on error; add a success confirmation so the
   // built-in controls narrate like the software-FX / palette paths do.
@@ -2399,6 +2416,10 @@ function setupLightingTab() {
   const sendColor = debounce(() => pushLight(`Color set to ${color.value}.`));
   color.addEventListener('input', sendColor);
 
+}
+
+function setupLightingSideLed(controls) {
+  const { debounce } = controls;
   // ---- side LED bar (independent color for the three bar LEDs, indices 76-78) ----
   // Custom firmware raw-HID 0x47 (set color/mode) + 0x48 (save). Sends both so the choice sticks
   // across reboots — same guardedSend path as the built-in controls. When "independent" is off the
@@ -2427,6 +2448,11 @@ function setupLightingTab() {
     sendBarDebounced();
   });
   barIndependent.addEventListener('change', sendBar);
+
+}
+
+function setupLightingSoftFx(controls) {
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- software effects (host-driven color animation) -----------------------
   // These stream SAVE-LESS color reports (proto.buildLightColorLive) so they never touch the EEPROM;
@@ -2557,6 +2583,13 @@ function setupLightingTab() {
     setStatus(fxStatus, 'Stopped.');
     await restTo(breatheColorA);                  // rest on the last A
   });
+
+  return { startFx, stopFx, lerp, lerpHue };
+}
+
+function setupLightingMusic(controls, fx) {
+  const { stopFx } = fx;
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- music-reactive lighting (opt-in) -------------------------------------
   // Captures shared audio in the browser (getDisplayMedia, behind the Start gesture), maps each frame
@@ -2831,6 +2864,12 @@ function setupLightingTab() {
   color.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
   brightness.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
   speed.addEventListener('input', () => lightingFxCtl.stop(), { capture: true });
+
+}
+
+function setupLightingPalettes(controls, fx) {
+  const { startFx, stopFx, lerp, lerpHue } = fx;
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- palettes (multi-color presets, GLOBAL board animation) ---------------
   // A palette is an ordered list of color stops. Three modes animate the WHOLE board through them,
