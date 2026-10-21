@@ -6,10 +6,9 @@
 //
 // ── ONE-TIME OAUTH SETUP (PKCE — no client secret) ────────────────────────────────────────────────
 //   1. Create an app at https://developer.spotify.com/dashboard.
-//        - Note the Client ID.  (You do NOT need the Client Secret for PKCE.)
+//        - Note the Client ID (or use the built-in default). (You do NOT need the Client Secret for PKCE.)
 //        - Add a Redirect URI, e.g. http://127.0.0.1:8888/callback, and save.
-//   2. Use the built-in default Client ID, or export your own in SPOTIFY_CLIENT_ID. The refresh token
-//        IS sensitive — keep that in env/.env, never in git.
+//   2. The refresh token IS sensitive — keep that in env/.env, never in git.
 //   3. Authorize once (PKCE auth-code flow):
 //        const verifier  = generateCodeVerifier();
 //        const challenge = await codeChallenge(verifier);
@@ -72,7 +71,7 @@ export async function codeChallenge(verifier) {
  * @returns {string} full https URL
  */
 export function buildAuthUrl({ clientId, redirectUri, codeChallenge, scopes = DEFAULT_SCOPES, state }) {
-  if (!clientId) throw new Error('spotify.js: buildAuthUrl needs a clientId (register an app, see header TODO).');
+  if (!clientId) throw new Error('spotify.js: buildAuthUrl needs a clientId.');
   if (!redirectUri) throw new Error('spotify.js: buildAuthUrl needs a redirectUri matching your app config.');
   const q = new URLSearchParams({
     response_type: 'code',

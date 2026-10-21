@@ -3,14 +3,14 @@
 // card renderer produces a valid buildImageTransfer-ready frame. Run: node test/weather.test.mjs
 import assert from 'node:assert/strict';
 import {
-  weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast,
-  getWeatherMock, shapeGeocode,
+  weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock, shapeGeocode, loadLocation, saveLocation, DEFAULT_LOCATION, getWeather, geocode
 } from '../src/weather/weather.js';
 import { render as renderCard } from '../src/weather/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
 
 let pass = 0;
 const ok = (name, fn) => { fn(); pass++; console.log('  ok -', name); };
+const okAsync = async (name, fn) => { await fn(); pass++; console.log('  ok -', name); };
 
 console.log('Weather pure-logic tests\n');
 
@@ -150,6 +150,243 @@ ok('renderCard handles every icon + a partial state without throwing', () => {
   // partial state (no hi/lo, no label) still renders
   const bare = renderCard({ tempF: 5, units: 'F', icon: 'moon' });
   assert.equal(bare.length, FRAME_BYTES);
+});
+
+
+// ── LOCATION PERSISTENCE ─────────────────────────────────────────────────────────────
+ok('loadLocation throws/catches localStorage errors and falls back to default', () => {
+  global.localStorage = {
+    getItem: () => { throw new Error('Simulated localStorage error'); }
+  };
+  try {
+    const loc = loadLocation();
+    assert.equal(loc.label, 'DETROIT');
+    assert.equal(loc.units, 'F');
+    assert.equal(loc.lat, 42.33);
+    assert.equal(loc.lon, -83.05);
+  } finally {
+    delete global.localStorage;
+  }
+});
+
+ok('loadLocation and saveLocation handles normal persistence', () => {
+  let store = {};
+  global.localStorage = {
+    getItem: (k) => store[k] || null,
+    setItem: (k, v) => { store[k] = String(v); }
+  };
+  try {
+    const defaultLoc = loadLocation();
+    assert.equal(defaultLoc.label, 'DETROIT');
+    assert.equal(defaultLoc.units, 'F');
+
+    const next = saveLocation({ lat: 40.71, lon: -74.00, label: 'New York', units: 'c' });
+    assert.equal(next.lat, 40.71);
+    assert.equal(next.lon, -74.00);
+    assert.equal(next.label, 'NEW YORK');
+    assert.equal(next.units, 'C');
+
+    const loaded = loadLocation();
+    assert.deepEqual(loaded, next);
+  } finally {
+    delete global.localStorage;
+  }
+});
+
+ok('loadLocation recovers from missing/corrupt fields in localStorage', () => {
+  let store = {};
+  global.localStorage = {
+    getItem: (k) => store[k] || null,
+    setItem: (k, v) => { store[k] = String(v); }
+  };
+  try {
+    store['al80.weather.location'] = JSON.stringify({ label: 'Nowhere' }); // missing lat/lon
+    const loaded = loadLocation();
+    assert.equal(loaded.label, 'DETROIT'); // fell back to default
+  } finally {
+    delete global.localStorage;
+  }
+});
+
+// ── STORAGE ────────────────────────────────────────────────────────────────────────
+ok('saveLocation and loadLocation handle regular storage correctly', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    const store = {};
+    global.localStorage = {
+      getItem: (k) => store[k] || null,
+      setItem: (k, v) => { store[k] = String(v); },
+    };
+
+    // Start empty, should be DEFAULT_LOCATION
+    assert.deepEqual(loadLocation(), DEFAULT_LOCATION);
+
+    // Save a full override
+    const toSave = { lat: 10, lon: 20, label: 'test city', units: 'c' };
+    const expected = { lat: 10, lon: 20, label: 'TEST CITY', units: 'C' };
+    assert.deepEqual(saveLocation(toSave), expected);
+    assert.deepEqual(loadLocation(), expected);
+
+    // Save a partial override (just units)
+    assert.deepEqual(saveLocation({ units: 'F' }), { ...expected, units: 'F' });
+    assert.deepEqual(loadLocation(), { ...expected, units: 'F' });
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('saveLocation handles localStorage.setItem throwing (private mode edge case)', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    global.localStorage = {
+      getItem: () => null, // always return empty, defaults to DEFAULT_LOCATION
+      setItem: () => { throw new Error('QuotaExceededError'); },
+    };
+
+    const toSave = { lat: 99, lon: 88, label: 'nowhere', units: 'F' };
+    const expected = { lat: 99, lon: 88, label: 'NOWHERE', units: 'F' };
+    assert.deepEqual(saveLocation(toSave), expected); // should not throw, returns the merged object
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+// ── GETWEATHER (async + fetch) ──────────────────────────────────────────────────────
+await okAsync('getWeather validates required arguments before fetching', async () => {
+  await assert.rejects(() => getWeather(), /needs lat and lon/i);
+  await assert.rejects(() => getWeather({ lat: null, lon: null }), /needs lat and lon/i);
+  await assert.rejects(() => getWeather({ lat: '', lon: '' }), /needs lat and lon/i);
+});
+
+await okAsync('getWeather handles network and HTTP errors gracefully', async () => {
+  const originalFetch = global.fetch;
+  try {
+    // 1. Network failure
+    global.fetch = () => Promise.reject(new Error('ECONNREFUSED'));
+    await assert.rejects(() => getWeather({ lat: 1, lon: 1 }), /request failed \(network\): ECONNREFUSED/i);
+
+    // 2. HTTP error response
+    global.fetch = () => Promise.resolve({ ok: false, status: 500, text: () => Promise.resolve('Server Error') });
+    await assert.rejects(() => getWeather({ lat: 1, lon: 1 }), /HTTP 500 Server Error/i);
+
+    // 3. Application-level error payload
+    global.fetch = () => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ error: true, reason: 'Rate limited' })
+    });
+    await assert.rejects(() => getWeather({ lat: 1, lon: 1 }), /Open-Meteo error: Rate limited/i);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('getWeather returns parsed forecast on success', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async (url) => {
+      assert.match(url, /latitude=42/);
+      assert.match(url, /longitude=-83/);
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          current: { temperature_2m: 72, weather_code: 2, is_day: 1 },
+          daily: { temperature_2m_max: [78], temperature_2m_min: [61] }
+        })
+      };
+    };
+    const res = await getWeather({ lat: 42, lon: -83, units: 'F', label: 'Detroit' });
+    assert.equal(res.tempF, 72);
+    assert.equal(res.condition, 'PARTLY CLOUDY');
+    assert.equal(res.label, 'DETROIT');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+// ── GEOCODE SHAPER ─────────────────────────────────────────────────────────────────
+ok('shapeGeocode builds {lat,lon,label,detail} — label is the city (fits the card), detail carries the rest', () => {
+  const g = shapeGeocode({
+    results: [{ name: 'Detroit', admin1: 'Michigan', country_code: 'US', latitude: 42.33, longitude: -83.05 }],
+  });
+  assert.equal(g.lat, 42.33);
+  assert.equal(g.lon, -83.05);
+  assert.equal(g.label, 'DETROIT');            // city only — the 96px card can't fit region + country
+  assert.equal(g.detail, 'MICHIGAN, US');      // fuller place for Studio's "Showing …" line
+});
+
+ok('shapeGeocode throws a clear error when nothing matches', () => {
+  assert.throws(() => shapeGeocode({ results: [] }), /no place matched/i);
+  assert.throws(() => shapeGeocode({}), /no place matched/i);
+  assert.throws(() => shapeGeocode({ results: [{ name: 'X' }] }), /no place matched/i); // no lat/lon
+});
+
+// ── CARD RENDER (pure — no document) ───────────────────────────────────────────────
+ok('renderCard produces a FRAME_BYTES frame that buildImageTransfer accepts (mock state)', () => {
+  const frame = renderCard(getWeatherMock());
+  assert.equal(frame.length, FRAME_BYTES);
+  assert.doesNotThrow(() => buildImageTransfer(frame));
+});
+
+ok('renderCard handles every icon + a partial state without throwing', () => {
+  for (const code of [0, 1, 2, 3, 45, 51, 61, 71, 80, 95]) {
+    const frame = renderCard(getWeatherMock({ code, isDay: code % 2 === 0 }));
+    assert.equal(frame.length, FRAME_BYTES);
+  }
+  // partial state (no hi/lo, no label) still renders
+  const bare = renderCard({ tempF: 5, units: 'F', icon: 'moon' });
+  assert.equal(bare.length, FRAME_BYTES);
+});
+
+
+// ── GEOCODE (network fetch) ────────────────────────────────────────────────────────
+await okAsync('geocode resolves a place name (mocked fetch)', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async (url) => {
+      assert.match(url, /geocoding-api.open-meteo.com.*name=Detroit/);
+      return {
+        ok: true,
+        json: async () => ({
+          results: [{ name: 'Detroit', admin1: 'Michigan', country_code: 'US', latitude: 42.33, longitude: -83.05 }]
+        })
+      };
+    };
+    const res = await geocode('Detroit');
+    assert.equal(res.lat, 42.33);
+    assert.equal(res.lon, -83.05);
+    assert.equal(res.label, 'DETROIT');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('geocode throws on empty name', async () => {
+  await assert.rejects(() => geocode('   '), /needs a place name/);
+  await assert.rejects(() => geocode(), /needs a place name/);
+});
+
+await okAsync('geocode throws on network error', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => { throw new Error('network down'); };
+    await assert.rejects(() => geocode('Detroit'), /geocoding request failed \(network\): network down/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('geocode throws on non-ok HTTP status', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => ({
+      ok: false,
+      status: 500,
+      text: async () => 'Internal Server Error'
+    });
+    await assert.rejects(() => geocode('Detroit'), /geocoding HTTP 500 Internal Server Error/);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 console.log(`\n${pass} checks passed.`);
