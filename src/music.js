@@ -91,10 +91,12 @@ export function frameLevel(wave) {
 }
 
 function meanRange(arr, lo, hi) {
-  let sum = 0, n = 0;
   const end = Math.min(hi, arr.length - 1);
-  for (let i = lo; i <= end; i++) { sum += arr[i]; n++; }
-  return n ? sum / n : 0;
+  const count = end - lo + 1;
+  if (count <= 0) return 0;
+  let sum = 0;
+  for (let i = lo; i <= end; i++) { sum += arr[i]; }
+  return sum / count;
 }
 
 /** Slew-limit a value in the 0..1 domain so it can't jump more than maxDelta per frame. */
