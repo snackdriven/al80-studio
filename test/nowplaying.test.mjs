@@ -3,8 +3,7 @@
 // a valid buildImageTransfer-ready frame. Run: node test/nowplaying.test.mjs
 import assert from 'node:assert/strict';
 import {
-  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES,
-  needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken,
+  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -231,5 +230,81 @@ ok('renderCard blits real 96x96 art without changing frame size', () => {
   assert.equal(frame.length, FRAME_BYTES);
   assert.doesNotThrow(() => buildImageTransfer(frame));
 });
+
+// ── GET NOW PLAYING ──────────────────────────────────────────────────────────────
+await okAsync('getNowPlaying returns null on 204 (nothing playing)', async () => {
+  const origFetch = global.fetch;
+  try {
+    global.fetch = async () => ({ status: 204 });
+    const result = await getNowPlaying('fake-token');
+    assert.equal(result, null);
+  } finally {
+    global.fetch = origFetch;
+  }
+});
+
+await okAsync('getNowPlaying throws 401 error on 401 status', async () => {
+  const origFetch = global.fetch;
+  try {
+    global.fetch = async () => ({ status: 401 });
+    await assert.rejects(
+      async () => await getNowPlaying('fake-token'),
+      (err) => err.status === 401 && err.message.includes('401')
+    );
+  } finally {
+    global.fetch = origFetch;
+  }
+});
+
+await okAsync('getNowPlaying throws detailed error on non-ok status', async () => {
+  const origFetch = global.fetch;
+  try {
+    global.fetch = async () => ({
+      status: 500,
+      ok: false,
+      text: async () => 'Internal Server Error'
+    });
+    await assert.rejects(
+      async () => await getNowPlaying('fake-token'),
+      (err) => err.message.includes('failed 500 Internal Server Error')
+    );
+  } finally {
+    global.fetch = origFetch;
+  }
+});
+
+await okAsync('getNowPlaying parses and returns playing track on 200', async () => {
+  const origFetch = global.fetch;
+  try {
+    const mockData = {
+      is_playing: true,
+      progress_ms: 60000,
+      item: {
+        id: 'track123',
+        name: 'Get Lucky',
+        duration_ms: 240000,
+        artists: [{ name: 'Daft Punk' }, { name: 'Pharrell Williams' }],
+        album: { images: [{ url: 'u640', width: 640 }, { url: 'u300', width: 300 }] },
+      },
+    };
+    global.fetch = async (url, options) => {
+      assert.equal(options.headers.Authorization, 'Bearer fake-token');
+      assert.ok(url.includes('currently-playing'));
+      return {
+        status: 200,
+        ok: true,
+        json: async () => mockData
+      };
+    };
+    const result = await getNowPlaying('fake-token');
+    assert.ok(result);
+    assert.equal(result.title, 'Get Lucky');
+    assert.equal(result.artist, 'Daft Punk, Pharrell Williams');
+    assert.equal(result.artUrl, 'u300');
+  } finally {
+    global.fetch = origFetch;
+  }
+});
+
 
 console.log(`\n${pass} checks passed.`);
