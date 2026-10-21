@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "WebHID control panel for the YUNZII AL80 — LCD (clock, picture, GIF, slideshow), RGB lighting, and a live VIA keymap editor.",
+  "description": "WebHID control panel for the YUNZII AL80 â€” LCD (clock, picture, GIF, slideshow), RGB lighting, and a live VIA keymap editor.",
   "scripts": {
-    "test": "node test/image.test.mjs && node test/protocol.test.mjs && node test/keymap.test.mjs && node test/nowplaying.test.mjs && node test/weather.test.mjs && node test/slots.test.mjs && node test/effects.test.mjs && node --test test/music.test.mjs && node host/test/nowplaying.test.mjs && node host/test/device.dryrun.test.mjs && node host/test/roundtrip.test.mjs && node host/test/scheduler.test.mjs && node host/test/cycle.test.mjs && node host/test/nowplaying-card.test.mjs && node host/test/weather.test.mjs && node host/test/panel-request.test.mjs && node host/test/local-hook.test.mjs"
+    "test": "node test/image-conversion.test.mjs && node test/protocol.test.mjs && node test/keymap.test.mjs && node test/nowplaying.test.mjs && node test/weather.test.mjs && node test/slots.test.mjs && node test/effects.test.mjs && node --test test/music.test.mjs && node host/test/nowplaying.test.mjs && node host/test/device.dryrun.test.mjs && node host/test/roundtrip.test.mjs && node host/test/scheduler.test.mjs && node host/test/cycle.test.mjs && node host/test/nowplaying-card.test.mjs && node host/test/weather.test.mjs && node host/test/panel-request.test.mjs && node host/test/local-hook.test.mjs"
   }
 }
