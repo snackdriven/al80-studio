@@ -86,8 +86,31 @@ const smoothstep = (x) => { const t = clamp01(x); return t * t * (3 - 2 * t); };
  */
 export function frameLevel(wave) {
   let ss = 0;
-  for (let i = 0; i < wave.length; i++) { const d = wave[i] - 128; ss += d * d; }
-  return clamp01(Math.sqrt(ss / Math.max(1, wave.length)) / 128);
+  const len = wave.length;
+  if (len === 0) return 0;
+
+  if (wave.buffer && len >= 4 && wave.byteOffset % 4 === 0) {
+    const u32Len = len >> 2;
+    const u32 = new Uint32Array(wave.buffer, wave.byteOffset, u32Len);
+
+    for (let i = 0; i < u32Len; i++) {
+      const v = u32[i];
+      const b0 = (v & 0xFF) - 128;
+      const b1 = ((v >> 8) & 0xFF) - 128;
+      const b2 = ((v >> 16) & 0xFF) - 128;
+      const b3 = (v >>> 24) - 128;
+      ss += b0 * b0 + b1 * b1 + b2 * b2 + b3 * b3;
+    }
+
+    for (let i = len & ~3; i < len; i++) {
+      const d = wave[i] - 128;
+      ss += d * d;
+    }
+  } else {
+    for (let i = 0; i < len; i++) { const d = wave[i] - 128; ss += d * d; }
+  }
+
+  return clamp01(Math.sqrt(ss / len) / 128);
 }
 
 function meanRange(arr, lo, hi) {
