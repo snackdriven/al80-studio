@@ -8,7 +8,7 @@ import {
   buildLightBrightnessLive, buildLightBrightness, buildLightColorLive, buildVialRGBColorLive,
 } from '../src/protocol.js';
 import {
-  mapAudioToHSV, newMapState, pickSaveLessCommand, detectFirmware,
+  frameLevel, mapAudioToHSV, newMapState, pickSaveLessCommand, detectFirmware,
   mapAudioToZones, buildZoneFrame, resetTracking, MUSIC_MODE, DEFAULT_CAP, MAX_VAL_DELTA,
 } from '../src/music.js';
 
@@ -339,4 +339,17 @@ test('detectFirmware → stock when the probe gets no reply (null)', async () =>
 
 test('detectFirmware → stock when the probe times out / throws', async () => {
   assert.equal(await detectFirmware(async () => { throw new Error('VIA read timed out'); }), 'stock');
+});
+
+// The packed byte loop must retain scalar sample semantics for every input view.
+test('frameLevel matches scalar RMS for byte tails, offsets, arrays and wider samples', () => {
+  const scalar = wave => Math.min(1, Math.max(0, Math.sqrt(Array.from(wave).reduce((sum, v) => sum + (v - 128) ** 2, 0) / Math.max(1, wave.length)) / 128));
+  const cases = [[], [128, 150, 90, 170], new Uint16Array([128, 150, 90, 170]), new Float32Array([128, 150.5, 90, 170])];
+  for (let length = 0; length < 19; length++) {
+    for (const offset of [0, 1, 4]) {
+      const bytes = Uint8Array.from({ length: length + offset }, (_, i) => (i * 47) % 256);
+      cases.push(bytes.subarray(offset), new Uint8ClampedArray(bytes.buffer, offset, length));
+    }
+  }
+  for (const wave of cases) assert.equal(frameLevel(wave), scalar(wave), `${wave.constructor.name}, ${wave.length} samples`);
 });
