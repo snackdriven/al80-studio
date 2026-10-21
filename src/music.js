@@ -164,14 +164,18 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
   const bass = meanRange(freq, 1, 8);
   const mid = meanRange(freq, 9, 40);
   const treb = meanRange(freq, 41, 120);
-  const bands = [bass, mid, treb];
-  const bandHues = [HUE_BASS, HUE_MID, HUE_TREB];
-  const bandActivity = bands.map((value, i) => Math.max(0, value - state.bandAvg[i]));
-  const activityTotal = bandActivity[0] + bandActivity[1] + bandActivity[2];
+  const bassAct = Math.max(0, bass - state.bandAvg[0]);
+  const midAct = Math.max(0, mid - state.bandAvg[1]);
+  const trebAct = Math.max(0, treb - state.bandAvg[2]);
+  const activityTotal = bassAct + midAct + trebAct;
   const hueTarget = activityTotal > 1
-    ? (bandActivity[0] * bandHues[0] + bandActivity[1] * bandHues[1] + bandActivity[2] * bandHues[2]) / activityTotal
+    ? (bassAct * HUE_BASS + midAct * HUE_MID + trebAct * HUE_TREB) / activityTotal
     : state.prevHue;
-  if (active) state.bandAvg = state.bandAvg.map((average, i) => lerp(average, bands[i], 0.05));
+  if (active) {
+    state.bandAvg[0] = lerp(state.bandAvg[0], bass, 0.05);
+    state.bandAvg[1] = lerp(state.bandAvg[1], mid, 0.05);
+    state.bandAvg[2] = lerp(state.bandAvg[2], treb, 0.05);
+  }
 
   // Spectral flux → adaptive onset detection.
   let flux = 0;
@@ -240,17 +244,34 @@ export function mapAudioToZones(freq, wave, opts = {}) {
   // fully dark and ~81% — the threshold was a cliff in the SETTLED response, not just in how fast
   // it got there, so the slew limiter could not hide it. Ramp in over the first stretch instead.
   const gate = smoothstep(rms / GATE_KNEE);
-  const bands = [meanRange(freq, 1, 8), meanRange(freq, 9, 40), meanRange(freq, 41, 120)];
+  const bass = meanRange(freq, 1, 8);
+  const mid = meanRange(freq, 9, 40);
+  const treb = meanRange(freq, 41, 120);
 
-  const values = bands.map((band, i) => {
-    // Each physical zone is its own VU channel. Do not mix in overall loudness here: that makes
-    // all three thirds flash together whenever any band is present.
-    const target = active ? cap * bandLevel(band) * gate : 0;
-    const previous = state.zoneVals[i] || 0;
-    const value = slewLimit(previous, target, MAX_VAL_DELTA * frameScale, decay * frameScale);
-    state.zoneVals[i] = value;
-    return Math.round(clamp01(value) * 255);
-  });
+  const maxDelta = MAX_VAL_DELTA * frameScale;
+  const decayScaled = decay * frameScale;
+
+  // Each physical zone is its own VU channel. Do not mix in overall loudness here: that makes
+  // all three thirds flash together whenever any band is present.
+  let target = active ? cap * bandLevel(bass) * gate : 0;
+  let previous = state.zoneVals[0] || 0;
+  let value = slewLimit(previous, target, maxDelta, decayScaled);
+  state.zoneVals[0] = value;
+  const v0 = Math.round(clamp01(value) * 255);
+
+  target = active ? cap * bandLevel(mid) * gate : 0;
+  previous = state.zoneVals[1] || 0;
+  value = slewLimit(previous, target, maxDelta, decayScaled);
+  state.zoneVals[1] = value;
+  const v1 = Math.round(clamp01(value) * 255);
+
+  target = active ? cap * bandLevel(treb) * gate : 0;
+  previous = state.zoneVals[2] || 0;
+  value = slewLimit(previous, target, maxDelta, decayScaled);
+  state.zoneVals[2] = value;
+  const v2 = Math.round(clamp01(value) * 255);
+
+  const values = [v0, v1, v2];
   return { values, level: Math.max(...values) };
 }
 
