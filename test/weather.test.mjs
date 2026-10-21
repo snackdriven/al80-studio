@@ -3,8 +3,7 @@
 // card renderer produces a valid buildImageTransfer-ready frame. Run: node test/weather.test.mjs
 import assert from 'node:assert/strict';
 import {
-  weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast,
-  getWeatherMock, shapeGeocode, loadLocation, saveLocation,
+  weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock, shapeGeocode, loadLocation, saveLocation, DEFAULT_LOCATION
 } from '../src/weather/weather.js';
 import { render as renderCard } from '../src/weather/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -205,6 +204,49 @@ ok('loadLocation recovers from missing/corrupt fields in localStorage', () => {
     assert.equal(loaded.label, 'DETROIT'); // fell back to default
   } finally {
     delete global.localStorage;
+  }
+});
+
+// ── STORAGE ────────────────────────────────────────────────────────────────────────
+ok('saveLocation and loadLocation handle regular storage correctly', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    const store = {};
+    global.localStorage = {
+      getItem: (k) => store[k] || null,
+      setItem: (k, v) => { store[k] = String(v); },
+    };
+
+    // Start empty, should be DEFAULT_LOCATION
+    assert.deepEqual(loadLocation(), DEFAULT_LOCATION);
+
+    // Save a full override
+    const toSave = { lat: 10, lon: 20, label: 'test city', units: 'c' };
+    const expected = { lat: 10, lon: 20, label: 'TEST CITY', units: 'C' };
+    assert.deepEqual(saveLocation(toSave), expected);
+    assert.deepEqual(loadLocation(), expected);
+
+    // Save a partial override (just units)
+    assert.deepEqual(saveLocation({ units: 'F' }), { ...expected, units: 'F' });
+    assert.deepEqual(loadLocation(), { ...expected, units: 'F' });
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('saveLocation handles localStorage.setItem throwing (private mode edge case)', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    global.localStorage = {
+      getItem: () => null, // always return empty, defaults to DEFAULT_LOCATION
+      setItem: () => { throw new Error('QuotaExceededError'); },
+    };
+
+    const toSave = { lat: 99, lon: 88, label: 'nowhere', units: 'F' };
+    const expected = { lat: 99, lon: 88, label: 'NOWHERE', units: 'F' };
+    assert.deepEqual(saveLocation(toSave), expected); // should not throw, returns the merged object
+  } finally {
+    global.localStorage = originalLocalStorage;
   }
 });
 
