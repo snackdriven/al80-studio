@@ -2217,10 +2217,10 @@ function rgbToHueSat(hex) {
 function setupLightingTab() {
   const controls = setupLightingControls();
   setupLightingCatalog(controls);
-  setupLightingSideLed();
-  setupLightingSoftFx(controls);
-  setupLightingMusic(controls);
-  setupLightingPalettes(controls);
+  setupLightingSideLed(controls);
+  const fx = setupLightingSoftFx(controls);
+  setupLightingMusic(controls, fx);
+  setupLightingPalettes(controls, fx);
 }
 
 function setupLightingControls() {
@@ -2236,11 +2236,16 @@ function setupLightingControls() {
   persist(speed, 'lightSpeed', (el) => { speedOut.textContent = el.value; });
   persist(color, 'lightColor');
 
-  return { statusEl, brightness, brightnessOut, effect, speed, speedOut, color };
+  const debounce = (fn, ms = 120) => {
+    let t = null;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  };
+
+  return { statusEl, brightness, brightnessOut, effect, speed, speedOut, color, debounce };
 }
 
 function setupLightingCatalog(controls) {
-  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
+  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color, debounce } = controls;
 
   // ---- effect catalog + user curation --------------------------------------
   // The #lightEffect dropdown and the "Customize effects" toggle list both render from the same
@@ -2354,10 +2359,7 @@ function setupLightingCatalog(controls) {
   $('#effectsAll')?.addEventListener('click', () => { enabledEffects = new Set(effects.ALL_IDS); applyEnabledChange(); });
   $('#effectsRecommended')?.addEventListener('click', () => { enabledEffects = new Set(effects.RECOMMENDED_IDS); applyEnabledChange(); });
 
-  const debounce = (fn, ms = 120) => {
-    let t = null;
-    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-  };
+
 
   // guardedSend only writes the status line on error; add a success confirmation so the
   // built-in controls narrate like the software-FX / palette paths do.
@@ -2398,7 +2400,8 @@ function setupLightingCatalog(controls) {
 
 }
 
-function setupLightingSideLed() {
+function setupLightingSideLed(controls) {
+  const { debounce } = controls;
   // ---- side LED bar (independent color for the three bar LEDs, indices 76-78) ----
   // Custom firmware raw-HID 0x47 (set color/mode) + 0x48 (save). Sends both so the choice sticks
   // across reboots — same guardedSend path as the built-in controls. When "independent" is off the
@@ -2563,9 +2566,11 @@ function setupLightingSoftFx(controls) {
     await restTo(breatheColorA);                  // rest on the last A
   });
 
+  return { startFx, stopFx, lerp, lerpHue };
 }
 
-function setupLightingMusic(controls) {
+function setupLightingMusic(controls, fx) {
+  const { stopFx } = fx;
   const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- music-reactive lighting (opt-in) -------------------------------------
@@ -2844,7 +2849,8 @@ function setupLightingMusic(controls) {
 
 }
 
-function setupLightingPalettes(controls) {
+function setupLightingPalettes(controls, fx) {
+  const { startFx, stopFx, lerp, lerpHue } = fx;
   const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
 
   // ---- palettes (multi-color presets, GLOBAL board animation) ---------------
