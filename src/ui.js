@@ -3421,11 +3421,19 @@ function setupKeymap() {
       const perLayer = ROWS * COLS * 2; // 180 bytes
       const total = layerCount * perLayer;
       const buf = new Uint8Array(total);
+      const promises = [];
       for (let off = 0; off < total; off += 28) {
         const size = Math.min(28, total - off);
-        const rep = await viaTransact(proto.buildKeymapGetBuffer(off, size), (d) => d[0] === 0x12);
-        for (let i = 0; i < size; i++) buf[off + i] = rep[4 + i] ?? 0; // payload starts at index 4
+        promises.push(
+          viaTransact(
+            proto.buildKeymapGetBuffer(off, size),
+            (d) => d[0] === 0x12 && d[1] === (off >> 8) && d[2] === (off & 0xff)
+          ).then((rep) => {
+            for (let i = 0; i < size; i++) buf[off + i] = rep[4 + i] ?? 0; // payload starts at index 4
+          })
+        );
       }
+      await Promise.all(promises);
       for (let L = 0; L < layerCount; L++) {
         ensureLayer(L);
         for (let k = 0; k < LAYER_SIZE; k++) {
