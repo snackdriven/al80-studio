@@ -344,7 +344,7 @@ test('detectFirmware → stock when the probe times out / throws', async () => {
 // The packed byte loop must retain scalar sample semantics for every input view.
 test('frameLevel matches scalar RMS for byte tails, offsets, arrays and wider samples', () => {
   const scalar = wave => Math.min(1, Math.max(0, Math.sqrt(Array.from(wave).reduce((sum, v) => sum + (v - 128) ** 2, 0) / Math.max(1, wave.length)) / 128));
-  const cases = [[], [128, 150, 90, 170], new Uint16Array([128, 150, 90, 170]), new Float32Array([128, 150.5, 90, 170])];
+  const cases = [new Int8Array([-128, -100, -50, -1]), [], [128, 150, 90, 170], new Uint16Array([128, 150, 90, 170]), new Float32Array([128, 150.5, 90, 170])];
   for (let length = 0; length < 19; length++) {
     for (const offset of [0, 1, 4]) {
       const bytes = Uint8Array.from({ length: length + offset }, (_, i) => (i * 47) % 256);

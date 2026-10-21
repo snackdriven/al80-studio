@@ -89,7 +89,7 @@ export function frameLevel(wave) {
   const len = wave.length;
   if (len === 0) return 0;
 
-  if (wave.BYTES_PER_ELEMENT === 1 && wave.buffer && len >= 4 && wave.byteOffset % 4 === 0) {
+  if ((wave instanceof Uint8Array || wave instanceof Uint8ClampedArray) && wave.buffer && len >= 4 && wave.byteOffset % 4 === 0) {
     const u32Len = len >> 2;
     const u32 = new Uint32Array(wave.buffer, wave.byteOffset, u32Len);
 
