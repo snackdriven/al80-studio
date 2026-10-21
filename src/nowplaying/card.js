@@ -28,7 +28,7 @@ const PLACEHOLDER_BASES = [
 
 function hashStr(s) {
   let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  for (let i = 0, len = s.length; i < len; i++) { h = Math.imul(h ^ s.charCodeAt(i), 16777619); }
   return h >>> 0;
 }
 
