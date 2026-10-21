@@ -68,6 +68,24 @@ ok('rgb565 big-endian: red = F8 00, green = 07 E0, blue = 00 1F', () => {
   assert.deepEqual(Array.from(rgb565BE([0, 0, 255, 255])), [0x00, 0x1f]);
 });
 
+ok('RGB565 fast path matches scalar encoding for aligned and offset views', () => {
+  const scalar = rgba => {
+    const out = new Uint8Array((rgba.length / 4) * 2);
+    for (let i = 0, o = 0; i < rgba.length; i += 4, o += 2) {
+      const v = ((rgba[i] >> 3) << 11) | ((rgba[i + 1] >> 2) << 5) | (rgba[i + 2] >> 3);
+      out[o] = v >> 8;
+      out[o + 1] = v & 255;
+    }
+    return out;
+  };
+  const bytes = Uint8Array.from({ length: 4096 }, (_, i) => (i * 73 + (i >>> 2)) & 255);
+  for (const input of [bytes, bytes.subarray(4), bytes.subarray(1, 4093),
+    new Uint8ClampedArray(bytes), Array.from(bytes), new Uint8Array([255, 0, 0]),
+    new Uint16Array([255, 120, 60, 255]), new Uint8Array()]) {
+    assert.deepEqual(rgb565BE(input), scalar(input));
+  }
+});
+
 ok('VIA keymap builders emit the standard command layout, padded to 64', () => {
   // set_keycode 0x05: [cmd, layer, row, col, kc_hi, kc_lo]
   const set = buildKeymapSet(0, 2, 3, 0x0004);

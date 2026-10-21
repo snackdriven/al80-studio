@@ -80,13 +80,38 @@ export function finish() {
 
 // ---- pixels -----------------------------------------------------------------
 
+const IS_LITTLE_ENDIAN = new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44;
+
 /** RGBA bytes (canvas getImageData) -> RGB565 big-endian Uint8Array (2 bytes/pixel). */
 export function rgb565BE(rgba) {
-  const out = new Uint8Array((rgba.length / 4) * 2);
-  for (let i = 0, o = 0; i < rgba.length; i += 4, o += 2) {
-    const v = ((rgba[i] >> 3) << 11) | ((rgba[i + 1] >> 2) << 5) | (rgba[i + 2] >> 3);
-    out[o] = (v >> 8) & 0xff;
-    out[o + 1] = v & 0xff;
+  const pixelCount = rgba.length / 4;
+  const out = new Uint8Array(pixelCount * 2);
+
+  // Only reinterpret complete, aligned byte pixels. Keep the scalar behavior
+  // for arrays, wider typed views, and partial trailing pixels.
+  if (rgba.BYTES_PER_ELEMENT !== 1 || rgba.byteOffset % 4 !== 0 || rgba.length % 4 !== 0) {
+    for (let i = 0, o = 0; i < rgba.length; i += 4, o += 2) {
+      const v = ((rgba[i] >> 3) << 11) | ((rgba[i + 1] >> 2) << 5) | (rgba[i + 2] >> 3);
+      out[o] = (v >> 8) & 0xff;
+      out[o + 1] = v & 0xff;
+    }
+    return out;
+  }
+
+  const in32 = new Uint32Array(rgba.buffer, rgba.byteOffset, pixelCount);
+  const out16 = new Uint16Array(out.buffer, out.byteOffset, pixelCount);
+
+  if (IS_LITTLE_ENDIAN) {
+    for (let i = 0; i < pixelCount; i++) {
+      const px = in32[i];
+      const v = (((px & 0xF8) << 8) | ((px & 0xFC00) >>> 5) | ((px >>> 19) & 0x1F));
+      out16[i] = ((v & 0xFF) << 8) | (v >>> 8);
+    }
+  } else {
+    for (let i = 0; i < pixelCount; i++) {
+      const px = in32[i];
+      out16[i] = (((px >>> 16) & 0xF800) | ((px >>> 13) & 0x07E0) | ((px >>> 11) & 0x1F));
+    }
   }
   return out;
 }
