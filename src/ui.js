@@ -1049,103 +1049,164 @@ function setupGifTab() {
 // Uploads up to 16 stills to the device's picture slots (they accumulate), then
 // host-drives an auto-cycle: a timer fires buildView(PICTURE) ("next picture") at
 // the chosen interval. Clear the slots first so the slideshow is exactly the picks.
-function setupSlideshowTab() {
-  const MAX = 16;
-  const statusEl = $('#slideStatus');
-  const strip = $('#slideStrip');
-  const counter = $('#slideCounter');
-  const fileInput = $('#slideFile');
-  const drop = $('#slideDrop');
-  const readout = $('#slideCurrent');
-  const brightnessOut = $('#slideBrightnessOut');
-  const intervalEl = $('#slideInterval');
-  const intervalOut = $('#slideIntervalOut');
-  const playBtn = $('#slidePlay');
-  const wrap = $('#slideProgressWrap');
-  const bar = $('#slideProgress');
-  const preview = $('#slidePreview');
-  const previewEmpty = $('#slidePreviewEmpty');
+class SlideshowTab {
+  constructor() {
+    this.MAX = 16;
+    this.statusEl = $('#slideStatus');
+    this.strip = $('#slideStrip');
+    this.counter = $('#slideCounter');
+    this.fileInput = $('#slideFile');
+    this.drop = $('#slideDrop');
+    this.readout = $('#slideCurrent');
+    this.brightnessOut = $('#slideBrightnessOut');
+    this.intervalEl = $('#slideInterval');
+    this.intervalOut = $('#slideIntervalOut');
+    this.playBtn = $('#slidePlay');
+    this.wrap = $('#slideProgressWrap');
+    this.bar = $('#slideProgress');
+    this.preview = $('#slidePreview');
+    this.previewEmpty = $('#slidePreviewEmpty');
+    this.sendBtn = $('#slideSend');
+    this.nextBtn = $('#slideNext');
 
-  const controls = {
-    fit: $('#slideFit'),
-    brightness: $('#slideBrightness'),
-    gray: $('#slideGray'),
-  };
+    this.controls = {
+      fit: $('#slideFit'),
+      brightness: $('#slideBrightness'),
+      gray: $('#slideGray'),
+    };
 
-  // Remember slideshow editor settings across reloads (UI only; never auto-sends). The brightness +
-  // interval sliders re-sync their <output> via onRestore so the readout matches the restored value.
-  persist(controls.fit, 'slideFit');
-  persist(controls.brightness, 'slideBrightness', (el) => { brightnessOut.textContent = el.value + '%'; });
-  persist(controls.gray, 'slideGray');
-  persist(intervalEl, 'slideInterval', (el) => { intervalOut.textContent = el.value + 's'; });
+    this.slides = [];       // [{ file, url }] — url is a 96x160 device-accurate thumbnail
+    this.cycleTimer = null; // setInterval handle; non-null == playing
+    this.currentIdx = 0;    // which slide the device is showing (readout only)
+    this.renderToken = 0;   // guards debounced thumbnail re-renders against races
+    this.rerenderTimer = null;
+    this.sending = false;
+  }
 
-  let slides = [];       // [{ file, url }] — url is a 96x160 device-accurate thumbnail
-  let cycleTimer = null; // setInterval handle; non-null == playing
-  let currentIdx = 0;    // which slide the device is showing (readout only)
-  let renderToken = 0;   // guards debounced thumbnail re-renders against races
+  setup() {
+    // Remember slideshow editor settings across reloads (UI only; never auto-sends). The brightness +
+    // interval sliders re-sync their <output> via onRestore so the readout matches the restored value.
+    persist(this.controls.fit, 'slideFit');
+    persist(this.controls.brightness, 'slideBrightness', (el) => { this.brightnessOut.textContent = el.value + '%'; });
+    persist(this.controls.gray, 'slideGray');
+    persist(this.intervalEl, 'slideInterval', (el) => { this.intervalOut.textContent = el.value + 's'; });
+
+    slideshowCtl.stop = this.stopCycle.bind(this);
+
+    this.controls.fit.addEventListener('change', this.scheduleRerender.bind(this));
+    this.controls.gray.addEventListener('change', this.scheduleRerender.bind(this));
+    this.controls.brightness.addEventListener('input', () => {
+      this.brightnessOut.textContent = this.controls.brightness.value + '%';
+      this.scheduleRerender();
+    });
+    this.intervalEl.addEventListener('input', () => {
+      this.intervalOut.textContent = this.intervalEl.value + 's';
+      if (this.isPlaying()) this.startCycle(); // re-time in place
+    });
+
+    this.fileInput.addEventListener('change', (e) => { this.addFiles(e.target.files); this.fileInput.value = ''; });
+
+    ['dragenter', 'dragover'].forEach((ev) =>
+      this.drop.addEventListener(ev, (e) => { e.preventDefault(); this.drop.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach((ev) =>
+      this.drop.addEventListener(ev, (e) => { e.preventDefault(); this.drop.classList.remove('dragover'); }));
+    this.drop.addEventListener('drop', (e) => {
+      if (e.dataTransfer?.files?.length) this.addFiles(e.dataTransfer.files);
+    });
+
+    this.sendBtn.addEventListener('click', this.onSendClick.bind(this));
+
+    this.playBtn.addEventListener('click', () => {
+      if (this.isPlaying()) {
+        this.stopCycle();
+        setStatus(this.statusEl, 'Paused.');
+      } else {
+        if (!this.slides.length) { setStatus(this.statusEl, 'Add slides first.', 'err'); return; }
+        this.startCycle();
+        setStatus(this.statusEl, connected ? 'Playing.' : 'Previewing — connect to drive the LCD.', 'ok');
+      }
+    });
+
+    this.nextBtn.addEventListener('click', async () => {
+      if (!this.slides.length) return;
+      nowPlayingCtl.stop(); weatherCtl.stop(); // stepping the slideshow takes the screen from the live watchers
+      this.currentIdx = (this.currentIdx + 1) % this.slides.length;
+      this.updateCurrent();
+      await guardedSend('Slideshow → next', this.statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+    });
+
+    // initial read-outs
+    this.brightnessOut.textContent = this.controls.brightness.value + '%';
+    this.intervalOut.textContent = this.intervalEl.value + 's';
+    this.updateCounter();
+    this.updateCurrent();
+    this.refreshPlay();
+  }
 
   // Slideshow only uses fit / brightness / grayscale (percent -> factor for brightness).
-  function readOpts() {
+  readOpts() {
     return {
-      fit: controls.fit.value,
-      brightness: +controls.brightness.value / 100,
-      grayscale: controls.gray.checked,
+      fit: this.controls.fit.value,
+      brightness: +this.controls.brightness.value / 100,
+      grayscale: this.controls.gray.checked,
     };
   }
 
-  const isPlaying = () => cycleTimer !== null;
+  isPlaying() { return this.cycleTimer !== null; }
 
-  function updateCounter() { counter.textContent = `${slides.length}/${MAX}`; }
+  updateCounter() { this.counter.textContent = `${this.slides.length}/${this.MAX}`; }
+
   // The preview mirrors the current slide — the same index the device is on while playing,
   // so Play steps them in lockstep. brightness/gray/fit already bake into slide.url.
-  function updatePreview() {
-    if (!slides.length) { preview.hidden = true; preview.removeAttribute('src'); previewEmpty.hidden = false; return; }
-    previewEmpty.hidden = true;
-    preview.src = slides[currentIdx % slides.length].url;
-    preview.hidden = false;
+  updatePreview() {
+    if (!this.slides.length) { this.preview.hidden = true; this.preview.removeAttribute('src'); this.previewEmpty.hidden = false; return; }
+    this.previewEmpty.hidden = true;
+    this.preview.src = this.slides[this.currentIdx % this.slides.length].url;
+    this.preview.hidden = false;
   }
-  function updateCurrent() {
-    readout.textContent = slides.length
-      ? `Slide ${(currentIdx % slides.length) + 1} of ${slides.length}`
-      : 'No slides';
-    updatePreview();
-  }
-  // Play runs the local preview even offline; the device send only happens when connected.
-  function refreshPlay() { playBtn.disabled = sending || !slides.length; }
 
-  function stopCycle() {
-    if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
-    playBtn.textContent = 'Play';
+  updateCurrent() {
+    this.readout.textContent = this.slides.length
+      ? `Slide ${(this.currentIdx % this.slides.length) + 1} of ${this.slides.length}`
+      : 'No slides';
+    this.updatePreview();
   }
-  slideshowCtl.stop = stopCycle;
+
+  // Play runs the local preview even offline; the device send only happens when connected.
+  refreshPlay() { this.playBtn.disabled = this.sending || !this.slides.length; }
+
+  stopCycle() {
+    if (this.cycleTimer) { clearInterval(this.cycleTimer); this.cycleTimer = null; }
+    this.playBtn.textContent = 'Play';
+  }
 
   // The device keeps cycling the pictures uploaded at the last Send; editing the strip
   // (remove/reorder) doesn't reach the device until the next Send. So pause the cycle on any
   // edit and tell the user to re-Send — otherwise the "Slide X of N" readout lies.
-  function onStripEdit() {
-    if (isPlaying()) { stopCycle(); setStatus(statusEl, 'Edited — press Send to apply the new order.'); }
+  onStripEdit() {
+    if (this.isPlaying()) { this.stopCycle(); setStatus(this.statusEl, 'Edited — press Send to apply the new order.'); }
   }
 
-  function startCycle() {
-    stopCycle();
-    if (!slides.length) return;
-    playBtn.textContent = 'Pause';
-    const period = Math.max(1, +intervalEl.value || 1) * 1000;
-    cycleTimer = setInterval(async () => {
+  startCycle() {
+    this.stopCycle();
+    if (!this.slides.length) return;
+    this.playBtn.textContent = 'Pause';
+    const period = Math.max(1, +this.intervalEl.value || 1) * 1000;
+    this.cycleTimer = setInterval(async () => {
       // Stop if the tab's hidden. Advance the preview regardless of connection;
       // only push to the device when connected (keeps the preview alive offline).
-      if (!slideshowVisible()) { stopCycle(); return; }
-      currentIdx = (currentIdx + 1) % slides.length;
-      updateCurrent();
-      if (connected) await guardedSend('Slideshow → next', statusEl, proto.buildView(proto.VIEW.PICTURE));
+      if (!slideshowVisible()) { this.stopCycle(); return; }
+      this.currentIdx = (this.currentIdx + 1) % this.slides.length;
+      this.updateCurrent();
+      if (connected) await guardedSend('Slideshow → next', this.statusEl, proto.buildView(proto.VIEW.PICTURE));
     }, period);
   }
 
-  // Rebuild the whole strip from `slides`. Each thumb: image, index, remove (×),
+  // Rebuild the whole strip from `this.slides`. Each thumb: image, index, remove (×),
   // and ◀/▶ reorder that swap with the neighbour.
-  function renderStrip() {
-    strip.innerHTML = '';
-    slides.forEach((slide, i) => {
+  renderStrip() {
+    this.strip.innerHTML = '';
+    this.slides.forEach((slide, i) => {
       const thumb = document.createElement('div');
       thumb.className = 'slide-thumb';
 
@@ -1155,7 +1216,7 @@ function setupSlideshowTab() {
       img.title = 'Preview this slide';
       img.style.cursor = 'pointer';
       // Click a thumb to jump the preview (and the play position) to it.
-      img.addEventListener('click', () => { currentIdx = i; updateCurrent(); });
+      img.addEventListener('click', () => { this.currentIdx = i; this.updateCurrent(); });
       thumb.appendChild(img);
 
       const idx = document.createElement('span');
@@ -1170,11 +1231,11 @@ function setupSlideshowTab() {
       rm.title = 'Remove';
       rm.setAttribute('aria-label', `Remove image ${i + 1}`); // accessible name — the "×" glyph isn't one
       rm.addEventListener('click', () => {
-        onStripEdit();
-        slides.splice(i, 1);
-        if (i < currentIdx || currentIdx >= slides.length) currentIdx = Math.max(0, Math.min(currentIdx - (i < currentIdx ? 1 : 0), slides.length - 1));
-        if (!slides.length) stopCycle();
-        renderStrip();
+        this.onStripEdit();
+        this.slides.splice(i, 1);
+        if (i < this.currentIdx || this.currentIdx >= this.slides.length) this.currentIdx = Math.max(0, Math.min(this.currentIdx - (i < this.currentIdx ? 1 : 0), this.slides.length - 1));
+        if (!this.slides.length) this.stopCycle();
+        this.renderStrip();
       });
       thumb.appendChild(rm);
 
@@ -1188,181 +1249,138 @@ function setupSlideshowTab() {
       left.disabled = i === 0;
       left.addEventListener('click', () => {
         if (i === 0) return;
-        onStripEdit();
-        [slides[i - 1], slides[i]] = [slides[i], slides[i - 1]];
-        renderStrip();
+        this.onStripEdit();
+        [this.slides[i - 1], this.slides[i]] = [this.slides[i], this.slides[i - 1]];
+        this.renderStrip();
       });
       const right = document.createElement('button');
       right.type = 'button';
       right.className = 'slide-move';
       right.textContent = '▶';
       right.title = 'Move right';
-      right.disabled = i === slides.length - 1;
+      right.disabled = i === this.slides.length - 1;
       right.addEventListener('click', () => {
-        if (i === slides.length - 1) return;
-        onStripEdit();
-        [slides[i + 1], slides[i]] = [slides[i], slides[i + 1]];
-        renderStrip();
+        if (i === this.slides.length - 1) return;
+        this.onStripEdit();
+        [this.slides[i + 1], this.slides[i]] = [this.slides[i], this.slides[i + 1]];
+        this.renderStrip();
       });
       nav.append(left, right);
       thumb.appendChild(nav);
 
-      strip.appendChild(thumb);
+      this.strip.appendChild(thumb);
     });
-    updateCounter();
-    updateCurrent();
-    refreshPlay();
+    this.updateCounter();
+    this.updateCurrent();
+    this.refreshPlay();
   }
 
-  async function addFiles(fileList) {
+  async addFiles(fileList) {
     const files = Array.from(fileList).filter((f) => f.type.startsWith('image/'));
-    if (!files.length) { setStatus(statusEl, 'No image files found — pick PNG/JPG/GIF images.', 'err'); return; }
-    const opts = readOpts();
+    if (!files.length) { setStatus(this.statusEl, 'No image files found — pick PNG/JPG/GIF images.', 'err'); return; }
+    const opts = this.readOpts();
     let added = 0;
     let skipped = 0;
     for (const file of files) {
-      if (slides.length >= MAX) { skipped++; continue; }
+      if (this.slides.length >= this.MAX) { skipped++; continue; }
       try {
         const url = await image.previewDataURL(file, opts);
-        slides.push({ file, url });
+        this.slides.push({ file, url });
         added++;
       } catch (err) {
-        setStatus(statusEl, 'Could not read ' + file.name + ': ' + ((err && err.message) || err), 'err');
+        setStatus(this.statusEl, 'Could not read ' + file.name + ': ' + ((err && err.message) || err), 'err');
       }
     }
-    renderStrip();
-    if (skipped > 0) setStatus(statusEl, `Added ${added}. Slot limit is ${MAX}; skipped ${skipped}.`, 'err');
-    else if (added) setStatus(statusEl, `Added ${added} slide${added === 1 ? '' : 's'}.`);
+    this.renderStrip();
+    if (skipped > 0) setStatus(this.statusEl, `Added ${added}. Slot limit is ${this.MAX}; skipped ${skipped}.`, 'err');
+    else if (added) setStatus(this.statusEl, `Added ${added} slide${added === 1 ? '' : 's'}.`);
   }
 
   // Re-render every thumbnail when the global opts change (debounced).
-  let rerenderTimer = null;
-  async function rerenderThumbs() {
-    const token = ++renderToken;
-    const opts = readOpts();
-    for (const slide of slides) {
+  async rerenderThumbs() {
+    const token = ++this.renderToken;
+    const opts = this.readOpts();
+    for (const slide of this.slides) {
       try {
         const url = await image.previewDataURL(slide.file, opts);
-        if (token !== renderToken) return; // superseded
+        if (token !== this.renderToken) return; // superseded
         slide.url = url;
       } catch { /* keep the old thumbnail */ }
     }
-    if (token !== renderToken) return;
-    renderStrip();
-  }
-  function scheduleRerender() {
-    clearTimeout(rerenderTimer);
-    rerenderTimer = setTimeout(rerenderThumbs, 150);
+    if (token !== this.renderToken) return;
+    this.renderStrip();
   }
 
-  controls.fit.addEventListener('change', scheduleRerender);
-  controls.gray.addEventListener('change', scheduleRerender);
-  controls.brightness.addEventListener('input', () => {
-    brightnessOut.textContent = controls.brightness.value + '%';
-    scheduleRerender();
-  });
-  intervalEl.addEventListener('input', () => {
-    intervalOut.textContent = intervalEl.value + 's';
-    if (isPlaying()) startCycle(); // re-time in place
-  });
+  scheduleRerender() {
+    clearTimeout(this.rerenderTimer);
+    this.rerenderTimer = setTimeout(this.rerenderThumbs.bind(this), 150);
+  }
 
-  fileInput.addEventListener('change', (e) => { addFiles(e.target.files); fileInput.value = ''; });
-
-  ['dragenter', 'dragover'].forEach((ev) =>
-    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('dragover'); }));
-  ['dragleave', 'drop'].forEach((ev) =>
-    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('dragover'); }));
-  drop.addEventListener('drop', (e) => {
-    if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
-  });
+  setBusy(busy) {
+    this.sending = busy;
+    this.sendBtn.disabled = this.nextBtn.disabled = busy || !connected;
+    this.refreshPlay();
+  }
 
   // Send slideshow: clear slots -> upload each still with ACK flow control -> show picture 1 -> start the auto-cycle. Guarded against re-entry so a
   // second Send (or Play mid-upload) can't interleave writes to the write-only device.
-  const sendBtn = $('#slideSend');
-  const nextBtn = $('#slideNext');
-  let sending = false;
-  const setBusy = (busy) => {
-    sending = busy;
-    sendBtn.disabled = nextBtn.disabled = busy || !connected;
-    refreshPlay();
-  };
-  sendBtn.addEventListener('click', async () => {
-    if (sending) return;
-    if (!slides.length) { setStatus(statusEl, 'Add at least one image first.', 'err'); return; }
+  async onSendClick() {
+    if (this.sending) return;
+    if (!this.slides.length) { setStatus(this.statusEl, 'Add at least one image first.', 'err'); return; }
     nowPlayingCtl.stop(); weatherCtl.stop(); // the slideshow takes the screen from the live watchers
-    if (!connected) { setStatus(statusEl, 'Connect first.', 'err'); return; }
-    stopCycle();
-    setBusy(true);
-    wrap.hidden = false;
-    bar.style.width = '0%';
-    const opts = readOpts();
-    const n = slides.length;
+    if (!connected) { setStatus(this.statusEl, 'Connect first.', 'err'); return; }
+    this.stopCycle();
+    this.setBusy(true);
+    this.wrap.hidden = false;
+    this.bar.style.width = '0%';
+    const opts = this.readOpts();
+    const n = this.slides.length;
     try {
-      setStatus(statusEl, 'Clearing picture slots…');
-      if (!(await guardedSend('Clear pictures', statusEl, proto.buildClearPicture(), { gap: 2 }))) return;
+      setStatus(this.statusEl, 'Clearing picture slots…');
+      if (!(await guardedSend('Clear pictures', this.statusEl, proto.buildClearPicture(), { gap: 2 }))) return;
       for (let i = 0; i < n; i++) {
-        setStatus(statusEl, `Uploading slide ${i + 1} of ${n}…`);
+        setStatus(this.statusEl, `Uploading slide ${i + 1} of ${n}…`);
         let frame;
-        try { frame = await image.imageToFrame(slides[i].file, opts); }
-        catch (err) { setStatus(statusEl, `Render failed on slide ${i + 1}: ` + ((err && err.message) || err), 'err'); return; }
+        try { frame = await image.imageToFrame(this.slides[i].file, opts); }
+        catch (err) { setStatus(this.statusEl, `Render failed on slide ${i + 1}: ` + ((err && err.message) || err), 'err'); return; }
         let packets;
         try { packets = proto.buildImageTransfer(frame); }
-        catch (err) { setStatus(statusEl, `Build failed on slide ${i + 1}: ` + ((err && err.message) || err), 'err'); return; }
+        catch (err) { setStatus(this.statusEl, `Build failed on slide ${i + 1}: ` + ((err && err.message) || err), 'err'); return; }
         // Accumulate progress across all slides: slide i contributes [i/n, (i+1)/n).
-        const ok = await sendAckGatedWithProgress(`Slideshow slide ${i + 1}/${n}`, statusEl, packets, (f) => {
-          bar.style.width = Math.round(((i + f) / n) * 100) + '%';
+        const ok = await sendAckGatedWithProgress(`Slideshow slide ${i + 1}/${n}`, this.statusEl, packets, (f) => {
+          this.bar.style.width = Math.round(((i + f) / n) * 100) + '%';
         }, { gap: 0 });
         if (!ok) return;
         if (i < n - 1) await sleep(200); // let the device commit each picture
       }
-      setStatus(statusEl, 'Showing slideshow…');
-      currentIdx = 0;
-      updateCurrent();
-      if (!await guardedSend('Slideshow → show', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 })) return;
+      setStatus(this.statusEl, 'Showing slideshow…');
+      this.currentIdx = 0;
+      this.updateCurrent();
+      if (!await guardedSend('Slideshow → show', this.statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 })) return;
       setNowShowing('picture');
-      setBusy(false); // re-enable before starting the cycle
-      startCycle();
-      setStatus(statusEl, `Slideshow running — ${n} slide${n === 1 ? '' : 's'}, ${intervalEl.value}s each.`, 'ok');
+      this.setBusy(false); // re-enable before starting the cycle
+      this.startCycle();
+      setStatus(this.statusEl, `Slideshow running — ${n} slide${n === 1 ? '' : 's'}, ${this.intervalEl.value}s each.`, 'ok');
       // Remember what Studio just pushed (client-side slot cache). Keeps the whole file list so
       // Re-push can replay the ring; the thumbnail is slide 1.
-      const thumbBlob = await slots.thumbFromSource(slides[0].url).catch(() => null);
+      const thumbBlob = await slots.thumbFromSource(this.slides[0].url).catch(() => null);
       await capturePush({
         area: 'picture', name: `Slideshow · ${n} slide${n === 1 ? '' : 's'}`, kind: 'slideshow',
-        sources: slides.map((s) => s.file), settings: { ...opts, interval: +intervalEl.value },
+        sources: this.slides.map((s) => s.file), settings: { ...opts, interval: +this.intervalEl.value },
         thumbBlob, frameCount: n,
       });
     } finally {
-      setBusy(false);
-      setTimeout(() => { wrap.hidden = true; }, 800);
+      this.setBusy(false);
+      setTimeout(() => { this.wrap.hidden = true; }, 800);
     }
-  });
-
-  playBtn.addEventListener('click', () => {
-    if (isPlaying()) {
-      stopCycle();
-      setStatus(statusEl, 'Paused.');
-    } else {
-      if (!slides.length) { setStatus(statusEl, 'Add slides first.', 'err'); return; }
-      startCycle();
-      setStatus(statusEl, connected ? 'Playing.' : 'Previewing — connect to drive the LCD.', 'ok');
-    }
-  });
-
-  $('#slideNext').addEventListener('click', async () => {
-    if (!slides.length) return;
-    nowPlayingCtl.stop(); weatherCtl.stop(); // stepping the slideshow takes the screen from the live watchers
-    currentIdx = (currentIdx + 1) % slides.length;
-    updateCurrent();
-    await guardedSend('Slideshow → next', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
-  });
-
-  // initial read-outs
-  brightnessOut.textContent = controls.brightness.value + '%';
-  intervalOut.textContent = intervalEl.value + 's';
-  updateCounter();
-  updateCurrent();
-  refreshPlay();
+  }
 }
+
+function setupSlideshowTab() {
+  const tab = new SlideshowTab();
+  tab.setup();
+}
+
 
 // ---- now playing (Spotify -> live card on the LCD, over WebHID) --------------
 // Ports host/nowplaying-run.mjs into the app: PKCE auth in the browser, a 5s poll of Spotify's
