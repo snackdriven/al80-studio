@@ -24,7 +24,7 @@ const REPORT = 64;
 /** 16-bit additive checksum of `bytes`, returned little-endian: [low, high]. (yne) */
 export function yne(bytes) {
   let n = 0;
-  for (const b of bytes) n += b;
+  for (let i = 0; i < bytes.length; i++) n += bytes[i];
   n &= 0xffff;
   return [n & 0xff, (n >> 8) & 0xff];
 }
