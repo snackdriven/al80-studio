@@ -87,7 +87,9 @@ export function rgb565BE(rgba) {
   const pixelCount = rgba.length / 4;
   const out = new Uint8Array(pixelCount * 2);
 
-  if (rgba.byteOffset % 4 !== 0) {
+  // Only reinterpret complete, aligned byte pixels. Keep the scalar behavior
+  // for arrays, wider typed views, and partial trailing pixels.
+  if (rgba.BYTES_PER_ELEMENT !== 1 || rgba.byteOffset % 4 !== 0 || rgba.length % 4 !== 0) {
     for (let i = 0, o = 0; i < rgba.length; i += 4, o += 2) {
       const v = ((rgba[i] >> 3) << 11) | ((rgba[i + 1] >> 2) << 5) | (rgba[i + 2] >> 3);
       out[o] = (v >> 8) & 0xff;
