@@ -569,7 +569,11 @@ export const buildKeymapSet = (layer, row, col, kc) => viaReport([VIA_CMD.DYN_SE
 export const buildKeymapReset = () => viaReport([VIA_CMD.DYN_RESET]);
 /** dynamic_keymap_get/set_buffer (0x12/0x13): bulk keymap read/write, ≤28 data bytes per chunk (VIA convention). */
 export const buildKeymapGetBuffer = (offset, size) => viaReport([VIA_CMD.DYN_GET_BUFFER, hi16(offset), lo16(offset), size & 0xff]);
-export const buildKeymapSetBuffer = (offset, data) => viaReport([VIA_CMD.DYN_SET_BUFFER, hi16(offset), lo16(offset), data.length & 0xff, ...data.map((b) => b & 0xff)]);
+export const buildKeymapSetBuffer = (offset, data) => {
+  const pkt = [VIA_CMD.DYN_SET_BUFFER, hi16(offset), lo16(offset), data.length & 0xff];
+  for (let i = 0; i < data.length; i++) pkt.push(data[i] & 0xff);
+  return viaReport(pkt);
+};
 /** dynamic_keymap_get/set_encoder (0x14/0x15): the knob ("radial"). clockwise=true is CW, false is CCW. */
 export const buildEncoderGet = (layer, idx, clockwise) => viaReport([VIA_CMD.DYN_GET_ENCODER, layer & 0xff, idx & 0xff, clockwise ? 1 : 0]);
 export const buildEncoderSet = (layer, idx, clockwise, kc) => viaReport([VIA_CMD.DYN_SET_ENCODER, layer & 0xff, idx & 0xff, clockwise ? 1 : 0, hi16(kc), lo16(kc)]);
@@ -583,7 +587,11 @@ export const buildDeviceIndication = () => viaReport([VIA_CMD.SET_KEYBOARD_VALUE
 export const buildMacroCount = () => viaReport([VIA_CMD.MACRO_GET_COUNT]);
 export const buildMacroBufferSize = () => viaReport([VIA_CMD.MACRO_GET_BUFSIZE]);
 export const buildMacroGetBuffer = (offset, size) => viaReport([VIA_CMD.MACRO_GET_BUFFER, hi16(offset), lo16(offset), size & 0xff]);
-export const buildMacroSetBuffer = (offset, data) => viaReport([VIA_CMD.MACRO_SET_BUFFER, hi16(offset), lo16(offset), data.length & 0xff, ...data.map((b) => b & 0xff)]);
+export const buildMacroSetBuffer = (offset, data) => {
+  const pkt = [VIA_CMD.MACRO_SET_BUFFER, hi16(offset), lo16(offset), data.length & 0xff];
+  for (let i = 0; i < data.length; i++) pkt.push(data[i] & 0xff);
+  return viaReport(pkt);
+};
 export const buildMacroReset = () => viaReport([VIA_CMD.MACRO_RESET]);
 
 // ---- hotkey → panel signal (keyboard→host, custom firmware) ----
