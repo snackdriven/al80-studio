@@ -240,18 +240,23 @@ export function mapAudioToZones(freq, wave, opts = {}) {
   // fully dark and ~81% — the threshold was a cliff in the SETTLED response, not just in how fast
   // it got there, so the slew limiter could not hide it. Ramp in over the first stretch instead.
   const gate = smoothstep(rms / GATE_KNEE);
-  const bands = [meanRange(freq, 1, 8), meanRange(freq, 9, 40), meanRange(freq, 41, 120)];
+  const values = [meanRange(freq, 1, 8), meanRange(freq, 9, 40), meanRange(freq, 41, 120)];
 
-  const values = bands.map((band, i) => {
+  let level = 0;
+  for (let i = 0; i < 3; i++) {
     // Each physical zone is its own VU channel. Do not mix in overall loudness here: that makes
     // all three thirds flash together whenever any band is present.
-    const target = active ? cap * bandLevel(band) * gate : 0;
+    const target = active ? cap * bandLevel(values[i]) * gate : 0;
     const previous = state.zoneVals[i] || 0;
     const value = slewLimit(previous, target, MAX_VAL_DELTA * frameScale, decay * frameScale);
     state.zoneVals[i] = value;
-    return Math.round(clamp01(value) * 255);
-  });
-  return { values, level: Math.max(...values) };
+
+    const out = Math.round(clamp01(value) * 255);
+    values[i] = out;
+    if (out > level) level = out;
+  }
+
+  return { values, level };
 }
 
 /** Build the custom-firmware 0x49 LED field for the bass/mids/treble keyboard zones. */
