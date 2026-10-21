@@ -181,7 +181,7 @@ export function mapAudioToHSV(freq, wave, mode = MUSIC_MODE.BREATHE, opts = {}) 
       if (inc > 0) flux += inc;
     }
   }
-  state.prevFreq = Array.from(freq);
+  if (!state.prevFreq || state.prevFreq.length !== freq.length) { state.prevFreq = new Uint8Array(freq); } else { state.prevFreq.set(freq); }
   const onset = flux > state.fluxAvg * 1.5 + 1e-6;
   state.fluxAvg = lerp(state.fluxAvg, flux, 0.1); // moving average
 
