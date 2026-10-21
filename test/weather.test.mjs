@@ -4,13 +4,14 @@
 import assert from 'node:assert/strict';
 import {
   weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast,
-  getWeatherMock, shapeGeocode,
+  getWeatherMock, shapeGeocode, getWeather,
 } from '../src/weather/weather.js';
 import { render as renderCard } from '../src/weather/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
 
 let pass = 0;
 const ok = (name, fn) => { fn(); pass++; console.log('  ok -', name); };
+const okAsync = async (name, fn) => { await fn(); pass++; console.log('  ok -', name); };
 
 console.log('Weather pure-logic tests\n');
 
@@ -150,6 +151,60 @@ ok('renderCard handles every icon + a partial state without throwing', () => {
   // partial state (no hi/lo, no label) still renders
   const bare = renderCard({ tempF: 5, units: 'F', icon: 'moon' });
   assert.equal(bare.length, FRAME_BYTES);
+});
+
+
+
+// ── GETWEATHER (async + fetch) ──────────────────────────────────────────────────────
+await okAsync('getWeather validates required arguments before fetching', async () => {
+  await assert.rejects(() => getWeather(), /needs lat and lon/i);
+  await assert.rejects(() => getWeather({ lat: null, lon: null }), /needs lat and lon/i);
+  await assert.rejects(() => getWeather({ lat: '', lon: '' }), /needs lat and lon/i);
+});
+
+await okAsync('getWeather handles network and HTTP errors gracefully', async () => {
+  const originalFetch = global.fetch;
+  try {
+    // 1. Network failure
+    global.fetch = () => Promise.reject(new Error('ECONNREFUSED'));
+    await assert.rejects(() => getWeather({ lat: 1, lon: 1 }), /request failed \(network\): ECONNREFUSED/i);
+
+    // 2. HTTP error response
+    global.fetch = () => Promise.resolve({ ok: false, status: 500, text: () => Promise.resolve('Server Error') });
+    await assert.rejects(() => getWeather({ lat: 1, lon: 1 }), /HTTP 500 Server Error/i);
+
+    // 3. Application-level error payload
+    global.fetch = () => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ error: true, reason: 'Rate limited' })
+    });
+    await assert.rejects(() => getWeather({ lat: 1, lon: 1 }), /Open-Meteo error: Rate limited/i);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('getWeather returns parsed forecast on success', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async (url) => {
+      assert.match(url, /latitude=42/);
+      assert.match(url, /longitude=-83/);
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          current: { temperature_2m: 72, weather_code: 2, is_day: 1 },
+          daily: { temperature_2m_max: [78], temperature_2m_min: [61] }
+        })
+      };
+    };
+    const res = await getWeather({ lat: 42, lon: -83, units: 'F', label: 'Detroit' });
+    assert.equal(res.tempF, 72);
+    assert.equal(res.condition, 'PARTLY CLOUDY');
+    assert.equal(res.label, 'DETROIT');
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 console.log(`\n${pass} checks passed.`);
