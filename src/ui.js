@@ -3150,58 +3150,180 @@ function keyCapLabel(kc) {
   return kc; // MO(1), LT(1,KC_ESC), LGUI(KC_1), CUSTOM(22), MACRO(1)…
 }
 
-function setupKeymap() {
-  const AL = keymap.AL80;
-  const ROWS = AL.MATRIX_ROWS, COLS = AL.MATRIX_COLS;
-  const LAYER_SIZE = AL.LAYER_SIZE, LAYER_COUNT = AL.LAYER_COUNT;
 
-  const statusEl = $('#keymapStatus');
-  const layerSel = $('#layerSelect');
-  wireTablistArrows(layerSel);
-  const grid = $('#keyGrid');
-  const encCwEl = $('#encCw');
-  const encCcwEl = $('#encCcw');
-  const readBtn = $('#keymapRead');
-  const testerToggle = $('#testerToggle');
-  const testerStatus = $('#testerStatus');
+class KeymapEditor {
+  constructor() {
+    this.AL = keymap.AL80;
+    this.ROWS = this.AL.MATRIX_ROWS;
+    this.COLS = this.AL.MATRIX_COLS;
+    this.LAYER_SIZE = this.AL.LAYER_SIZE;
+    this.LAYER_COUNT = this.AL.LAYER_COUNT;
 
-  const picker = $('#keycodePicker');
-  const pickerTargetEl = $('#pickerTarget');
-  const pickerSearch = $('#pickerSearch');
-  const pickerBody = $('#pickerBody');
-  const pickerCustom = $('#pickerCustom');
-  const pickerApply = $('#pickerApply');
-  const pickerClose = $('#pickerClose');
+    this.statusEl = $('#keymapStatus');
+    this.layerSel = $('#layerSelect');
+    this.grid = $('#keyGrid');
+    this.encCwEl = $('#encCw');
+    this.encCcwEl = $('#encCcw');
+    this.readBtn = $('#keymapRead');
+    this.testerToggle = $('#testerToggle');
+    this.testerStatus = $('#testerStatus');
 
-  // Seed the offline editor with the factory default (real, editable, exportable) instead of a
-  // blank grid; Read from keyboard overwrites it with the board's actual keys.
-  let state = keymap.factoryKeymap ? keymap.factoryKeymap()
-    : (keymap.emptyKeymap ? keymap.emptyKeymap() : { layers: [], encoders: [[]], macros: [] });
-  let currentLayer = 0;
-  let pickerTarget = null; // { type:'key', idx, row, col } | { type:'enc', cw:boolean }
-  const keyEls = new Map(); // matrix index -> button element
-  const pickerGroups = buildPickerGroups();
+    this.picker = $('#keycodePicker');
+    this.pickerTargetEl = $('#pickerTarget');
+    this.pickerSearch = $('#pickerSearch');
+    this.pickerBody = $('#pickerBody');
+    this.pickerCustom = $('#pickerCustom');
+    this.pickerApply = $('#pickerApply');
+    this.pickerClose = $('#pickerClose');
+    this.deviceStatus = $('#deviceStatus');
 
-  // ---- model helpers --------------------------------------------------------
-  function ensureLayer(L) {
-    if (!Array.isArray(state.layers)) state.layers = [];
-    if (!Array.isArray(state.layers[L]) || state.layers[L].length < LAYER_SIZE) {
-      const cur = Array.isArray(state.layers[L]) ? state.layers[L] : [];
+    this.state = keymap.factoryKeymap ? keymap.factoryKeymap()
+      : (keymap.emptyKeymap ? keymap.emptyKeymap() : { layers: [], encoders: [[]], macros: [] });
+    this.currentLayer = 0;
+    this.pickerTarget = null;
+    this.keyEls = new Map();
+    this.pickerGroups = buildPickerGroups();
+
+    this.U = 44;
+    this.GAP = 4;
+    this.pickerReturnFocus = null;
+    this.testerTimer = null;
+    this.testerPollInFlight = false;
+  }
+
+  init() {
+    wireTablistArrows(this.layerSel);
+
+    this.encCwEl.addEventListener('click', () => this.openPicker({ type: 'enc', cw: true }));
+    this.encCcwEl.addEventListener('click', () => this.openPicker({ type: 'enc', cw: false }));
+    this.pickerSearch.addEventListener('input', () => this.renderPickerList(this.pickerSearch.value));
+    this.pickerApply.addEventListener('click', () => {
+      const kc = this.pickerCustom.value.trim();
+      if (kc) this.applyKeycode(kc);
+    });
+    this.pickerCustom.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); this.pickerApply.click(); }
+    });
+    this.pickerClose.addEventListener('click', () => this.closePicker());
+    this.picker.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab' || this.picker.hidden) return;
+      const list = [...this.picker.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])')]
+        .filter((el) => !el.disabled && el.offsetParent !== null);
+      if (!list.length) return;
+      const first = list[0], last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+    this.picker.addEventListener('click', (e) => { if (e.target === this.picker) this.closePicker(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.picker.hidden) this.closePicker();
+    });
+
+    this.readBtn.addEventListener('click', () => this.readFromDevice());
+
+    keymapTesterCtl.stop = () => this.stopTester();
+    this.testerToggle.addEventListener('click', () => {
+      if (this.testerTimer) { this.stopTester(); return; }
+      if (!connected) { setStatus(this.statusEl, 'Connect first.', 'err'); return; }
+      this.testerToggle.textContent = 'Stop key tester';
+      this.testerToggle.setAttribute('aria-pressed', 'true');
+      this.testerStatus.textContent = 'Polling switch matrix — press keys to see them light up.';
+      this.testerTimer = setInterval(() => this.pollMatrix(), 80);
+    });
+
+    $('#fwRead').addEventListener('click', async () => {
+      if (!connected) return;
+      setStatus(this.deviceStatus, 'Reading…');
+      try {
+        const rep = await viaTransact(proto.buildFirmwareVersion(), (d) => d[0] === 0x02 && d[1] === 0x04, 500);
+        if (!rep) { $('#fwVersion').textContent = 'no reply'; setStatus(this.deviceStatus, 'No reply from the keyboard.', 'err'); return; }
+        const ver = ((rep[2] << 24) | (rep[3] << 16) | (rep[4] << 8) | rep[5]) >>> 0;
+        $('#fwVersion').textContent = `firmware v${ver}`;
+        setStatus(this.deviceStatus, '');
+      } catch (err) {
+        $('#fwVersion').textContent = 'no reply';
+        setStatus(this.deviceStatus, 'Firmware read failed: ' + ((err && err.message) || err), 'err');
+      }
+    });
+
+    $('#identifyBtn').addEventListener('click', async () => {
+      if (!connected) return;
+      if (await guardedSend('Identify', this.deviceStatus, [proto.buildDeviceIndication()], { gap: 1 }))
+        setStatus(this.deviceStatus, 'Sent — the board should flash its lights.', 'ok');
+    });
+
+    $('#keymapResetBtn').addEventListener('click', async () => {
+      if (!connected) return;
+      if (!confirm('Reset the keyboard to its factory keymap? Your remaps on the device will be cleared (re-import your VIA JSON to undo).')) return;
+      if (await guardedSend('Reset keymap', this.deviceStatus, [proto.buildKeymapReset()], { gap: 1 })) {
+        setStatus(this.deviceStatus, 'Keymap reset to factory — re-reading…', 'ok');
+        $('#keymapRead').click();
+      }
+    });
+
+    $('#keymapImport').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        let payload;
+        try { payload = JSON.parse(text); } catch { payload = text; }
+        this.state = keymap.importKeymap(payload);
+        for (let L = 0; L < this.LAYER_COUNT; L++) this.ensureLayer(L);
+        this.currentLayer = 0;
+        this.renderLayerSelect();
+        this.refreshCaps();
+        this.renderEncoder();
+        setStatus(this.statusEl, 'Imported ' + file.name, 'ok');
+      } catch (err) {
+        setStatus(this.statusEl, 'Import failed: ' + ((err && err.message) || err), 'err');
+      }
+    });
+
+    $('#keymapExport').addEventListener('click', () => {
+      try {
+        const data = keymap.exportKeymap(this.state);
+        const json = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'al80-keymap.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus(this.statusEl, 'Exported al80-keymap.json', 'ok');
+      } catch (err) {
+        setStatus(this.statusEl, 'Export failed: ' + ((err && err.message) || err), 'err');
+      }
+    });
+
+    for (let L = 0; L < this.LAYER_COUNT; L++) this.ensureLayer(L);
+    this.renderLayerSelect();
+    this.renderGrid();
+    this.renderEncoder();
+  }
+
+  ensureLayer(L) {
+    if (!Array.isArray(this.state.layers)) this.state.layers = [];
+    if (!Array.isArray(this.state.layers[L]) || this.state.layers[L].length < this.LAYER_SIZE) {
+      const cur = Array.isArray(this.state.layers[L]) ? this.state.layers[L] : [];
       const fill = L === 0 ? 'KC_NO' : 'KC_TRNS';
-      state.layers[L] = Array.from({ length: LAYER_SIZE }, (_, i) => cur[i] ?? fill);
+      this.state.layers[L] = Array.from({ length: this.LAYER_SIZE }, (_, i) => cur[i] ?? fill);
     }
   }
-  function ensureEncoder(L) {
-    if (!Array.isArray(state.encoders)) state.encoders = [];
-    if (!Array.isArray(state.encoders[0])) state.encoders[0] = [];
-    if (!Array.isArray(state.encoders[0][L])) state.encoders[0][L] = ['KC_VOLD', 'KC_VOLU'];
+
+  ensureEncoder(L) {
+    if (!Array.isArray(this.state.encoders)) this.state.encoders = [];
+    if (!Array.isArray(this.state.encoders[0])) this.state.encoders[0] = [];
+    if (!Array.isArray(this.state.encoders[0][L])) this.state.encoders[0][L] = ['KC_VOLD', 'KC_VOLU'];
   }
-  const kcAt = (L, idx) => { ensureLayer(L); return state.layers[L][idx]; };
 
-  // ---- rendering ------------------------------------------------------------
-  const U = 44, GAP = 4;
+  kcAt(L, idx) {
+    this.ensureLayer(L);
+    return this.state.layers[L][idx];
+  }
 
-  function applyCap(el, kc) {
+  applyCap(el, kc) {
     const label = keyCapLabel(kc);
     el.textContent = label;
     el.title = `${kc}  (row ${el.dataset.row}, col ${el.dataset.col})`;
@@ -3211,71 +3333,68 @@ function setupKeymap() {
     el.classList.toggle('k-no', !kc || kc === 'KC_NO');
   }
 
-  function renderGrid() {
-    grid.style.width = 16 * U + 'px';
-    grid.style.height = 6 * U + 'px';
-    grid.innerHTML = '';
-    keyEls.clear();
+  renderGrid() {
+    this.grid.style.width = 16 * this.U + 'px';
+    this.grid.style.height = 6 * this.U + 'px';
+    this.grid.innerHTML = '';
+    this.keyEls.clear();
     keymap.AL80_LAYOUT.forEach(([r, c, x, y, w]) => {
       const idx = keymap.matrixIndex(r, c);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'key';
-      btn.style.left = x * U + 'px';
-      btn.style.top = y * U + 'px';
-      btn.style.width = w * U - GAP + 'px';
-      btn.style.height = U - GAP + 'px';
+      btn.style.left = x * this.U + 'px';
+      btn.style.top = y * this.U + 'px';
+      btn.style.width = w * this.U - this.GAP + 'px';
+      btn.style.height = this.U - this.GAP + 'px';
       btn.dataset.idx = String(idx);
       btn.dataset.row = String(r);
       btn.dataset.col = String(c);
-      applyCap(btn, kcAt(currentLayer, idx));
-      btn.addEventListener('click', () => openPicker({ type: 'key', idx, row: r, col: c }));
-      grid.appendChild(btn);
-      keyEls.set(idx, btn);
+      this.applyCap(btn, this.kcAt(this.currentLayer, idx));
+      btn.addEventListener('click', () => this.openPicker({ type: 'key', idx, row: r, col: c }));
+      this.grid.appendChild(btn);
+      this.keyEls.set(idx, btn);
     });
   }
 
-  function refreshCaps() {
-    keyEls.forEach((el, idx) => applyCap(el, kcAt(currentLayer, idx)));
-    grid.querySelectorAll('.key.selected').forEach((e) => e.classList.remove('selected'));
+  refreshCaps() {
+    this.keyEls.forEach((el, idx) => this.applyCap(el, this.kcAt(this.currentLayer, idx)));
+    this.grid.querySelectorAll('.key.selected').forEach((e) => e.classList.remove('selected'));
   }
 
-  function renderLayerSelect() {
-    layerSel.innerHTML = '';
-    for (let L = 0; L < LAYER_COUNT; L++) {
+  renderLayerSelect() {
+    this.layerSel.innerHTML = '';
+    for (let L = 0; L < this.LAYER_COUNT; L++) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'layer-btn';
       b.textContent = 'L' + L;
       b.setAttribute('role', 'tab');
-      b.setAttribute('aria-selected', String(L === currentLayer));
-      b.tabIndex = L === currentLayer ? 0 : -1;
+      b.setAttribute('aria-selected', String(L === this.currentLayer));
+      b.tabIndex = L === this.currentLayer ? 0 : -1;
       b.addEventListener('click', () => {
-        currentLayer = L;
-        renderLayerSelect();
-        refreshCaps();
-        renderEncoder();
+        this.currentLayer = L;
+        this.renderLayerSelect();
+        this.refreshCaps();
+        this.renderEncoder();
       });
-      layerSel.appendChild(b);
+      this.layerSel.appendChild(b);
     }
   }
 
-  function renderEncoder() {
-    ensureEncoder(currentLayer);
-    // VIA/QMK store encoders as [ccw, cw] (index 0 = counter-clockwise). Confirmed on-device:
-    // knob right (CW) = volume up = the factory array's index 1 (KC_VOLU).
-    const [ccw, cw] = state.encoders[0][currentLayer];
-    encCwEl.textContent = keyCapLabel(cw) || '—';
-    encCwEl.title = cw;
-    encCcwEl.textContent = keyCapLabel(ccw) || '—';
-    encCcwEl.title = ccw;
+  renderEncoder() {
+    this.ensureEncoder(this.currentLayer);
+    const [ccw, cw] = this.state.encoders[0][this.currentLayer];
+    this.encCwEl.textContent = keyCapLabel(cw) || '—';
+    this.encCwEl.title = cw;
+    this.encCcwEl.textContent = keyCapLabel(ccw) || '—';
+    this.encCcwEl.title = ccw;
   }
 
-  // ---- keycode picker -------------------------------------------------------
-  function renderPickerList(filter = '') {
+  renderPickerList(filter = '') {
     const f = filter.trim().toLowerCase();
-    pickerBody.innerHTML = '';
-    pickerGroups.forEach((g) => {
+    this.pickerBody.innerHTML = '';
+    this.pickerGroups.forEach((g) => {
       const items = g.items.filter(
         (it) => !f || it.label.toLowerCase().includes(f) || it.keycode.toLowerCase().includes(f),
       );
@@ -3295,286 +3414,171 @@ function setupKeymap() {
         const code = document.createElement('code');
         code.textContent = it.keycode;
         chip.appendChild(code);
-        chip.addEventListener('click', () => applyKeycode(it.keycode));
+        chip.addEventListener('click', () => this.applyKeycode(it.keycode));
         chips.appendChild(chip);
       });
       wrap.appendChild(chips);
-      pickerBody.appendChild(wrap);
+      this.pickerBody.appendChild(wrap);
     });
   }
 
-  let pickerReturnFocus = null; // element to restore focus to when the picker closes (a11y)
-  function openPicker(target) {
-    pickerReturnFocus = document.activeElement;
-    pickerTarget = target;
-    grid.querySelectorAll('.key.selected').forEach((e) => e.classList.remove('selected'));
+  openPicker(target) {
+    this.pickerReturnFocus = document.activeElement;
+    this.pickerTarget = target;
+    this.grid.querySelectorAll('.key.selected').forEach((e) => e.classList.remove('selected'));
     if (target.type === 'key') {
-      keyEls.get(target.idx)?.classList.add('selected');
-      pickerTargetEl.textContent = `key (row ${target.row}, col ${target.col}) · layer ${currentLayer}`;
-      pickerCustom.value = kcAt(currentLayer, target.idx);
+      this.keyEls.get(target.idx)?.classList.add('selected');
+      this.pickerTargetEl.textContent = `key (row ${target.row}, col ${target.col}) · layer ${this.currentLayer}`;
+      this.pickerCustom.value = this.kcAt(this.currentLayer, target.idx);
     } else {
-      pickerTargetEl.textContent = `encoder ${target.cw ? 'CW (turn right)' : 'CCW (turn left)'} · layer ${currentLayer}`;
-      ensureEncoder(currentLayer);
-      pickerCustom.value = state.encoders[0][currentLayer][target.cw ? 1 : 0]; // index 1 = cw
+      this.pickerTargetEl.textContent = `encoder ${target.cw ? 'CW (turn right)' : 'CCW (turn left)'} · layer ${this.currentLayer}`;
+      this.ensureEncoder(this.currentLayer);
+      this.pickerCustom.value = this.state.encoders[0][this.currentLayer][target.cw ? 1 : 0];
     }
-    pickerSearch.value = '';
-    renderPickerList('');
-    picker.hidden = false;
-    pickerSearch.focus();
+    this.pickerSearch.value = '';
+    this.renderPickerList('');
+    this.picker.hidden = false;
+    this.pickerSearch.focus();
   }
 
-  function closePicker() {
-    picker.hidden = true;
-    pickerTarget = null;
-    grid.querySelectorAll('.key.selected').forEach((e) => e.classList.remove('selected'));
-    if (pickerReturnFocus && typeof pickerReturnFocus.focus === 'function') pickerReturnFocus.focus();
-    pickerReturnFocus = null;
+  closePicker() {
+    this.picker.hidden = true;
+    this.pickerTarget = null;
+    this.grid.querySelectorAll('.key.selected').forEach((e) => e.classList.remove('selected'));
+    if (this.pickerReturnFocus && typeof this.pickerReturnFocus.focus === 'function') this.pickerReturnFocus.focus();
+    this.pickerReturnFocus = null;
   }
 
-  function applyKeycode(kc) {
-    const t = pickerTarget;
+  applyKeycode(kc) {
+    const t = this.pickerTarget;
     if (!t) return;
-    if (t.type === 'key') setKey(t, kc);
-    else setEncoder(t, kc);
-    closePicker();
+    if (t.type === 'key') this.setKey(t, kc);
+    else this.setEncoder(t, kc);
+    this.closePicker();
   }
 
-  async function setKey(t, kc) {
-    ensureLayer(currentLayer);
-    state.layers[currentLayer][t.idx] = kc;
-    const el = keyEls.get(t.idx);
-    if (el) applyCap(el, kc);
+  async setKey(t, kc) {
+    this.ensureLayer(this.currentLayer);
+    this.state.layers[this.currentLayer][t.idx] = kc;
+    const el = this.keyEls.get(t.idx);
+    if (el) this.applyCap(el, kc);
     const num = keymap.keycodeToNumber(kc);
     if (!connected) {
-      setStatus(statusEl, `Set ${kc} (offline — connect or export to apply).`);
+      setStatus(this.statusEl, `Set ${kc} (offline — connect or export to apply).`);
       return;
     }
     if (num == null) {
-      setStatus(statusEl, `Saved ${kc} to model, but it's an unknown token — not written to the device.`, 'err');
+      setStatus(this.statusEl, `Saved ${kc} to model, but it's an unknown token — not written to the device.`, 'err');
       return;
     }
-    await guardedSend(`Keymap L${currentLayer} → ${kc}`, statusEl, [
-      proto.buildKeymapSet(currentLayer, t.row, t.col, num),
+    await guardedSend(`Keymap L${this.currentLayer} → ${kc}`, this.statusEl, [
+      proto.buildKeymapSet(this.currentLayer, t.row, t.col, num),
     ]);
-    setStatus(statusEl, `Wrote ${kc} to layer ${currentLayer}.`, 'ok');
+    setStatus(this.statusEl, `Wrote ${kc} to layer ${this.currentLayer}.`, 'ok');
   }
 
-  async function setEncoder(t, kc) {
-    ensureEncoder(currentLayer);
-    state.encoders[0][currentLayer][t.cw ? 1 : 0] = kc; // index 1 = cw
-    renderEncoder();
+  async setEncoder(t, kc) {
+    this.ensureEncoder(this.currentLayer);
+    this.state.encoders[0][this.currentLayer][t.cw ? 1 : 0] = kc;
+    this.renderEncoder();
     const num = keymap.keycodeToNumber(kc);
     if (!connected) {
-      setStatus(statusEl, `Set encoder ${t.cw ? 'CW' : 'CCW'} → ${kc} (offline).`);
+      setStatus(this.statusEl, `Set encoder ${t.cw ? 'CW' : 'CCW'} → ${kc} (offline).`);
       return;
     }
     if (num == null) {
-      setStatus(statusEl, `Unknown token ${kc} — not written to the device.`, 'err');
+      setStatus(this.statusEl, `Unknown token ${kc} — not written to the device.`, 'err');
       return;
     }
-    await guardedSend(`Encoder ${t.cw ? 'CW' : 'CCW'} → ${kc}`, statusEl, [
-      proto.buildEncoderSet(currentLayer, 0, t.cw, num),
+    await guardedSend(`Encoder ${t.cw ? 'CW' : 'CCW'} → ${kc}`, this.statusEl, [
+      proto.buildEncoderSet(this.currentLayer, 0, t.cw, num),
     ]);
-    setStatus(statusEl, `Wrote encoder ${t.cw ? 'CW' : 'CCW'} on layer ${currentLayer}.`, 'ok');
+    setStatus(this.statusEl, `Wrote encoder ${t.cw ? 'CW' : 'CCW'} on layer ${this.currentLayer}.`, 'ok');
   }
 
-  encCwEl.addEventListener('click', () => openPicker({ type: 'enc', cw: true }));
-  encCcwEl.addEventListener('click', () => openPicker({ type: 'enc', cw: false }));
-  pickerSearch.addEventListener('input', () => renderPickerList(pickerSearch.value));
-  pickerApply.addEventListener('click', () => {
-    const kc = pickerCustom.value.trim();
-    if (kc) applyKeycode(kc);
-  });
-  pickerCustom.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); pickerApply.click(); }
-  });
-  pickerClose.addEventListener('click', closePicker);
-  // Keep Tab within the modal while it's open (the aria-modal contract).
-  picker.addEventListener('keydown', (e) => {
-    if (e.key !== 'Tab' || picker.hidden) return;
-    const list = [...picker.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])')]
-      .filter((el) => !el.disabled && el.offsetParent !== null);
-    if (!list.length) return;
-    const first = list[0], last = list[list.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  });
-  picker.addEventListener('click', (e) => { if (e.target === picker) closePicker(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !picker.hidden) closePicker();
-  });
-
-  // ---- read the live keymap from the device --------------------------------
-  // Bulk read via dynamic_keymap_get_buffer (≤28 bytes/chunk, VIA convention).
-  // The buffer is all layers concatenated, 2 bytes/key, row-major matrix order.
-  async function readFromDevice() {
-    if (!connected) { setStatus(statusEl, 'Connect first.', 'err'); return; }
-    readBtn.disabled = true;
-    setStatus(statusEl, 'Reading keymap from keyboard…');
+  async readFromDevice() {
+    if (!connected) { setStatus(this.statusEl, 'Connect first.', 'err'); return; }
+    this.readBtn.disabled = true;
+    setStatus(this.statusEl, 'Reading keymap from keyboard…');
     try {
-      let layerCount = LAYER_COUNT;
+      let layerCount = this.LAYER_COUNT;
       try {
         const lc = await viaTransact(proto.buildViaLayerCount(), (d) => d[0] === 0x11);
-        if (lc[1]) layerCount = Math.min(lc[1], LAYER_COUNT);
+        if (lc[1]) layerCount = Math.min(lc[1], this.LAYER_COUNT);
       } catch { /* fall back to AL80 default */ }
 
-      const perLayer = ROWS * COLS * 2; // 180 bytes
+      const perLayer = this.ROWS * this.COLS * 2;
       const total = layerCount * perLayer;
       const buf = new Uint8Array(total);
       for (let off = 0; off < total; off += 28) {
         const size = Math.min(28, total - off);
         const rep = await viaTransact(proto.buildKeymapGetBuffer(off, size), (d) => d[0] === 0x12);
-        for (let i = 0; i < size; i++) buf[off + i] = rep[4 + i] ?? 0; // payload starts at index 4
+        for (let i = 0; i < size; i++) buf[off + i] = rep[4 + i] ?? 0;
       }
       for (let L = 0; L < layerCount; L++) {
-        ensureLayer(L);
-        for (let k = 0; k < LAYER_SIZE; k++) {
+        this.ensureLayer(L);
+        for (let k = 0; k < this.LAYER_SIZE; k++) {
           const o = L * perLayer + k * 2;
-          state.layers[L][k] = keymap.numberToKeycode((buf[o] << 8) | buf[o + 1]);
+          this.state.layers[L][k] = keymap.numberToKeycode((buf[o] << 8) | buf[o + 1]);
         }
       }
-      // encoders, per layer, CW then CCW
       for (let L = 0; L < layerCount; L++) {
-        ensureEncoder(L);
+        this.ensureEncoder(L);
         for (const cw of [true, false]) {
           try {
             const r = await viaTransact(proto.buildEncoderGet(L, 0, cw), (d) => d[0] === 0x14);
-            state.encoders[0][L][cw ? 1 : 0] = keymap.numberToKeycode((r[4] << 8) | r[5]); // index 1 = cw
+            this.state.encoders[0][L][cw ? 1 : 0] = keymap.numberToKeycode((r[4] << 8) | r[5]);
           } catch { /* leave model value */ }
         }
       }
-      refreshCaps();
-      renderEncoder();
-      setStatus(statusEl, `Read ${layerCount} layer(s) from the keyboard.`, 'ok');
+      this.refreshCaps();
+      this.renderEncoder();
+      setStatus(this.statusEl, `Read ${layerCount} layer(s) from the keyboard.`, 'ok');
       devLog('Keymap read', { ok: true });
     } catch (err) {
       const msg = (err && err.message) || String(err);
-      setStatus(statusEl, 'Read failed: ' + msg, 'err');
+      setStatus(this.statusEl, 'Read failed: ' + msg, 'err');
       devLog('Keymap read', { error: msg });
     } finally {
-      readBtn.disabled = !connected;
+      this.readBtn.disabled = !connected;
     }
   }
-  readBtn.addEventListener('click', readFromDevice);
 
-  // ---- key tester: poll switch-matrix state, light up pressed keys ----------
-  let testerTimer = null;
-  function stopTester() {
-    if (testerTimer) { clearInterval(testerTimer); testerTimer = null; }
-    keyEls.forEach((el) => el.classList.remove('pressed'));
-    testerToggle.textContent = 'Start key tester';
-    testerToggle.setAttribute('aria-pressed', 'false');
-    testerStatus.textContent = '';
+  stopTester() {
+    if (this.testerTimer) { clearInterval(this.testerTimer); this.testerTimer = null; }
+    this.keyEls.forEach((el) => el.classList.remove('pressed'));
+    this.testerToggle.textContent = 'Start key tester';
+    this.testerToggle.setAttribute('aria-pressed', 'false');
+    this.testerStatus.textContent = '';
   }
-  keymapTesterCtl.stop = stopTester;
 
-  // Best-effort decode of the switch-matrix reply. VIA packs each row into
-  // ceil(COLS/8) big-endian bytes after the 2-byte header; bit `col` = pressed.
-  // Column/row packing can vary by firmware, so this degrades gracefully.
-  let testerPollInFlight = false;
-  async function pollMatrix() {
-    if (testerPollInFlight) return;
-    testerPollInFlight = true;
+  async pollMatrix() {
+    if (this.testerPollInFlight) return;
+    this.testerPollInFlight = true;
     let d;
     try {
       d = await viaTransact(proto.buildSwitchMatrixState(), (x) => x[0] === 0x02 && x[1] === 0x03, 250);
     } catch (err) {
-      testerStatus.textContent = 'Tester: ' + ((err && err.message) || err);
+      this.testerStatus.textContent = 'Tester: ' + ((err && err.message) || err);
       return;
     } finally {
-      testerPollInFlight = false;
+      this.testerPollInFlight = false;
     }
-    const bytesPerRow = Math.ceil(COLS / 8);
-    keyEls.forEach((el, idx) => {
-      const row = Math.floor(idx / COLS), col = idx % COLS;
+    const bytesPerRow = Math.ceil(this.COLS / 8);
+    this.keyEls.forEach((el, idx) => {
+      const row = Math.floor(idx / this.COLS), col = idx % this.COLS;
       const base = 2 + row * bytesPerRow;
       let bits = 0;
       for (let b = 0; b < bytesPerRow; b++) bits = (bits << 8) | (d[base + b] || 0);
       el.classList.toggle('pressed', !!((bits >> col) & 1));
     });
   }
-  testerToggle.addEventListener('click', () => {
-    if (testerTimer) { stopTester(); return; }
-    if (!connected) { setStatus(statusEl, 'Connect first.', 'err'); return; }
-    testerToggle.textContent = 'Stop key tester';
-    testerToggle.setAttribute('aria-pressed', 'true');
-    testerStatus.textContent = 'Polling switch matrix — press keys to see them light up.';
-    testerTimer = setInterval(pollMatrix, 80);
-  });
-
-  // ---- device utilities (VIA get/set_keyboard_value + dynamic_keymap_reset) --
-  const deviceStatus = $('#deviceStatus');
-  $('#fwRead').addEventListener('click', async () => {
-    if (!connected) return;
-    setStatus(deviceStatus, 'Reading…');
-    try {
-      const rep = await viaTransact(proto.buildFirmwareVersion(), (d) => d[0] === 0x02 && d[1] === 0x04, 500);
-      if (!rep) { $('#fwVersion').textContent = 'no reply'; setStatus(deviceStatus, 'No reply from the keyboard.', 'err'); return; }
-      const ver = ((rep[2] << 24) | (rep[3] << 16) | (rep[4] << 8) | rep[5]) >>> 0;
-      $('#fwVersion').textContent = `firmware v${ver}`;
-      setStatus(deviceStatus, '');
-    } catch (err) {
-      $('#fwVersion').textContent = 'no reply';
-      setStatus(deviceStatus, 'Firmware read failed: ' + ((err && err.message) || err), 'err');
-    }
-  });
-  $('#identifyBtn').addEventListener('click', async () => {
-    if (!connected) return;
-    if (await guardedSend('Identify', deviceStatus, [proto.buildDeviceIndication()], { gap: 1 }))
-      setStatus(deviceStatus, 'Sent — the board should flash its lights.', 'ok');
-  });
-  $('#keymapResetBtn').addEventListener('click', async () => {
-    if (!connected) return;
-    if (!confirm('Reset the keyboard to its factory keymap? Your remaps on the device will be cleared (re-import your VIA JSON to undo).')) return;
-    if (await guardedSend('Reset keymap', deviceStatus, [proto.buildKeymapReset()], { gap: 1 })) {
-      setStatus(deviceStatus, 'Keymap reset to factory — re-reading…', 'ok');
-      $('#keymapRead').click();
-    }
-  });
-
-  // ---- import / export (offline, unchanged behavior) ------------------------
-  $('#keymapImport').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      let payload;
-      try { payload = JSON.parse(text); } catch { payload = text; }
-      state = keymap.importKeymap(payload);
-      for (let L = 0; L < LAYER_COUNT; L++) ensureLayer(L);
-      currentLayer = 0;
-      renderLayerSelect();
-      refreshCaps();
-      renderEncoder();
-      setStatus(statusEl, 'Imported ' + file.name, 'ok');
-    } catch (err) {
-      setStatus(statusEl, 'Import failed: ' + ((err && err.message) || err), 'err');
-    }
-  });
-
-  $('#keymapExport').addEventListener('click', () => {
-    try {
-      const data = keymap.exportKeymap(state);
-      const json = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'al80-keymap.json';
-      a.click();
-      URL.revokeObjectURL(url);
-      setStatus(statusEl, 'Exported al80-keymap.json', 'ok');
-    } catch (err) {
-      setStatus(statusEl, 'Export failed: ' + ((err && err.message) || err), 'err');
-    }
-  });
-
-  // initial render (offline-friendly: renders from the JSON model)
-  for (let L = 0; L < LAYER_COUNT; L++) ensureLayer(L);
-  renderLayerSelect();
-  renderGrid();
-  renderEncoder();
 }
+
+function setupKeymap() {
+  new KeymapEditor().init();
+}
+
 
 // ---- go ---------------------------------------------------------------------
 if (document.readyState === 'loading') {
