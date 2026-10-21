@@ -1694,8 +1694,9 @@ function setupWeatherTab() {
   // canvas. The CSS upscales it nearest-neighbor so the pixel icons + 5x7 font stay crisp.
   function drawPreview(frame) {
     const img = ctx.createImageData(proto.WIDTH, proto.HEIGHT);
+    const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
     for (let i = 0, p = 0; i < frame.length; i += 2, p += 4) {
-      const v = (frame[i] << 8) | frame[i + 1];
+      const v = view.getUint16(i, false);
       img.data[p] = ((v >> 11) & 0x1f) << 3;      // R5 -> R8
       img.data[p + 1] = ((v >> 5) & 0x3f) << 2;   // G6 -> G8
       img.data[p + 2] = (v & 0x1f) << 3;          // B5 -> B8
