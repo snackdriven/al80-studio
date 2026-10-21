@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { ART_RGB_BYTES, decodeToRGB96, dominantColor, rgbToHsv, hsvToRgb } from '../lib/art.js';
-import { codeChallenge, buildAuthUrl, generateCodeVerifier, getNowPlayingMock } from '../lib/spotify.js';
+import { codeChallenge, buildAuthUrl, generateCodeVerifier, getNowPlayingMock, getAccessToken, DEFAULT_CLIENT_ID } from '../lib/spotify.js';
 
 const require = createRequire(import.meta.url);
 
@@ -106,6 +106,29 @@ await ok('getNowPlayingMock has the now-playing shape, progress in 0..1', () => 
   for (const k of ['title', 'artist', 'trackId', 'progress', 'durationMs', 'paused']) assert.ok(k in m, `missing ${k}`);
   assert.equal(typeof m.progress, 'number');
   assert.ok(m.progress >= 0 && m.progress <= 1);
+});
+
+await ok('getAccessToken uses the default client ID, respects overrides, and preserves token rotation', async () => {
+  const originalFetch = globalThis.fetch;
+  const clientIds = [];
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, 'https://accounts.spotify.com/api/token');
+    const body = new URLSearchParams(init.body);
+    clientIds.push(body.get('client_id'));
+    assert.equal(body.get('refresh_token'), 'test-refresh');
+    return { ok: true, json: async () => ({ access_token: 'test-access', expires_in: 3600, refresh_token: 'test-rotated' }) };
+  };
+  try {
+    const token = await getAccessToken({ SPOTIFY_REFRESH_TOKEN: 'test-refresh' });
+    assert.equal(token.refreshToken, 'test-rotated');
+    assert.equal(token.accessToken, 'test-access');
+    await getAccessToken({ SPOTIFY_REFRESH_TOKEN: 'test-refresh', SPOTIFY_CLIENT_ID: 'custom-client' });
+    assert.deepEqual(clientIds, [DEFAULT_CLIENT_ID, 'custom-client']);
+    await assert.rejects(getAccessToken({}), /SPOTIFY_REFRESH_TOKEN/);
+    assert.equal(clientIds.length, 2, 'missing credentials must not issue a request');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 console.log(`\n${pass} checks passed.`);

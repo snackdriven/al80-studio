@@ -8,8 +8,8 @@
 //   1. Create an app at https://developer.spotify.com/dashboard.
 //        - Note the Client ID.  (You do NOT need the Client Secret for PKCE.)
 //        - Add a Redirect URI, e.g. http://127.0.0.1:8888/callback, and save.
-//   2. >>> TODO: put your Client ID here (or in env SPOTIFY_CLIENT_ID). It is not a secret; it ships
-//        in the auth URL. The refresh token IS sensitive — keep that in env/.env, never in git. <<<
+//   2. Use the built-in default Client ID, or export your own in SPOTIFY_CLIENT_ID. The refresh token
+//        IS sensitive — keep that in env/.env, never in git.
 //   3. Authorize once (PKCE auth-code flow):
 //        const verifier  = generateCodeVerifier();
 //        const challenge = await codeChallenge(verifier);
@@ -25,6 +25,8 @@
 // step, no secret), and getNowPlaying(token) reads what's playing.
 
 import { createHash, randomBytes } from 'node:crypto';
+
+export const DEFAULT_CLIENT_ID = '4d8da9ff46054c45934a9f508d6928a8';
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
@@ -149,9 +151,10 @@ export async function refreshAccessToken({ clientId, refreshToken }) {
  * @returns {Promise<{accessToken:string, expiresInSec:number}>}
  */
 export async function getAccessToken(env = process.env) {
-  const { SPOTIFY_CLIENT_ID: clientId, SPOTIFY_REFRESH_TOKEN: refreshToken } = env;
-  if (!clientId || !refreshToken) {
-    throw new Error('spotify.js: set SPOTIFY_CLIENT_ID and SPOTIFY_REFRESH_TOKEN (see header for one-time PKCE setup). For a credential-free run use getNowPlayingMock().');
+  const { SPOTIFY_CLIENT_ID, SPOTIFY_REFRESH_TOKEN: refreshToken } = env;
+  const clientId = SPOTIFY_CLIENT_ID || DEFAULT_CLIENT_ID;
+  if (!refreshToken) {
+    throw new Error('spotify.js: set SPOTIFY_REFRESH_TOKEN (see header for one-time PKCE setup). For a credential-free run use getNowPlayingMock().');
   }
   const t = await refreshAccessToken({ clientId, refreshToken });
   // Spotify ROTATES the refresh token on use (PKCE) — the response's refresh_token replaces the old
