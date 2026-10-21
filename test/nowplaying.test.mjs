@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {
   base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES,
-  needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID,
+  needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken,
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -54,6 +54,84 @@ ok('buildAuthUrl carries client_id, redirect, S256 challenge, scopes, state', ()
 ok('buildAuthUrl throws without clientId or redirectUri', () => {
   assert.throws(() => buildAuthUrl({ redirectUri: 'x', codeChallenge: 'c' }));
   assert.throws(() => buildAuthUrl({ clientId: 'x', codeChallenge: 'c' }));
+});
+
+// ── TOKEN REFRESH ───────────────────────────────────────────────────────────────
+await okAsync('refreshAccessToken uses the new refresh token if Spotify rotates it', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    assert.equal(url, 'https://accounts.spotify.com/api/token');
+    assert.equal(init.method, 'POST');
+    assert.equal(init.headers['Content-Type'], 'application/x-www-form-urlencoded');
+
+    // URLSearchParams from body string
+    const bodyParams = new URLSearchParams(init.body);
+    assert.equal(bodyParams.get('grant_type'), 'refresh_token');
+    assert.equal(bodyParams.get('refresh_token'), 'old-rt');
+    assert.equal(bodyParams.get('client_id'), 'test-client');
+
+    return {
+      ok: true,
+      json: async () => ({
+        access_token: 'new-at',
+        refresh_token: 'new-rt',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }),
+    };
+  };
+
+  try {
+    const t = await refreshAccessToken({ clientId: 'test-client', refreshToken: 'old-rt' });
+    assert.equal(t.accessToken, 'new-at');
+    assert.equal(t.refreshToken, 'new-rt');
+    assert.equal(t.expiresInSec, 3600);
+    assert.equal(t.tokenType, 'Bearer');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('refreshAccessToken falls back to the old refresh token if not rotated', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      access_token: 'new-at',
+      expires_in: 3600,
+    }),
+  });
+
+  try {
+    const t = await refreshAccessToken({ clientId: 'c', refreshToken: 'old-rt' });
+    assert.equal(t.accessToken, 'new-at');
+    assert.equal(t.refreshToken, 'old-rt'); // fallback applied
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+await okAsync('refreshAccessToken throws an error with status and body on failure', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: false,
+    status: 400,
+    text: async () => '{"error":"invalid_grant"}',
+  });
+
+  try {
+    await assert.rejects(
+      refreshAccessToken({ clientId: 'c', refreshToken: 'rt' }),
+      (err) => {
+        assert.equal(err.status, 400);
+        assert.equal(err.body, '{"error":"invalid_grant"}');
+        assert.match(err.message, /400 \{"error":"invalid_grant"\}/);
+        return true;
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 // ── TOKEN-EXPIRY DECISION ───────────────────────────────────────────────────────
