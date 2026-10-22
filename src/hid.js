@@ -150,9 +150,8 @@ export async function connect() {
   if (device && device.opened) return device;
 
   // 1) Silent reconnect: already-granted devices.
-  let target = null;
   const granted = await navigator.hid.getDevices();
-  target = granted.find(isTargetDevice) || null;
+  let target = granted.find(isTargetDevice) || null;
 
   // 2) Prompt the user. requestDevice returns an array; pick our collection.
   if (!target) {
@@ -176,6 +175,7 @@ export async function connect() {
     throw new Error(
       `Could not open the AL80 LCD interface: ${err && err.message ? err.message : err}. ` +
         'Close any other app or tab using the keyboard (yunzii-game.com, VIA) and try again.',
+      { cause: err },
     );
   }
 
@@ -226,6 +226,7 @@ export async function send(packets, { gap = 0 } = {}) {
         `Write failed after ${sent} packet(s): ${err && err.message ? err.message : err}. ` +
           'The keyboard only allows one app to write at a time — close the yunzii-game.com tab ' +
           'and VIA (or any other tab talking to the keyboard), then reconnect.',
+        { cause: err },
       );
     }
 
@@ -286,7 +287,7 @@ export async function sendAckGated(packets, onFraction, { ackTimeout = 140, anno
       if (!acked) await sleep(15); // only on exhausted retries, give it a breath before continuing
     } else {
       try { await device.sendReport(0, body); } catch (err) {
-        throw new Error(`Write failed after ${i} packet(s): ${err && err.message ? err.message : err}. Close any other app talking to the keyboard and reconnect.`);
+        throw new Error(`Write failed after ${i} packet(s): ${err && err.message ? err.message : err}. Close any other app talking to the keyboard and reconnect.`, { cause: err });
       }
       if (i === 0) await sleep(announceSettle);                 // after the announce
       else if (src[7] === 0xa5 && src[9] === 0x0c) await sleep(setupSettle); // after the setup descriptor
@@ -324,6 +325,7 @@ export async function sendGif(packets, onFraction) {
       throw new Error(
         `Write failed after ${sent} packet(s): ${err && err.message ? err.message : err}. ` +
           'Close the yunzii-game.com tab and VIA, then reconnect.',
+        { cause: err },
       );
     }
     sent++;

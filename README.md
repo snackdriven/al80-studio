@@ -37,6 +37,8 @@ One HID protocol over `0xFF60` (VID `0x28E9` / PID `0x30AF`): `0x40` announce, `
 Run these from the repository root:
 
 ```bash
+npm ci                         # once, for ESLint (Node.js 22.19+)
+npm run lint                   # browser, host, tests, and maintenance scripts
 npm install --prefix host      # once, for the host tests (node-hid)
 npm test                       # protocol, keymap, host + lighting tests, no hardware
 python -m http.server 8137      # then open http://localhost:8137

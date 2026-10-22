@@ -70,7 +70,7 @@ export class Device extends EventEmitter {
     try {
       this.dev = new HID.HID(info.path); // throws if another process already holds the single opener
     } catch (e) {
-      throw new Error(`AL80 device busy (single-opener) — close al80-studio/usevia (${e.message})`);
+      throw new Error(`AL80 device busy (single-opener) — close al80-studio/usevia (${e.message})`, { cause: e });
     }
     this._down = false;
     this.dev.on('data', (buf) => this._onData(buf));
@@ -128,7 +128,7 @@ export class Device extends EventEmitter {
       this.dev.write([0x00, ...Array.from(body)]);
     } catch (e) {
       this._fail(e);
-      throw new Error(`AL80 write failed (${e.message}) — device unplugged or wedged; call reopen()`);
+      throw new Error(`AL80 write failed (${e.message}) — device unplugged or wedged; call reopen()`, { cause: e });
     }
   }
 

@@ -3,12 +3,12 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import {
-  yne, ga, build, announce, finish, rgb565BE, buildImageTransfer, buildClock, clockFromDate,
-  buildView, VIEW, FRAME_BYTES, BLOCK_COUNT, toHex,
+  yne, ga, build, announce, rgb565BE, buildImageTransfer, buildClock, clockFromDate,
+  buildView, VIEW, FRAME_BYTES, BLOCK_COUNT,
   buildDeletePicture, buildNextPicture, buildClearPicture, buildClearAllPictures,
   buildMainPageGif, buildMainPageImage, MP_FRAME_BYTES, MP_MAX_FRAMES,
   buildGifPage, buildStartupAnimation, GP_FRAME_BYTES, SA_FRAME_BYTES,
-  buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightSave, buildLightGet,
+  buildLightBrightness, buildLightEffect, buildLightSpeed, buildLightColor, buildLightGet,
   buildLightColorLive,
   buildVialRGBMode, buildVialRGBSave, buildVialRGB, buildVialRGBColorLive, VIALRGB_EFFECT,
   buildBarColor, buildBarSave, buildBarGet, AP_BAR,

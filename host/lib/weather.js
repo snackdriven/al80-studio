@@ -141,7 +141,7 @@ export async function getWeather({ lat, lon, units = 'F', label = 'LOCAL' } = {}
   try {
     res = await fetch(url);
   } catch (e) {
-    throw new Error(`weather.js: Open-Meteo request failed (network): ${e.message}`);
+    throw new Error(`weather.js: Open-Meteo request failed (network): ${e.message}`, { cause: e });
   }
   if (!res.ok) throw new Error(`weather.js: Open-Meteo HTTP ${res.status} ${await res.text()}`);
   const data = await res.json();

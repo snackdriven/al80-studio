@@ -18,7 +18,6 @@ export function makeCycler({
   npFocusOnChange = true,   // FR5 gate
   syncRGB = false,          // Phase-3 optional; off by default
   scheduler = null,         // Scheduler|null — alert preemption (A5); null disables alerts entirely
-  now = () => Date.now(),
 } = {}) {
   if (!Array.isArray(panels) || panels.length === 0) throw new Error('cycle: at least one panel required');
 
