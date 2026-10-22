@@ -107,3 +107,9 @@ the existing title validator runs. This is a fallback; create a compliant
 title directly. Existing valid titles and other contributors are unchanged.
 Check the title-policy fixtures with
 `node --test .github/tests/jules-pr-titles.check.cjs`.
+
+## Linting
+
+Run `npm ci` at the repository root, then `npm run lint` before opening a PR.
+The lint check fails on warnings as well as errors; `npm run lint:fix` applies
+safe automatic fixes. Keep generated output out of lint inputs.

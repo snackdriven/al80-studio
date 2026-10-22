@@ -25,7 +25,7 @@
 // CAVEAT: on-device this is still gated on the picture-page byte-swap banding fix (see SPARC) —
 // the render + transfer are validated device-free; the panel view swap needs that fix first.
 
-import { newFrame, fillRect, setPx, drawText, drawTextCentered, WIDTH, HEIGHT } from '../lib/render.js';
+import { newFrame, fillRect, setPx, drawText, WIDTH } from '../lib/render.js';
 import { GLYPH_W, GLYPH_H, textWidth } from '../lib/font.js';
 import { accentFromArt } from '../lib/art.js';
 

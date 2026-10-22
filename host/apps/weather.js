@@ -18,7 +18,7 @@
 // FONT NOTE: the 5x7 font (lib/font.js) has NO degree glyph — it carries only 0-9, ':', space,
 // '-', '/', '.', A-Z. So the '°' is drawn as a tiny hollow ring in code (drawDegree), not a char.
 
-import { newFrame, fillRect, setPx, drawText, drawTextCentered, WIDTH, HEIGHT } from '../lib/render.js';
+import { newFrame, fillRect, setPx, drawText, drawTextCentered, WIDTH } from '../lib/render.js';
 import { GLYPH_H, textWidth } from '../lib/font.js';
 
 const lerp = (a, b, t) => Math.round(a + (b - a) * t);

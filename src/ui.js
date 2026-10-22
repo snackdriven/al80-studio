@@ -217,29 +217,8 @@ function viaTransact(requestReport, match, timeoutMs = 600) {
   });
 }
 
-// Chunked send so we can drive a progress bar without depending on an
-// undocumented progress callback in hid.send. Each chunk is an independent
-// batch of 64-byte reports; gap is applied inside hid.send per its contract.
-async function sendWithProgress(label, statusEl, packets, onFraction, opts = {}) {
-  const CHUNK = 20;
-  const start = performance.now();
-  try {
-    for (let i = 0; i < packets.length; i += CHUNK) {
-      await hid.send(packets.slice(i, i + CHUNK), { gap: 0, ...opts });
-      onFraction(Math.min(packets.length, i + CHUNK) / packets.length);
-    }
-    devLog(label, { packets: packets.length, ok: true, ms: performance.now() - start });
-    return true;
-  } catch (err) {
-    const msg = (err && err.message) || String(err);
-    devLog(label, { packets: packets.length, error: msg });
-    if (statusEl) setStatus(statusEl, 'Send failed: ' + msg, 'err');
-    return false;
-  }
-}
-
 // GIF/animation send with the vendor's per-bank/per-frame pacing (hid.sendGif). Chunking would
-// break that timing, so this is separate from sendWithProgress. The device needs those pauses to
+// break that timing, so this uses the dedicated GIF transport. The device needs those pauses to
 // commit each bank; without them, GIFs render as garbage bars. Slower on purpose (seconds).
 async function sendGifWithProgress(label, statusEl, packets, onFraction) {
   const start = performance.now();
@@ -257,7 +236,7 @@ async function sendGifWithProgress(label, statusEl, packets, onFraction) {
 
 // Still-image send that ACK-gates each pixel block (hid.sendAckGated) — the fix for picture-page
 // banding/white. Blasting drops bytes; waiting for each block's echo doesn't. Separate from
-// sendWithProgress because chunking/gap-0 is exactly what causes the drops.
+// a chunked/gap-0 send because that is exactly what causes the drops.
 async function sendAckGatedWithProgress(label, statusEl, packets, onFraction) {
   const start = performance.now();
   try {
@@ -2237,7 +2216,7 @@ function setupLightingTab() {
   const controls = setupLightingControls();
   setupLightingCatalog(controls);
   setupLightingSideLed(controls);
-  const fx = setupLightingSoftFx(controls);
+  const fx = setupLightingSoftFx();
   setupLightingMusic(controls, fx);
   setupLightingPalettes(controls, fx);
 }
@@ -2452,9 +2431,7 @@ function setupLightingSideLed(controls) {
 
 }
 
-function setupLightingSoftFx(controls) {
-  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
-
+function setupLightingSoftFx() {
   // ---- software effects (host-driven color animation) -----------------------
   // These stream SAVE-LESS color reports (proto.buildLightColorLive) so they never touch the EEPROM;
   // only the one-time effect=Solid Color at the start of a run is persisted. Exactly one effect runs
@@ -2590,7 +2567,7 @@ function setupLightingSoftFx(controls) {
 
 function setupLightingMusic(controls, fx) {
   const { stopFx } = fx;
-  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
+  const { brightness, effect, speed, color } = controls;
 
   // ---- music-reactive lighting (opt-in) -------------------------------------
   // Captures shared audio in the browser (getDisplayMedia, behind the Start gesture), maps each frame
@@ -2870,7 +2847,7 @@ function setupLightingMusic(controls, fx) {
 
 function setupLightingPalettes(controls, fx) {
   const { startFx, stopFx, lerp, lerpHue } = fx;
-  const { statusEl, brightness, brightnessOut, effect, speed, speedOut, color } = controls;
+  const { brightness, brightnessOut, speed, speedOut } = controls;
 
   // ---- palettes (multi-color presets, GLOBAL board animation) ---------------
   // A palette is an ordered list of color stops. Three modes animate the WHOLE board through them,

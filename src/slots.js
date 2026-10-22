@@ -255,7 +255,7 @@ export async function removeRecent(id) {
 
 /** Trim recents to the cap, evicting oldest unpinned. Returns the evicted rows. */
 export async function evictRecents(cap = RECENTS_CAP) {
-  let rows = [];
+  let rows;
   try { rows = await getAll(STORE_RECENTS); } catch { return []; }
   const { evicted } = capRecents(rows, cap);
   for (const r of evicted) await removeRecent(r.id);

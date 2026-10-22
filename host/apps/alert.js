@@ -1,6 +1,6 @@
 // Alert card app (preempts the base app). Renders a level bar + title + wrapped body, and a
 // "press to dismiss" hint for sticky alerts. Portrait 96x160. Colors are muted for the small panel.
-import { newFrame, fillRect, drawText, drawTextCentered, wrapText, WIDTH } from '../lib/render.js';
+import { newFrame, fillRect, drawTextCentered, wrapText, WIDTH } from '../lib/render.js';
 
 const LEVELS = {
   info: { bar: [60, 130, 220], fg: [150, 200, 255], label: 'INFO' },
@@ -11,7 +11,7 @@ const LEVELS = {
 
 /**
  * @param {{title?,body?,level?,sticky?,source?,label?}} alert
- * @returns {{id,fps,render(now):Uint8Array}}
+ * @returns {{id,fps,render():Uint8Array}}
  */
 export function makeAlertApp(alert) {
   const lv = LEVELS[alert.level] || LEVELS.info;
@@ -19,7 +19,7 @@ export function makeAlertApp(alert) {
   return {
     id: 'alert:' + (alert.source || 'anon'),
     fps: 2,
-    render(now) {
+    render() {
       const fb = newFrame(bg);
       // level bar
       fillRect(fb, 0, 0, WIDTH, 16, lv.bar);

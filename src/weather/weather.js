@@ -144,7 +144,7 @@ export async function getWeather({ lat, lon, units = 'F', label = 'LOCAL' } = {}
   try {
     res = await fetch(url);
   } catch (e) {
-    throw new Error(`weather.js: Open-Meteo request failed (network): ${e.message}`);
+    throw new Error(`weather.js: Open-Meteo request failed (network): ${e.message}`, { cause: e });
   }
   if (!res.ok) throw new Error(`weather.js: Open-Meteo HTTP ${res.status} ${await res.text()}`);
   const data = await res.json();
@@ -213,7 +213,7 @@ export async function geocode(name) {
   try {
     res = await fetch(url);
   } catch (e) {
-    throw new Error(`weather.js: geocoding request failed (network): ${e.message}`);
+    throw new Error(`weather.js: geocoding request failed (network): ${e.message}`, { cause: e });
   }
   if (!res.ok) throw new Error(`weather.js: geocoding HTTP ${res.status} ${await res.text()}`);
   return shapeGeocode(await res.json());
