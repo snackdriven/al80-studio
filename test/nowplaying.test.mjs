@@ -3,7 +3,7 @@
 // a valid buildImageTransfer-ready frame. Run: node test/nowplaying.test.mjs
 import assert from 'node:assert/strict';
 import {
-  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth, saveRefreshToken
+  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth, saveRefreshToken, loadRefreshToken
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -497,6 +497,44 @@ ok('saveRefreshToken silently catches errors (e.g. quota exceeded or private mod
     assert.doesNotThrow(() => saveRefreshToken('my-token'));
   } finally {
     global.localStorage = origLocalStorage;
+  }
+});
+
+
+// ── PERSISTENCE ──────────────────────────────────────────────────────────────────
+ok('loadRefreshToken returns the token when present', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    getItem: (key) => key === 'al80.spotify.refreshToken' ? 'token123' : null
+  };
+  try {
+    assert.equal(loadRefreshToken(), 'token123');
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('loadRefreshToken returns null when not present', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    getItem: () => null
+  };
+  try {
+    assert.equal(loadRefreshToken(), null);
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('loadRefreshToken returns null on exception (e.g. privacy mode)', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    getItem: () => { throw new Error('Access denied'); }
+  };
+  try {
+    assert.equal(loadRefreshToken(), null);
+  } finally {
+    global.localStorage = originalLocalStorage;
   }
 });
 
