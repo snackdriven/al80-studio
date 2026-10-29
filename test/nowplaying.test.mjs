@@ -3,7 +3,7 @@
 // a valid buildImageTransfer-ready frame. Run: node test/nowplaying.test.mjs
 import assert from 'node:assert/strict';
 import {
-  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth, saveRefreshToken, loadRefreshToken, loadPendingAuth
+  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth, saveRefreshToken, loadRefreshToken, loadPendingAuth, clearPendingAuth
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -583,6 +583,33 @@ ok('loadPendingAuth handles localStorage errors (e.g. strict mode or unavailable
 
     const result = loadPendingAuth();
     assert.deepEqual(result, { verifier: null, state: null });
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+
+ok('clearPendingAuth removes verifier and state from localStorage', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    const removedItems = [];
+    global.localStorage = {
+      removeItem: (key) => removedItems.push(key)
+    };
+    clearPendingAuth();
+    assert.deepEqual(removedItems, ['al80.spotify.pkceVerifier', 'al80.spotify.authState']);
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('clearPendingAuth silently ignores localStorage errors', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    global.localStorage = {
+      removeItem: () => { throw new Error('localStorage is disabled'); }
+    };
+    assert.doesNotThrow(() => clearPendingAuth());
   } finally {
     global.localStorage = originalLocalStorage;
   }
