@@ -21,6 +21,8 @@ import * as effects from './effects.js';
 import * as music from './music.js';
 
 // ---- tiny DOM helpers -------------------------------------------------------
+const PALETTE_MODES = new Set(['cycle', 'breathe', 'strobe']);
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -3016,7 +3018,7 @@ function setupLightingPalettes(controls, fx) {
     let stops = Array.isArray(p.stops) ? p.stops.slice(0, PALETTE_MAX) : [];
     if (stops.length < PALETTE_MIN) stops = DEFAULT_PRESETS.Sunset.stops.slice();
     paletteStops = stops;
-    paletteMode.value = ['cycle', 'breathe', 'strobe'].includes(p.mode) ? p.mode : 'cycle';
+    paletteMode.value = PALETTE_MODES.has(p.mode) ? p.mode : 'cycle';
     paletteSpeed.value = String(Math.max(10, Math.min(300, +p.speed || 40)));
     paletteSpeedOut.textContent = paletteSpeed.value;
     renderStops();
