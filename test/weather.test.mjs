@@ -3,11 +3,8 @@
 // card renderer produces a valid buildImageTransfer-ready frame. Run: node test/weather.test.mjs
 import assert from 'node:assert/strict';
 import {
-  shapeGeocode, loadLocation, saveLocation, DEFAULT_LOCATION, getWeather, geocode
+  weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock, shapeGeocode, loadLocation, saveLocation, DEFAULT_LOCATION, getWeather, geocode
 } from '../src/weather/weather.js';
-import {
-  weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock
-} from '../src/lib/weather-common.js';
 import { render as renderCard } from '../src/weather/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
 

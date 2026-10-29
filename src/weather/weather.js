@@ -135,3 +135,6 @@ export function saveLocation(patch = {}) {
   try { localStorage.setItem(LS_LOCATION, JSON.stringify(next)); } catch { /* private mode */ }
   return next;
 }
+
+// Preserve the weather module API used by the UI, host previews, and tests.
+export { weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock } from '../lib/weather-common.js';

@@ -59,3 +59,6 @@ export function getWeatherFromEnv(env = process.env) {
     label: env.WEATHER_LABEL || 'DETROIT',
   });
 }
+
+// Preserve the weather module API used by the UI, host previews, and tests.
+export { weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock } from '../../src/lib/weather-common.js';
