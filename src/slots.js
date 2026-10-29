@@ -258,7 +258,7 @@ export async function evictRecents(cap = RECENTS_CAP) {
   let rows;
   try { rows = await getAll(STORE_RECENTS); } catch { return []; }
   const { evicted } = capRecents(rows, cap);
-  for (const r of evicted) await removeRecent(r.id);
+  await Promise.all(evicted.map((r) => removeRecent(r.id)));
   return evicted;
 }
 
