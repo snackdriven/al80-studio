@@ -49,7 +49,13 @@ class Daemon {
   // the echo count. If echoes don't advance across a whole frame, the device is stalling.
   async send(packets) {
     const before = this.t.echoes;
-    for (const p of packets) { this.t.send([p]); await sleep(1); }
+    // Send in chunks to balance hardware pacing requirements with event loop efficiency
+    const CHUNK = 10;
+    for (let i = 0; i < packets.length; i += CHUNK) {
+      const chunk = packets.slice(i, i + CHUNK);
+      this.t.send(chunk);
+      await sleep(chunk.length);
+    }
     await sleep(30); // let trailing echoes arrive
     const got = this.t.echoes - before;
     return { sent: packets.length, echoed: got, healthy: got > 0 };
