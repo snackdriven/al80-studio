@@ -7,7 +7,7 @@ import {
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
-import { newFrame, fillRect, setPx, WIDTH, HEIGHT } from '../src/nowplaying/render.js';
+import { newFrame, fillRect, WIDTH, HEIGHT } from '../src/nowplaying/render.js';
 
 let pass = 0;
 const ok = (name, fn) => { fn(); pass++; console.log('  ok -', name); };
