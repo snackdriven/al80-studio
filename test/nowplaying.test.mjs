@@ -366,7 +366,7 @@ await okAsync('exchangeCodeForToken throws on non-ok fetch response', async () =
     global.fetch = originalFetch;
   }
 });
-console.log(`\n${pass} checks passed.`);
+
 
 // ── CLEAR REFRESH TOKEN ────────────────────────────────────────────────────────
 ok('clearRefreshToken calls localStorage.removeItem with the correct key', () => {
@@ -394,3 +394,4 @@ ok('clearRefreshToken ignores exceptions thrown by localStorage', () => {
     global.localStorage = originalLocalStorage;
   }
 });
+console.log(`\n${pass} checks passed.`);
