@@ -21,6 +21,8 @@ import * as effects from './effects.js';
 import * as music from './music.js';
 
 // ---- tiny DOM helpers -------------------------------------------------------
+const PALETTE_MODES = new Set(['cycle', 'breathe', 'strobe']);
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -1368,185 +1370,191 @@ function setupSlideshowTab() {
 // The proven display path is buildImageTransfer() ALONE: its PK_ADD_PIC setup commits AND shows the
 // frame. We do NOT send buildView(PICTURE) after — that's PK_TOGGLE_PIC, which advances to the next
 // slot and flips past the card (host/device.js sendFrame learned this on-device).
-function setupNowPlayingTab() {
-  const POLL_MS = 5000;
-  const PROGRESS_REFRESH_MS = 15000; // re-push while playing to advance the progress bar, even mid-track
-  const PAUSE_HOME_MS = 5 * 60 * 1000; // after this long paused, fall back to the home page
+class NowPlayingTab {
+  constructor() {
+    this.POLL_MS = 5000;
+    this.PROGRESS_REFRESH_MS = 15000;
+    this.PAUSE_HOME_MS = 5 * 60 * 1000;
+    this.ART_CACHE_MAX = 50;
 
-  const connectBtn = $('#npConnectSpotify');
-  const forgetBtn = $('#npForgetSpotify');
-  const authStatus = $('#npAuthStatus');
-  const redirectEl = $('#npRedirectUri');
-  const statusEl = $('#npStatus');
-  const artThumb = $('#npArtThumb');
-  const titleEl = $('#npTrackTitle');
-  const artistEl = $('#npTrackArtist');
-  const progWrap = $('#npProgressWrap');
-  const progBar = $('#npProgress');
-  if (!connectBtn) return;
+    this.connectBtn = $('#npConnectSpotify');
+    this.forgetBtn = $('#npForgetSpotify');
+    this.authStatus = $('#npAuthStatus');
+    this.redirectEl = $('#npRedirectUri');
+    this.statusEl = $('#npStatus');
+    this.artThumb = $('#npArtThumb');
+    this.titleEl = $('#npTrackTitle');
+    this.artistEl = $('#npTrackArtist');
+    this.progWrap = $('#npProgressWrap');
+    this.progBar = $('#npProgress');
 
-  const REDIRECT_URI = spotify.redirectUri();
-  redirectEl.textContent = REDIRECT_URI;
-  // Log it so the user can copy the EXACT string to register in the Spotify dashboard.
-  console.log('[nowplaying] Spotify redirect URI to register:', REDIRECT_URI);
+    this.tokenState = { accessToken: null, expiresAt: 0 };
+    this.npToken = 0;
+    this.npTimer = null;
+    this.npRunning = false;
+    this.sending = false;
+    this.lastKey = null;
+    this.lastSentAt = 0;
+    this.pausedSince = null;
+    this.artCache = new Map();
+  }
 
-  const spotifyConnected = () => !!spotify.loadRefreshToken();
+  setup() {
+    if (!this.connectBtn) return;
 
-  // ---- access-token cache (refresh only near expiry / on 401; PKCE rotates the refresh token) ----
-  let tokenState = { accessToken: null, expiresAt: 0 };
-  async function accessToken() {
-    if (!spotify.needsRefresh(tokenState, Date.now())) return tokenState.accessToken;
+    this.REDIRECT_URI = spotify.redirectUri();
+    this.redirectEl.textContent = this.REDIRECT_URI;
+    console.log('[nowplaying] Spotify redirect URI to register:', this.REDIRECT_URI);
+
+    this.connectBtn.addEventListener('click', this.beginAuth.bind(this));
+    this.forgetBtn.addEventListener('click', () => {
+      this.stopNP();
+      spotify.clearRefreshToken();
+      this.tokenState = { accessToken: null, expiresAt: 0 };
+      this.reflectAuth();
+      setStatus(this.statusEl, '');
+    });
+
+    nowPlayingCtl.stop = this.stopNP.bind(this);
+    nowPlayingCtl.sync = this.syncNP.bind(this);
+    nowPlayingCtl.start = this.startNP.bind(this);
+
+    this.completeAuthFromRedirect().finally(() => this.reflectAuth());
+    this.reflectAuth();
+  }
+
+  spotifyConnected() {
+    return !!spotify.loadRefreshToken();
+  }
+
+  cacheArt(id, v) {
+    this.artCache.set(id, v);
+    if (this.artCache.size > this.ART_CACHE_MAX) this.artCache.delete(this.artCache.keys().next().value);
+  }
+
+  async accessToken() {
+    if (!spotify.needsRefresh(this.tokenState, Date.now())) return this.tokenState.accessToken;
     const refreshToken = spotify.loadRefreshToken();
     if (!refreshToken) throw new Error('Not connected to Spotify — click Connect Spotify.');
     const t = await spotify.refreshAccessToken({ clientId: spotify.CLIENT_ID, refreshToken });
-    tokenState = { accessToken: t.accessToken, expiresAt: Date.now() + (t.expiresInSec || 3600) * 1000 };
-    if (t.refreshToken && t.refreshToken !== refreshToken) spotify.saveRefreshToken(t.refreshToken); // persist rotation
-    return tokenState.accessToken;
+    this.tokenState = { accessToken: t.accessToken, expiresAt: Date.now() + (t.expiresInSec || 3600) * 1000 };
+    if (t.refreshToken && t.refreshToken !== refreshToken) spotify.saveRefreshToken(t.refreshToken);
+    return this.tokenState.accessToken;
   }
 
-  async function currentTrack() {
-    let tok = await accessToken();
+  async currentTrack() {
+    let tok = await this.accessToken();
     try { return await spotify.getNowPlaying(tok); }
     catch (e) {
-      if (e && e.status === 401) { // expired mid-cache — force one refresh + retry
-        tokenState = { accessToken: null, expiresAt: 0 };
-        tok = await accessToken();
+      if (e && e.status === 401) {
+        this.tokenState = { accessToken: null, expiresAt: 0 };
+        tok = await this.accessToken();
         return await spotify.getNowPlaying(tok);
       }
       throw e;
     }
   }
 
-  // ---- track readout (title / artist / art thumbnail) ----
-  function showTrack(np) {
+  showTrack(np) {
     if (np && np.title) {
-      titleEl.textContent = np.title;
-      artistEl.textContent = (np.isPlaying ? '' : '(paused) ') + (np.artist || '');
-      if (np.artUrl && artThumb.src !== np.artUrl) artThumb.src = np.artUrl; // display-only, no CORS needed
-      artThumb.hidden = !np.artUrl;
+      this.titleEl.textContent = np.title;
+      this.artistEl.textContent = (np.isPlaying ? '' : '(paused) ') + (np.artist || '');
+      if (np.artUrl && this.artThumb.src !== np.artUrl) this.artThumb.src = np.artUrl;
+      this.artThumb.hidden = !np.artUrl;
     } else {
-      titleEl.textContent = '—';
-      artistEl.textContent = 'Nothing playing';
-      artThumb.removeAttribute('src');
-      artThumb.hidden = true;
+      this.titleEl.textContent = '—';
+      this.artistEl.textContent = 'Nothing playing';
+      this.artThumb.removeAttribute('src');
+      this.artThumb.hidden = true;
     }
   }
 
-  // ---- auth ----
-  function reflectAuth() {
-    const authed = spotifyConnected();
-    connectBtn.textContent = authed ? 'Reconnect Spotify' : 'Connect Spotify';
-    forgetBtn.hidden = !authed;
-    if (authed && authStatus.dataset.state !== 'busy') setStatus(authStatus, 'Connected to Spotify.', 'ok');
-    else if (!authed) setStatus(authStatus, 'Not connected to Spotify.');
-    syncNP();
+  reflectAuth() {
+    const authed = this.spotifyConnected();
+    this.connectBtn.textContent = authed ? 'Reconnect Spotify' : 'Connect Spotify';
+    this.forgetBtn.hidden = !authed;
+    if (authed && this.authStatus.dataset.state !== 'busy') setStatus(this.authStatus, 'Connected to Spotify.', 'ok');
+    else if (!authed) setStatus(this.authStatus, 'Not connected to Spotify.');
+    this.syncNP();
   }
 
-  async function beginAuth() {
+  async beginAuth() {
     try {
       const verifier = spotify.generateCodeVerifier();
       const challenge = await spotify.codeChallenge(verifier);
       const state = spotify.generateCodeVerifier().slice(0, 16);
       spotify.savePendingAuth(verifier, state);
       const url = spotify.buildAuthUrl({
-        clientId: spotify.CLIENT_ID, redirectUri: REDIRECT_URI, codeChallenge: challenge, state,
+        clientId: spotify.CLIENT_ID, redirectUri: this.REDIRECT_URI, codeChallenge: challenge, state,
       });
-      setStatus(authStatus, 'Redirecting to Spotify…');
-      window.location.assign(url); // full-page redirect; we come back to ?code=...
+      setStatus(this.authStatus, 'Redirecting to Spotify…');
+      window.location.assign(url);
     } catch (e) {
-      setStatus(authStatus, 'Auth failed: ' + ((e && e.message) || e), 'err');
+      setStatus(this.authStatus, 'Auth failed: ' + ((e && e.message) || e), 'err');
     }
   }
 
-  // Complete the redirect: if we came back with ?code=, exchange it for tokens. Verifies state,
-  // persists the refresh token, and scrubs the code from the URL so a reload can't replay it.
-  async function completeAuthFromRedirect() {
+  async completeAuthFromRedirect() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const err = params.get('error');
     if (!code && !err) return;
     const { verifier, state: savedState } = spotify.loadPendingAuth();
     const returnedState = params.get('state');
-    // scrub the query either way so we don't loop on reload
     const cleanUrl = window.location.origin + window.location.pathname;
     window.history.replaceState({}, '', cleanUrl);
-    if (err) { setStatus(authStatus, 'Spotify denied access: ' + err, 'err'); spotify.clearPendingAuth(); return; }
+    if (err) { setStatus(this.authStatus, 'Spotify denied access: ' + err, 'err'); spotify.clearPendingAuth(); return; }
     if (!verifier || (savedState && returnedState && savedState !== returnedState)) {
-      setStatus(authStatus, 'Auth state mismatch — try Connect Spotify again.', 'err');
+      setStatus(this.authStatus, 'Auth state mismatch — try Connect Spotify again.', 'err');
       spotify.clearPendingAuth();
       return;
     }
-    authStatus.dataset.state = 'busy';
-    setStatus(authStatus, 'Finishing Spotify sign-in…');
+    this.authStatus.dataset.state = 'busy';
+    setStatus(this.authStatus, 'Finishing Spotify sign-in…');
     try {
       const tok = await spotify.exchangeCodeForToken({
-        clientId: spotify.CLIENT_ID, code, redirectUri: REDIRECT_URI, codeVerifier: verifier,
+        clientId: spotify.CLIENT_ID, code, redirectUri: this.REDIRECT_URI, codeVerifier: verifier,
       });
       spotify.saveRefreshToken(tok.refreshToken);
-      if (tok.accessToken) tokenState = { accessToken: tok.accessToken, expiresAt: Date.now() + (tok.expiresInSec || 3600) * 1000 };
+      if (tok.accessToken) this.tokenState = { accessToken: tok.accessToken, expiresAt: Date.now() + (tok.expiresInSec || 3600) * 1000 };
     } catch (e) {
-      setStatus(authStatus, 'Token exchange failed: ' + ((e && e.message) || e), 'err');
+      setStatus(this.authStatus, 'Token exchange failed: ' + ((e && e.message) || e), 'err');
     } finally {
-      delete authStatus.dataset.state;
+      delete this.authStatus.dataset.state;
       spotify.clearPendingAuth();
-      reflectAuth();
+      this.reflectAuth();
     }
   }
 
-  connectBtn.addEventListener('click', beginAuth);
-  forgetBtn.addEventListener('click', () => {
-    stopNP();
-    spotify.clearRefreshToken();
-    tokenState = { accessToken: null, expiresAt: 0 };
-    reflectAuth();
-    setStatus(statusEl, '');
-  });
-
-  // ---- live push loop (setTimeout chain + generation token, like the lighting FX) ----
-  let npToken = 0, npTimer = null, npRunning = false, sending = false;
-  let lastKey = null, lastSentAt = 0, pausedSince = null;
-  const artCache = new Map(); // trackId -> Uint8Array|null (null = art failed/tainted, use placeholder)
-  const ART_CACHE_MAX = 50;   // bound memory over a long session — drop the oldest past this
-  const cacheArt = (id, v) => { artCache.set(id, v); if (artCache.size > ART_CACHE_MAX) artCache.delete(artCache.keys().next().value); };
-
-  // Fall back to the home/clock page (nothing playing, or paused a long while). The loop keeps
-  // polling; the next track switches straight back to the now-playing card.
-  async function fallBackHome(msg) {
-    setStatus(statusEl, msg);
-    slotsLive(false);                              // release the live picture slot back to its cached thumb
-    await guardedSend('View → Clock', statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 });
+  async fallBackHome(msg) {
+    setStatus(this.statusEl, msg);
+    slotsLive(false);
+    await guardedSend('View → Clock', this.statusEl, proto.buildView(proto.VIEW.HOMEPAGE), { gap: 1 });
     setNowShowing('clock');
-    lastKey = 'idle';
+    this.lastKey = 'idle';
   }
 
-  function stopNP() {
-    npRunning = false;
-    npToken++;                                     // invalidate any in-flight loop iteration
-    if (npTimer) { clearTimeout(npTimer); npTimer = null; }
-    slotsLive(false);                              // hand the picture/main slot back to its cached thumb
+  stopNP() {
+    this.npRunning = false;
+    this.npToken++;
+    if (this.npTimer) { clearTimeout(this.npTimer); this.npTimer = null; }
+    slotsLive(false);
   }
-  nowPlayingCtl.stop = stopNP;
 
-  // No Start/Stop button: now-playing arms itself whenever this tab is open with the keyboard +
-  // Spotify connected, and stops when you leave the tab or disconnect. It still owns the single HID
-  // connection while live, so leaving the tab is what yields the device to the other editors.
-  // syncNP runs on every connection/auth change; the tab switch calls nowPlayingCtl.start on open.
-  function syncNP() {
-    if (nowPlayingVisible() && connected && spotifyConnected()) startNP();
-    else if (!npRunning && !connected) setStatus(statusEl, 'Connect the keyboard to show now-playing.');
-    else if (!npRunning && !spotifyConnected()) setStatus(statusEl, 'Connect Spotify to show now-playing.');
+  syncNP() {
+    if (nowPlayingVisible() && connected && this.spotifyConnected()) this.startNP();
+    else if (!this.npRunning && !connected) setStatus(this.statusEl, 'Connect the keyboard to show now-playing.');
+    else if (!this.npRunning && !this.spotifyConnected()) setStatus(this.statusEl, 'Connect Spotify to show now-playing.');
   }
-  nowPlayingCtl.sync = syncNP;
-  nowPlayingCtl.start = startNP;
 
-  async function pushTrack(np) {
-    if (sending) return;
-    sending = true;
-    progWrap.hidden = false;
-    progBar.style.width = '0%';
+  async pushTrack(np) {
+    if (this.sending) return;
+    this.sending = true;
+    this.progWrap.hidden = false;
+    this.progBar.style.width = '0%';
     try {
-      if (!artCache.has(np.trackId)) cacheArt(np.trackId, await loadArtRGB(np.artUrl));
-      const artRGB = artCache.get(np.trackId);
+      if (!this.artCache.has(np.trackId)) this.cacheArt(np.trackId, await loadArtRGB(np.artUrl));
+      const artRGB = this.artCache.get(np.trackId);
       const frame = renderNowPlayingCard({
         title: np.title, artist: np.artist, artRGB,
         progress: np.progress, paused: !np.isPlaying,
@@ -1554,89 +1562,84 @@ function setupNowPlayingTab() {
       });
       let packets;
       try { packets = proto.buildImageTransfer(frame); }
-      catch (e) { setStatus(statusEl, 'Build failed: ' + ((e && e.message) || e), 'err'); return false; }
-      const onProg = (f) => { progBar.style.width = Math.round(f * 100) + '%'; };
-      const ok = await sendAckGatedWithProgress('Now Playing → card', statusEl, packets, onProg);
+      catch (e) { setStatus(this.statusEl, 'Build failed: ' + ((e && e.message) || e), 'err'); return false; }
+      const onProg = (f) => { this.progBar.style.width = Math.round(f * 100) + '%'; };
+      const ok = await sendAckGatedWithProgress('Now Playing → card', this.statusEl, packets, onProg);
       if (!ok) return false;
-      setNowShowing('picture'); // the card lives on the picture page
-      setStatus(statusEl, `${np.isPlaying ? '▶' : '⏸'} ${np.title} — ${np.artist}`, 'ok');
+      setNowShowing('picture');
+      setStatus(this.statusEl, `${np.isPlaying ? '▶' : '⏸'} ${np.title} — ${np.artist}`, 'ok');
       return true;
     } finally {
-      sending = false;
-      setTimeout(() => { progWrap.hidden = true; }, 600);
+      this.sending = false;
+      setTimeout(() => { this.progWrap.hidden = true; }, 600);
     }
   }
 
-  async function tick(token) {
-    if (token !== npToken || !npRunning) return;
-    // The whole body is wrapped so a throw ANYWHERE (a failed art fetch, a build error, a mid-cache
-    // 401) can never skip the re-arm below. The old loop awaited pushTrack() unguarded, so one bad
-    // push killed the poll — the card would show the FIRST song and never update again. Now the next
-    // poll is scheduled in `finally`, and lastKey only advances after a push actually succeeds.
+  async tick(token) {
+    if (token !== this.npToken || !this.npRunning) return;
     try {
       let np = null;
       try {
-        np = await currentTrack();
+        np = await this.currentTrack();
       } catch (e) {
         const msg = (e && e.message) || String(e);
         console.warn('[nowplaying] poll — Spotify error:', msg);
-        setStatus(statusEl, 'Spotify error: ' + msg, 'err');
-        if (/Not connected to Spotify/i.test(msg)) { stopNP(); return; } // refresh token gone/revoked
+        setStatus(this.statusEl, 'Spotify error: ' + msg, 'err');
+        if (/Not connected to Spotify/i.test(msg)) { this.stopNP(); return; }
       }
-      if (token !== npToken || !npRunning) return;
+      if (token !== this.npToken || !this.npRunning) return;
 
       if (np && np.title) {
-        showTrack(np);
-        slotsLive(true, np); // keep the device-bar live readout in step with the track
-        pausedSince = np.isPlaying ? null : (pausedSince ?? Date.now());
-        const restedPaused = !np.isPlaying && Date.now() - pausedSince >= PAUSE_HOME_MS;
+        this.showTrack(np);
+        slotsLive(true, np);
+        this.pausedSince = np.isPlaying ? null : (this.pausedSince ?? Date.now());
+        const restedPaused = !np.isPlaying && Date.now() - this.pausedSince >= this.PAUSE_HOME_MS;
         const key = `${np.trackId}|${np.isPlaying ? 'r' : 'p'}`;
-        const trackChanged = key !== lastKey;
-        const progressDue = np.isPlaying && Date.now() - lastSentAt >= PROGRESS_REFRESH_MS;
-        const willPush = !restedPaused && (trackChanged || progressDue) && !sending;
+        const trackChanged = key !== this.lastKey;
+        const progressDue = np.isPlaying && Date.now() - this.lastSentAt >= this.PROGRESS_REFRESH_MS;
+        const willPush = !restedPaused && (trackChanged || progressDue) && !this.sending;
         console.log('[nowplaying] poll', np.trackId, np.isPlaying ? 'playing' : 'paused',
-          willPush ? (trackChanged ? 'PUSH (changed)' : 'PUSH (progress)') : (restedPaused ? 'rested' : sending ? 'busy' : 'unchanged'));
-        if (restedPaused && lastKey !== 'idle') {
-          await fallBackHome('Paused a while — showing clock.'); // rest the screen instead of a frozen card
+          willPush ? (trackChanged ? 'PUSH (changed)' : 'PUSH (progress)') : (restedPaused ? 'rested' : this.sending ? 'busy' : 'unchanged'));
+        if (restedPaused && this.lastKey !== 'idle') {
+          await this.fallBackHome('Paused a while — showing clock.');
         } else if (willPush) {
           try {
-            if (await pushTrack(np)) {
-              lastKey = key;          // advance the change-key ONLY after a successful render+push
-              lastSentAt = Date.now();
+            if (await this.pushTrack(np)) {
+              this.lastKey = key;
+              this.lastSentAt = Date.now();
             }
           } catch (e) {
-            // A push failure (art load / build / send) must not kill the loop or advance lastKey —
-            // leave it stale so the very next poll retries this exact track.
             console.warn('[nowplaying] push failed, retrying next poll:', (e && e.message) || e);
-            setStatus(statusEl, 'Push failed: ' + ((e && e.message) || e), 'err');
+            setStatus(this.statusEl, 'Push failed: ' + ((e && e.message) || e), 'err');
           }
         }
       } else {
-        showTrack(null);
-        if (lastKey !== 'idle') await fallBackHome('Nothing playing — showing clock.');
+        this.showTrack(null);
+        if (this.lastKey !== 'idle') await this.fallBackHome('Nothing playing — showing clock.');
       }
     } finally {
-      // Always re-arm while running — this is the fix for "only the first song updates".
-      if (token === npToken && npRunning) npTimer = setTimeout(() => tick(token), POLL_MS);
+      if (token === this.npToken && this.npRunning) this.npTimer = setTimeout(() => this.tick(token), this.POLL_MS);
     }
   }
 
-  function startNP() {
-    if (npRunning || !connected || !spotifyConnected()) return; // self-arming: no-op unless ready
-    weatherCtl.stop?.();                           // one screen, one owner — now-playing takes over from weather
-    stopClockSync();                               // clock-sync flips the view home every 60s — can't co-own the screen
-    npRunning = true;
-    const token = ++npToken;
-    lastKey = null; lastSentAt = 0; pausedSince = null;
-    slotsLive(true, null); // claim the picture/main slot as live immediately (track fills in on first poll)
-    setStatus(statusEl, 'Watching Spotify — play something.', 'ok');
-    tick(token);
+  startNP() {
+    if (this.npRunning || !connected || !this.spotifyConnected()) return;
+    weatherCtl.stop?.();
+    stopClockSync();
+    this.npRunning = true;
+    const token = ++this.npToken;
+    this.lastKey = null; this.lastSentAt = 0; this.pausedSince = null;
+    slotsLive(true, null);
+    setStatus(this.statusEl, 'Watching Spotify — play something.', 'ok');
+    this.tick(token);
   }
-
-  // On load: finish an in-flight redirect (if any), then reflect state.
-  completeAuthFromRedirect().finally(reflectAuth);
-  reflectAuth();
 }
+
+function setupNowPlayingTab() {
+  const tab = new NowPlayingTab();
+  tab.setup();
+}
+
 
 // The weather tab — the second ambient-display feature, built to the same shape as now-playing.
 // Self-arming: it polls Open-Meteo (no API key) every 10 min while this tab is open, renders the
@@ -3016,7 +3019,7 @@ function setupLightingPalettes(controls, fx) {
     let stops = Array.isArray(p.stops) ? p.stops.slice(0, PALETTE_MAX) : [];
     if (stops.length < PALETTE_MIN) stops = DEFAULT_PRESETS.Sunset.stops.slice();
     paletteStops = stops;
-    paletteMode.value = ['cycle', 'breathe', 'strobe'].includes(p.mode) ? p.mode : 'cycle';
+    paletteMode.value = PALETTE_MODES.has(p.mode) ? p.mode : 'cycle';
     paletteSpeed.value = String(Math.max(10, Math.min(300, +p.speed || 40)));
     paletteSpeedOut.textContent = paletteSpeed.value;
     renderStops();
