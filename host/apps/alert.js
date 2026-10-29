@@ -38,9 +38,11 @@ export function makeAlertApp(alert) {
   };
 }
 
+const VALID_LEVELS = new Set(['info', 'warn', 'error', 'ok']);
+
 /** Fill defaults on an incoming alert (from HTTP / ntfy). */
 export function normalizeAlert(a = {}) {
-  const level = ['info', 'warn', 'error', 'ok'].includes(a.level) ? a.level : 'info';
+  const level = VALID_LEVELS.has(a.level) ? a.level : 'info';
   return {
     source: String(a.source || 'anon'),
     level,

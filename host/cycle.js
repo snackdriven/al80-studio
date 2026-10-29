@@ -77,75 +77,73 @@ export function makeCycler({
    * Returns the new paused state. */
   function togglePaused() { paused = !paused; return paused; }
 
+  async function transitionTo(newIdx, t) {
+    idx = newIdx;
+    await showPanel(panels[idx]);
+    dwellUntil = t + panels[idx].dwellMs;
+  }
+
+  async function handleAlerts(t) {
+    if (scheduler) scheduler.update(t); // expire transient alerts
+    const alert = scheduler && scheduler.alertCount > 0 ? scheduler.active() : null; // [CORRECTION] A5 — alertCount, not active() truthiness
+    if (alert) {
+      if (!preempting || alert !== lastAlertShown) {
+        await pushCard(alert.render(new Date(t)));
+        preempting = true;
+        lastAlertShown = alert;
+      }
+      return true; // hold; dwell frozen
+    }
+    if (preempting) { // alert cleared -> resume, full fresh dwell (the user lost screen time to it)
+      preempting = false;
+      lastAlertShown = null;
+      await transitionTo(idx, t);
+      return true; // processed a return-from-preemption transition, return true so tick() ends early this frame
+    }
+    return false;
+  }
+
+  function determineNextIndex(t) {
+    if (pendingJump != null) {
+      const wantId = pendingJump;
+      pendingJump = null;
+      const i = panels.findIndex((p) => p.id === wantId);
+      if (i >= 0 && available(panels[i])) {
+        return i;
+      }
+      // unknown/unavailable panel -> ignored, fall through to normal dwell logic this tick
+    }
+    if (pendingStep) { // explicit PANEL_NEXT — advance now, regardless of paused/dwell
+      pendingStep = false;
+      return nextAvailableIndex(idx);
+    }
+    if (mode === 'smart' && npFocusOnChange && !paused) {
+      const npi = panels.findIndex((p) => p.id === 'nowplaying');
+      // consume-once regardless of whether we act, so a stale flag can't fire later (R5)
+      const wants = npi >= 0 ? !!panels[npi].wantsFocus?.() : false;
+      if (wants && npi !== idx && available(panels[npi])) {
+        return npi;
+      }
+    }
+    const p = panels[idx];
+    if (dwellUntil === 0) { // first tick
+      return nextAvailableIndex(idx, true);
+    }
+    if (!available(p)) { // current panel died mid-dwell
+      return nextAvailableIndex(idx);
+    }
+    if (t >= dwellUntil && !paused) { // dwell elapsed -> advance (frozen while paused)
+      return nextAvailableIndex(idx);
+    }
+    // else: still dwelling, nothing to do this tick
+    return null;
+  }
+
   async function tick(t) {
     try {
-      if (scheduler) scheduler.update(t); // expire transient alerts
-      const alert = scheduler && scheduler.alertCount > 0 ? scheduler.active() : null; // [CORRECTION] A5 — alertCount, not active() truthiness
-      if (alert) {
-        if (!preempting || alert !== lastAlertShown) {
-          await pushCard(alert.render(new Date(t)));
-          preempting = true;
-          lastAlertShown = alert;
-        }
-        return; // hold; dwell frozen
-      }
-      if (preempting) { // alert cleared -> resume, full fresh dwell (the user lost screen time to it)
-        preempting = false;
-        lastAlertShown = null;
-        await showPanel(panels[idx]);
-        dwellUntil = t + panels[idx].dwellMs;
-        return;
-      }
-      if (pendingJump != null) {
-        const wantId = pendingJump;
-        pendingJump = null;
-        const i = panels.findIndex((p) => p.id === wantId);
-        if (i >= 0 && available(panels[i])) {
-          idx = i;
-          await showPanel(panels[idx]);
-          dwellUntil = t + panels[idx].dwellMs;
-          return;
-        }
-        // unknown/unavailable panel -> ignored, fall through to normal dwell logic this tick
-      }
-      if (pendingStep) { // explicit PANEL_NEXT — advance now, regardless of paused/dwell
-        pendingStep = false;
-        idx = nextAvailableIndex(idx);
-        await showPanel(panels[idx]);
-        dwellUntil = t + panels[idx].dwellMs;
-        return;
-      }
-      if (mode === 'smart' && npFocusOnChange && !paused) {
-        const npi = panels.findIndex((p) => p.id === 'nowplaying');
-        // consume-once regardless of whether we act, so a stale flag can't fire later (R5)
-        const wants = npi >= 0 ? !!panels[npi].wantsFocus?.() : false;
-        if (wants && npi !== idx && available(panels[npi])) {
-          idx = npi;
-          await showPanel(panels[idx]);
-          dwellUntil = t + panels[idx].dwellMs;
-          return;
-        }
-      }
-      const p = panels[idx];
-      if (dwellUntil === 0) { // first tick
-        idx = nextAvailableIndex(idx, true);
-        await showPanel(panels[idx]);
-        dwellUntil = t + panels[idx].dwellMs;
-        return;
-      }
-      if (!available(p)) { // current panel died mid-dwell
-        idx = nextAvailableIndex(idx);
-        await showPanel(panels[idx]);
-        dwellUntil = t + panels[idx].dwellMs;
-        return;
-      }
-      if (t >= dwellUntil && !paused) { // dwell elapsed -> advance (frozen while paused)
-        idx = nextAvailableIndex(idx);
-        await showPanel(panels[idx]);
-        dwellUntil = t + panels[idx].dwellMs;
-        return;
-      }
-      // else: still dwelling, nothing to do this tick
+      if (await handleAlerts(t)) return;
+      const nextIdx = determineNextIndex(t);
+      if (nextIdx !== null) await transitionTo(nextIdx, t);
     } catch (e) {
       if (dev.opened === false) {
         committed = false; // our card's slot ownership is unknown after a drop — never delete blind
