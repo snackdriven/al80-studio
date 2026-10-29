@@ -478,7 +478,7 @@ export function buildAppLauncherMacro(runTarget, opts = {}) {
 // mod-wrapped keys (LGUI/LCTL/LALT/LSFT + right-hand), MO/TG/TO/DF/TT/OSL,
 // LT(), MT(), MACRO(n) and CUSTOM(n). Everything is best-effort and defensive:
 // an unknown string encodes to null (skip the live write), and an unknown
-// number decodes to a "0xXXXX" token (still shows something in the UI).
+// number decodes to a "0xNNNN" token (still shows something in the UI).
 //
 // Ranges follow modern QMK / VIA v3 quantum keycodes (quantum_keycodes.h).
 // ---------------------------------------------------------------------------
@@ -630,7 +630,7 @@ function splitArgs(s) {
 
 /**
  * Decode a 16-bit VIA keycode number to a readable string. Never throws;
- * unknown values come back as "0xXXXX" (still round-trips via keycodeToNumber).
+ * unknown values come back as "0xNNNN" (still round-trips via keycodeToNumber).
  * @param {number} n
  * @returns {string}
  */
