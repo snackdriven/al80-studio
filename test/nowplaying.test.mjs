@@ -3,7 +3,7 @@
 // a valid buildImageTransfer-ready frame. Run: node test/nowplaying.test.mjs
 import assert from 'node:assert/strict';
 import {
-  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth
+  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth, saveRefreshToken
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -429,6 +429,45 @@ ok('savePendingAuth ignores exceptions from localStorage', () => {
     });
   } finally {
     global.localStorage = originalLocalStorage;
+  }
+});
+
+
+
+// ── SAVE REFRESH TOKEN ────────────────────────────────────────────────────────
+ok('saveRefreshToken stores truthy value in localStorage', () => {
+  const origLocalStorage = global.localStorage;
+  let key, val;
+  try {
+    global.localStorage = { setItem: (k, v) => { key = k; val = v; } };
+    saveRefreshToken('my-token');
+    assert.equal(key, 'al80.spotify.refreshToken');
+    assert.equal(val, 'my-token');
+  } finally {
+    global.localStorage = origLocalStorage;
+  }
+});
+
+ok('saveRefreshToken does not store falsy value', () => {
+  const origLocalStorage = global.localStorage;
+  let called = false;
+  try {
+    global.localStorage = { setItem: () => { called = true; } };
+    saveRefreshToken(null);
+    saveRefreshToken('');
+    assert.equal(called, false);
+  } finally {
+    global.localStorage = origLocalStorage;
+  }
+});
+
+ok('saveRefreshToken silently catches errors (e.g. quota exceeded or private mode)', () => {
+  const origLocalStorage = global.localStorage;
+  try {
+    global.localStorage = { setItem: () => { throw new Error('Quota Exceeded'); } };
+    assert.doesNotThrow(() => saveRefreshToken('my-token'));
+  } finally {
+    global.localStorage = origLocalStorage;
   }
 });
 
