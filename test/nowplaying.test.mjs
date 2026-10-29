@@ -3,10 +3,11 @@
 // a valid buildImageTransfer-ready frame. Run: node test/nowplaying.test.mjs
 import assert from 'node:assert/strict';
 import {
-  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, loadPendingAuth
+  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth, saveRefreshToken, loadRefreshToken, loadPendingAuth
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
+import { newFrame, fillRect, WIDTH, HEIGHT } from '../src/nowplaying/render.js';
 
 let pass = 0;
 const ok = (name, fn) => { fn(); pass++; console.log('  ok -', name); };
@@ -216,6 +217,34 @@ ok('parseNowPlaying flags paused state', () => {
   assert.equal(np.artUrl, null); // empty images -> null
 });
 
+
+// ── RENDER ───────────────────────────────────────────────────────────────────────
+ok('fillRect fills a basic rectangle', () => {
+  const fb = newFrame([0, 0, 0]);
+  fillRect(fb, 0, 0, 2, 2, [255, 255, 255]); // white
+
+  // Check the first 2x2 area
+  // setPx calculates index as (y * WIDTH + x) * 2
+  // RGB565 for white is 0xFFFF (hi=255, lo=255)
+  // Let's verify using expected values
+  assert.equal(fb[0], 255); assert.equal(fb[1], 255); // (0,0)
+  assert.equal(fb[2], 255); assert.equal(fb[3], 255); // (1,0)
+  assert.equal(fb[WIDTH * 2], 255); assert.equal(fb[WIDTH * 2 + 1], 255); // (0,1)
+  assert.equal(fb[WIDTH * 2 + 2], 255); assert.equal(fb[WIDTH * 2 + 3], 255); // (1,1)
+
+  // Outside should be black (0, 0)
+  assert.equal(fb[4], 0); assert.equal(fb[5], 0); // (2,0)
+});
+
+ok('fillRect ignores out of bounds coordinates', () => {
+  const fb = newFrame([0, 0, 0]);
+  // Just should not throw
+  assert.doesNotThrow(() => {
+    fillRect(fb, -10, -10, 20, 20, [255, 0, 0]);
+    fillRect(fb, WIDTH - 5, HEIGHT - 5, 20, 20, [0, 255, 0]);
+  });
+});
+
 // ── CARD RENDER ──────────────────────────────────────────────────────────────────
 ok('renderCard produces a FRAME_BYTES frame that buildImageTransfer accepts (placeholder art)', () => {
   const frame = renderCard({ title: 'Some Long Song Title That Wraps', artist: 'An Artist', progress: 0.5, paused: false });
@@ -367,6 +396,149 @@ await okAsync('exchangeCodeForToken throws on non-ok fetch response', async () =
   }
 });
 
+
+// ── CLEAR REFRESH TOKEN ────────────────────────────────────────────────────────
+ok('clearRefreshToken calls localStorage.removeItem with the correct key', () => {
+  const originalLocalStorage = global.localStorage;
+  let removedKey = null;
+  global.localStorage = {
+    removeItem: (key) => { removedKey = key; }
+  };
+  try {
+    clearRefreshToken();
+    assert.equal(removedKey, 'al80.spotify.refreshToken');
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('clearRefreshToken ignores exceptions thrown by localStorage', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    removeItem: () => { throw new Error('localStorage is broken'); }
+  };
+  try {
+    assert.doesNotThrow(() => clearRefreshToken());
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+
+
+ok('savePendingAuth sets localStorage items correctly', () => {
+  const originalLocalStorage = global.localStorage;
+  const storageMap = new Map();
+  global.localStorage = {
+    setItem: (key, value) => {
+      storageMap.set(key, value);
+    },
+  };
+
+  try {
+    savePendingAuth('myVerifier', 'myState');
+    assert.equal(storageMap.get('al80.spotify.pkceVerifier'), 'myVerifier');
+    assert.equal(storageMap.get('al80.spotify.authState'), 'myState');
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('savePendingAuth ignores exceptions from localStorage', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    setItem: () => {
+      throw new Error('QuotaExceededError');
+    },
+  };
+
+  try {
+    assert.doesNotThrow(() => {
+      savePendingAuth('myVerifier', 'myState');
+    });
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+
+
+// ── SAVE REFRESH TOKEN ────────────────────────────────────────────────────────
+ok('saveRefreshToken stores truthy value in localStorage', () => {
+  const origLocalStorage = global.localStorage;
+  let key, val;
+  try {
+    global.localStorage = { setItem: (k, v) => { key = k; val = v; } };
+    saveRefreshToken('my-token');
+    assert.equal(key, 'al80.spotify.refreshToken');
+    assert.equal(val, 'my-token');
+  } finally {
+    global.localStorage = origLocalStorage;
+  }
+});
+
+ok('saveRefreshToken does not store falsy value', () => {
+  const origLocalStorage = global.localStorage;
+  let called = false;
+  try {
+    global.localStorage = { setItem: () => { called = true; } };
+    saveRefreshToken(null);
+    saveRefreshToken('');
+    assert.equal(called, false);
+  } finally {
+    global.localStorage = origLocalStorage;
+  }
+});
+
+ok('saveRefreshToken silently catches errors (e.g. quota exceeded or private mode)', () => {
+  const origLocalStorage = global.localStorage;
+  try {
+    global.localStorage = { setItem: () => { throw new Error('Quota Exceeded'); } };
+    assert.doesNotThrow(() => saveRefreshToken('my-token'));
+  } finally {
+    global.localStorage = origLocalStorage;
+  }
+});
+
+
+// ── PERSISTENCE ──────────────────────────────────────────────────────────────────
+ok('loadRefreshToken returns the token when present', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    getItem: (key) => key === 'al80.spotify.refreshToken' ? 'token123' : null
+  };
+  try {
+    assert.equal(loadRefreshToken(), 'token123');
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('loadRefreshToken returns null when not present', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    getItem: () => null
+  };
+  try {
+    assert.equal(loadRefreshToken(), null);
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('loadRefreshToken returns null on exception (e.g. privacy mode)', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    getItem: () => { throw new Error('Access denied'); }
+  };
+  try {
+    assert.equal(loadRefreshToken(), null);
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+
 // ── PENDING AUTH PERSISTENCE ─────────────────────────────────────────────────────
 ok('loadPendingAuth returns values from localStorage', () => {
   const originalLocalStorage = global.localStorage;
@@ -415,4 +587,5 @@ ok('loadPendingAuth handles localStorage errors (e.g. strict mode or unavailable
     global.localStorage = originalLocalStorage;
   }
 });
+
 console.log(`\n${pass} checks passed.`);
