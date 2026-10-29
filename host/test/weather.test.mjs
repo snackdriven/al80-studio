@@ -2,7 +2,7 @@
 // mapping, the Open-Meteo JSON parse (incl. both-unit fill), and that render() produces a valid
 // buildImageTransfer-ready frame. Mirrors host/test/nowplaying.test.mjs. Run: node host/test/weather.test.mjs
 import assert from 'node:assert/strict';
-import { weatherCodeInfo, parseForecast, getWeatherMock, buildForecastUrl, normalizeUnits } from '../lib/weather.js';
+import { weatherCodeInfo, normalizeUnits, buildForecastUrl, parseForecast, getWeatherMock } from '../../src/lib/weather-common.js';
 import { render } from '../apps/weather.js';
 import { buildImageTransfer, FRAME_BYTES } from '../../src/protocol.js';
 
