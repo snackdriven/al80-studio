@@ -23,10 +23,8 @@ const NOW_PLAYING_URL = 'https://api.spotify.com/v1/me/player/currently-playing'
 
 /** base64url (RFC 4648 §5): standard base64 with +/ -> -_ and no '=' padding. */
 export function base64url(bytes) {
-  let bin = '';
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(String.fromCharCode.apply(null, b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /** High-entropy PKCE code verifier: 64 base64url chars from 48 random bytes. */
