@@ -7,6 +7,7 @@ import {
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
+import { newFrame, fillRect, setPx, WIDTH, HEIGHT } from '../src/nowplaying/render.js';
 
 let pass = 0;
 const ok = (name, fn) => { fn(); pass++; console.log('  ok -', name); };
@@ -214,6 +215,34 @@ ok('parseNowPlaying flags paused state', () => {
   });
   assert.equal(np.isPlaying, false);
   assert.equal(np.artUrl, null); // empty images -> null
+});
+
+
+// ── RENDER ───────────────────────────────────────────────────────────────────────
+ok('fillRect fills a basic rectangle', () => {
+  const fb = newFrame([0, 0, 0]);
+  fillRect(fb, 0, 0, 2, 2, [255, 255, 255]); // white
+
+  // Check the first 2x2 area
+  // setPx calculates index as (y * WIDTH + x) * 2
+  // RGB565 for white is 0xFFFF (hi=255, lo=255)
+  // Let's verify using expected values
+  assert.equal(fb[0], 255); assert.equal(fb[1], 255); // (0,0)
+  assert.equal(fb[2], 255); assert.equal(fb[3], 255); // (1,0)
+  assert.equal(fb[WIDTH * 2], 255); assert.equal(fb[WIDTH * 2 + 1], 255); // (0,1)
+  assert.equal(fb[WIDTH * 2 + 2], 255); assert.equal(fb[WIDTH * 2 + 3], 255); // (1,1)
+
+  // Outside should be black (0, 0)
+  assert.equal(fb[4], 0); assert.equal(fb[5], 0); // (2,0)
+});
+
+ok('fillRect ignores out of bounds coordinates', () => {
+  const fb = newFrame([0, 0, 0]);
+  // Just should not throw
+  assert.doesNotThrow(() => {
+    fillRect(fb, -10, -10, 20, 20, [255, 0, 0]);
+    fillRect(fb, WIDTH - 5, HEIGHT - 5, 20, 20, [0, 255, 0]);
+  });
 });
 
 // ── CARD RENDER ──────────────────────────────────────────────────────────────────
