@@ -56,7 +56,7 @@ function padTo64(pkt) {
  * @param {number} reqLen   controls byte[3] = reqLen-7; 63 for data/finish, 7+payload.len for announces
  */
 export function build(op, payload = [], offset = [0, 0], reqLen = 63) {
-  if (![0x40, 0x41, 0x42, 0x55].includes(op)) {
+  if (op !== 0x40 && op !== 0x41 && op !== 0x42 && op !== 0x55) {
     throw new Error(`protocol.build: refusing opcode 0x${op.toString(16)} (whitelist 40/41/42/55)`);
   }
   const pkt = [op, offset[0] & 0xff, offset[1] & 0xff, (reqLen - 7) & 0xff, 0, 0, 0, ...payload];
