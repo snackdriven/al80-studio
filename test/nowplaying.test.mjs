@@ -3,7 +3,7 @@
 // a valid buildImageTransfer-ready frame. Run: node test/nowplaying.test.mjs
 import assert from 'node:assert/strict';
 import {
-  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth, saveRefreshToken, loadRefreshToken
+  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken, clearRefreshToken, savePendingAuth, saveRefreshToken, loadRefreshToken, loadPendingAuth
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -533,6 +533,56 @@ ok('loadRefreshToken returns null on exception (e.g. privacy mode)', () => {
   };
   try {
     assert.equal(loadRefreshToken(), null);
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+
+// ── PENDING AUTH PERSISTENCE ─────────────────────────────────────────────────────
+ok('loadPendingAuth returns values from localStorage', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    global.localStorage = {
+      getItem: (key) => {
+        if (key === 'al80.spotify.pkceVerifier') return 'test-verifier';
+        if (key === 'al80.spotify.authState') return 'test-state';
+        return null;
+      }
+    };
+
+    const result = loadPendingAuth();
+    assert.deepEqual(result, { verifier: 'test-verifier', state: 'test-state' });
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('loadPendingAuth handles null values from localStorage', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    global.localStorage = {
+      getItem: () => null
+    };
+
+    const result = loadPendingAuth();
+    assert.deepEqual(result, { verifier: null, state: null });
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('loadPendingAuth handles localStorage errors (e.g. strict mode or unavailable)', () => {
+  const originalLocalStorage = global.localStorage;
+  try {
+    global.localStorage = {
+      getItem: () => {
+        throw new Error('Access to localStorage is denied');
+      }
+    };
+
+    const result = loadPendingAuth();
+    assert.deepEqual(result, { verifier: null, state: null });
   } finally {
     global.localStorage = originalLocalStorage;
   }
