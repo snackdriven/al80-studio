@@ -3,7 +3,7 @@
 // a valid buildImageTransfer-ready frame. Run: node test/nowplaying.test.mjs
 import assert from 'node:assert/strict';
 import {
-  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken
+  base64url, generateCodeVerifier, codeChallenge, buildAuthUrl, DEFAULT_SCOPES, savePendingAuth, needsRefresh, pickArtUrl, parseNowPlaying, CLIENT_ID, refreshAccessToken, getNowPlaying, exchangeCodeForToken
 } from '../src/nowplaying/spotify.js';
 import { render as renderCard } from '../src/nowplaying/card.js';
 import { buildImageTransfer, FRAME_BYTES } from '../src/protocol.js';
@@ -366,4 +366,41 @@ await okAsync('exchangeCodeForToken throws on non-ok fetch response', async () =
     global.fetch = originalFetch;
   }
 });
+
+
+ok('savePendingAuth sets localStorage items correctly', () => {
+  const originalLocalStorage = global.localStorage;
+  const storageMap = new Map();
+  global.localStorage = {
+    setItem: (key, value) => {
+      storageMap.set(key, value);
+    },
+  };
+
+  try {
+    savePendingAuth('myVerifier', 'myState');
+    assert.equal(storageMap.get('al80.spotify.pkceVerifier'), 'myVerifier');
+    assert.equal(storageMap.get('al80.spotify.authState'), 'myState');
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
+ok('savePendingAuth ignores exceptions from localStorage', () => {
+  const originalLocalStorage = global.localStorage;
+  global.localStorage = {
+    setItem: () => {
+      throw new Error('QuotaExceededError');
+    },
+  };
+
+  try {
+    assert.doesNotThrow(() => {
+      savePendingAuth('myVerifier', 'myState');
+    });
+  } finally {
+    global.localStorage = originalLocalStorage;
+  }
+});
+
 console.log(`\n${pass} checks passed.`);
