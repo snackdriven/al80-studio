@@ -638,196 +638,204 @@ function setupClockTab() {
 }
 
 // ---- picture (was "image") --------------------------------------------------
-function setupImageTab() {
-  const statusEl = $('#imageStatus');
-  const previewImg = $('#imagePreview');
-  const fileInput = $('#imageFile');
-  const drop = $('#imageDrop');
-  const nameEl = $('#imageName');
-  let currentFile = null;
+class ImageTab {
+  constructor() {
+    this.statusEl = $('#imageStatus');
+    this.previewImg = $('#imagePreview');
+    this.fileInput = $('#imageFile');
+    this.drop = $('#imageDrop');
+    this.nameEl = $('#imageName');
+    this.currentFile = null;
 
-  const controls = {
-    fit: $('#imageFit'),
-    brightness: $('#imageBrightness'),
-    contrast: $('#imageContrast'),
-    saturation: $('#imageSaturation'),
-    gray: $('#imageGray'),
-    dither: $('#imageDither'),
-  };
+    this.controls = {
+      fit: $('#imageFit'),
+      brightness: $('#imageBrightness'),
+      contrast: $('#imageContrast'),
+      saturation: $('#imageSaturation'),
+      gray: $('#imageGray'),
+      dither: $('#imageDither'),
+    };
 
-  // range value read-outs
-  const outs = {
-    brightness: $('#imageBrightnessOut'),
-    contrast: $('#imageContrastOut'),
-    saturation: $('#imageSaturationOut'),
-  };
+    this.outs = {
+      brightness: $('#imageBrightnessOut'),
+      contrast: $('#imageContrastOut'),
+      saturation: $('#imageSaturationOut'),
+    };
 
-  // Remember the editor settings across reloads (UI only — never auto-sends; readOpts reads the
-  // restored values at send time). Sliders re-sync their <output> via onRestore so it isn't stale.
-  persist(controls.fit, 'imageFit');
-  persist(controls.brightness, 'imageBrightness', (el) => { outs.brightness.textContent = el.value + '%'; });
-  persist(controls.contrast, 'imageContrast', (el) => { outs.contrast.textContent = el.value + '%'; });
-  persist(controls.saturation, 'imageSaturation', (el) => { outs.saturation.textContent = el.value + '%'; });
-  persist(controls.gray, 'imageGray');
-  persist(controls.dither, 'imageDither');
+    this.previewLabel = $('#imagePreviewLabel');
+    this.destNote = $('#picDestNote');
+    this.sendBtn = $('#imageSend');
+    this.wrap = $('#imageProgressWrap');
+    this.bar = $('#imageProgress');
+    this.previewTimer = null;
 
-  // opts: sliders are percentages where 100 = neutral, passed as factors (1.0 = neutral).
-  function readOpts() {
+    this.readOpts = this.readOpts.bind(this);
+    this.applyDest = this.applyDest.bind(this);
+    this.refreshPreview = this.refreshPreview.bind(this);
+    this.schedulePreview = this.schedulePreview.bind(this);
+    this.loadFile = this.loadFile.bind(this);
+    this.handleSend = this.handleSend.bind(this);
+  }
+
+  setup() {
+    persist(this.controls.fit, 'imageFit');
+    persist(this.controls.brightness, 'imageBrightness', (el) => { this.outs.brightness.textContent = el.value + '%'; });
+    persist(this.controls.contrast, 'imageContrast', (el) => { this.outs.contrast.textContent = el.value + '%'; });
+    persist(this.controls.saturation, 'imageSaturation', (el) => { this.outs.saturation.textContent = el.value + '%'; });
+    persist(this.controls.gray, 'imageGray');
+    persist(this.controls.dither, 'imageDither');
+
+    $$('input[name="picDest"]').forEach((r) => r.addEventListener('change', this.applyDest));
+    persistRadio('picDest', 'picDest');
+    this.applyDest();
+
+    this.fileInput.addEventListener('change', (e) => this.loadFile(e.target.files[0]));
+
+    tabLoaders.picture = (file, dest) => {
+      const val = dest === 'main' ? 'main' : 'page';
+      const r = document.querySelector(`input[name="picDest"][value="${val}"]`);
+      if (r && !r.checked) { r.checked = true; this.applyDest(); }
+      this.loadFile(file);
+    };
+
+    ['dragenter', 'dragover'].forEach((ev) =>
+      this.drop.addEventListener(ev, (e) => { e.preventDefault(); this.drop.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach((ev) =>
+      this.drop.addEventListener(ev, (e) => { e.preventDefault(); this.drop.classList.remove('dragover'); }));
+    this.drop.addEventListener('drop', (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (file) this.loadFile(file);
+    });
+
+    ['brightness', 'contrast', 'saturation'].forEach((k) => {
+      this.controls[k].addEventListener('input', () => {
+        this.outs[k].textContent = this.controls[k].value + '%';
+        this.schedulePreview();
+      });
+    });
+    this.controls.fit.addEventListener('change', this.schedulePreview);
+    this.controls.gray.addEventListener('change', this.schedulePreview);
+    this.controls.dither.addEventListener('change', this.schedulePreview);
+
+    this.sendBtn.addEventListener('click', this.handleSend);
+  }
+
+  readOpts() {
     return {
-      fit: controls.fit.value,
-      brightness: +controls.brightness.value / 100,
-      contrast: +controls.contrast.value / 100,
-      saturation: +controls.saturation.value / 100,
-      grayscale: controls.gray.checked,
-      dither: controls.dither.checked,
+      fit: this.controls.fit.value,
+      brightness: +this.controls.brightness.value / 100,
+      contrast: +this.controls.contrast.value / 100,
+      saturation: +this.controls.saturation.value / 100,
+      grayscale: this.controls.gray.checked,
+      dither: this.controls.dither.checked,
     };
   }
 
-  const previewLabel = $('#imagePreviewLabel');
-  const destNote = $('#picDestNote');
-  const readDest = () => document.querySelector('input[name="picDest"]:checked')?.value || 'main';
+  readDest() {
+    return document.querySelector('input[name="picDest"]:checked')?.value || 'main';
+  }
 
-  // Reflect the chosen destination in the preview size/label/note, then re-render.
-  function applyDest() {
-    if (readDest() === 'main') {
-      previewLabel.innerHTML = 'Preview (96&times;64 main page)';
-      previewImg.style.width = '288px'; previewImg.style.height = '192px'; // inline beats the #imagePreview CSS rule
-      destNote.textContent = 'Shows beside the clock on the home screen.';
+  applyDest() {
+    if (this.readDest() === 'main') {
+      this.previewLabel.innerHTML = 'Preview (96&times;64 main page)';
+      this.previewImg.style.width = '288px'; this.previewImg.style.height = '192px';
+      this.destNote.textContent = 'Shows beside the clock on the home screen.';
     } else {
-      previewLabel.innerHTML = 'Preview (96&times;160 picture page)';
-      previewImg.style.width = '144px'; previewImg.style.height = '240px';
-      destNote.textContent = 'Fills the picture view with your image.';
+      this.previewLabel.innerHTML = 'Preview (96&times;160 picture page)';
+      this.previewImg.style.width = '144px'; this.previewImg.style.height = '240px';
+      this.destNote.textContent = 'Fills the picture view with your image.';
     }
-    refreshPreview();
+    this.refreshPreview();
   }
 
-  let previewTimer = null;
-  async function refreshPreview() {
-    if (!currentFile) return;
+  async refreshPreview() {
+    if (!this.currentFile) return;
     try {
-      const url = readDest() === 'main'
-        ? await image.previewMainPageDataURL(currentFile, readOpts())
-        : await image.previewDataURL(currentFile, readOpts());
-      previewImg.src = url;
+      const url = this.readDest() === 'main'
+        ? await image.previewMainPageDataURL(this.currentFile, this.readOpts())
+        : await image.previewDataURL(this.currentFile, this.readOpts());
+      this.previewImg.src = url;
     } catch (err) {
-      setStatus(statusEl, 'Preview failed: ' + ((err && err.message) || err), 'err');
+      setStatus(this.statusEl, 'Preview failed: ' + ((err && err.message) || err), 'err');
     }
   }
-  function schedulePreview() {
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(refreshPreview, 120);
-  }
-  $$('input[name="picDest"]').forEach((r) => r.addEventListener('change', applyDest));
-  persistRadio('picDest', 'picDest'); // restore the chosen destination (applyDest below reflects it)
-  applyDest(); // set the initial label/note
 
-  function loadFile(file) {
+  schedulePreview() {
+    clearTimeout(this.previewTimer);
+    this.previewTimer = setTimeout(this.refreshPreview, 120);
+  }
+
+  loadFile(file) {
     if (!file) return;
     if (file.type && !file.type.startsWith('image/')) {
-      setStatus(statusEl, `Not an image: ${file.name}. Drop a PNG, JPG, GIF, or WebP.`, 'err');
+      setStatus(this.statusEl, `Not an image: ${file.name}. Drop a PNG, JPG, GIF, or WebP.`, 'err');
       return;
     }
-    currentFile = file;
-    nameEl.textContent = file.name;
-    refreshPreview();
+    this.currentFile = file;
+    this.nameEl.textContent = file.name;
+    this.refreshPreview();
   }
 
-  fileInput.addEventListener('change', (e) => loadFile(e.target.files[0]));
-
-  // Recents "Load into tab": set the destination to match the cached area, then load the source
-  // File so the editor's controls apply on the next preview/send.
-  tabLoaders.picture = (file, dest) => {
-    const val = dest === 'main' ? 'main' : 'page';
-    const r = document.querySelector(`input[name="picDest"][value="${val}"]`);
-    if (r && !r.checked) { r.checked = true; applyDest(); }
-    loadFile(file);
-  };
-
-  // drag + drop
-  ['dragenter', 'dragover'].forEach((ev) =>
-    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('dragover'); }));
-  ['dragleave', 'drop'].forEach((ev) =>
-    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('dragover'); }));
-  drop.addEventListener('drop', (e) => {
-    const file = e.dataTransfer?.files?.[0];
-    if (file) loadFile(file);
-  });
-
-  // live controls
-  ['brightness', 'contrast', 'saturation'].forEach((k) => {
-    controls[k].addEventListener('input', () => {
-      outs[k].textContent = controls[k].value + '%';
-      schedulePreview();
-    });
-  });
-  controls.fit.addEventListener('change', schedulePreview);
-  controls.gray.addEventListener('change', schedulePreview);
-  controls.dither.addEventListener('change', schedulePreview);
-
-  // send & show
-  const wrap = $('#imageProgressWrap');
-  const bar = $('#imageProgress');
-  $('#imageSend').addEventListener('click', async () => {
-    if (!currentFile) { setStatus(statusEl, 'Pick an image first.', 'err'); return; }
-    nowPlayingCtl.stop(); weatherCtl.stop(); // a manual push takes the screen from the live watchers
-    const dest = readDest();
-    setStatus(statusEl, 'Rendering frame…');
+  async handleSend() {
+    if (!this.currentFile) { setStatus(this.statusEl, 'Pick an image first.', 'err'); return; }
+    nowPlayingCtl.stop(); weatherCtl.stop();
+    const dest = this.readDest();
+    setStatus(this.statusEl, 'Rendering frame…');
     let frame;
     try {
-      // main page = 96x64 mode-2 (the surface that displays); picture page = 96x160 slot.
       frame = dest === 'main'
-        ? await image.imageToMainPageFrame(currentFile, readOpts())
-        : await image.imageToFrame(currentFile, readOpts());
+        ? await image.imageToMainPageFrame(this.currentFile, this.readOpts())
+        : await image.imageToFrame(this.currentFile, this.readOpts());
     } catch (err) {
-      setStatus(statusEl, 'Render failed: ' + ((err && err.message) || err), 'err');
+      setStatus(this.statusEl, 'Render failed: ' + ((err && err.message) || err), 'err');
       return;
     }
     let packets;
     try {
       packets = dest === 'main' ? proto.buildMainPageImage(frame) : proto.buildImageTransfer(frame);
     } catch (err) {
-      setStatus(statusEl, 'Build failed: ' + ((err && err.message) || err), 'err');
+      setStatus(this.statusEl, 'Build failed: ' + ((err && err.message) || err), 'err');
       return;
     }
-    wrap.hidden = false;
-    bar.style.width = '0%';
-    // Main-page still = a 1-frame mode-2 GIF, so a previously-stored multi-frame GIF can tail under it.
-    // Wipe it first (same fix as the GIF tab). Best-effort: silence + ignore so a clear failure can't block.
+    this.wrap.hidden = false;
+    this.bar.style.width = '0%';
     if (dest === 'main') {
-      setStatus(statusEl, 'Clearing the old GIF…');
+      setStatus(this.statusEl, 'Clearing the old GIF…');
       await guardedSend('Clear GIF (pre-upload)', null, proto.buildClearGif(), { gap: 2 });
     }
-    setStatus(statusEl, `Sending ${packets.length} packets…`);
-    const onProg = (f) => { bar.style.width = Math.round(f * 100) + '%'; };
-    // picture page = ACK-gated (blasting drops bytes); main page = plain send. (No pre-switch to home —
-    // writing the picture buffer while parked on home doesn't land, leaving the old frame on screen.)
+    setStatus(this.statusEl, `Sending ${packets.length} packets…`);
+    const onProg = (f) => { this.bar.style.width = Math.round(f * 100) + '%'; };
     try {
       const ok = dest === 'main'
-        ? await sendGifWithProgress('Picture → main page', statusEl, packets, onProg)
-        : await sendAckGatedWithProgress('Picture → picture page', statusEl, packets, onProg);
+        ? await sendGifWithProgress('Picture → main page', this.statusEl, packets, onProg)
+        : await sendAckGatedWithProgress('Picture → picture page', this.statusEl, packets, onProg);
       if (ok) {
         if (dest === 'main') {
-          setNowShowing('clock'); // main page = clock + your image
-          setStatus(statusEl, 'Saved to the main page — it should be showing now.', 'ok');
+          setNowShowing('clock');
+          setStatus(this.statusEl, 'Saved to the main page — it should be showing now.', 'ok');
         } else {
-          setStatus(statusEl, 'Switching to picture page…');
-          const shown = await guardedSend('View → Picture', statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
+          setStatus(this.statusEl, 'Switching to picture page…');
+          const shown = await guardedSend('View → Picture', this.statusEl, proto.buildView(proto.VIEW.PICTURE), { gap: 1 });
           if (shown) setNowShowing('picture');
-          setStatus(statusEl, 'Sent to the picture page (may not display on your firmware).', 'ok');
+          setStatus(this.statusEl, 'Sent to the picture page (may not display on your firmware).', 'ok');
         }
-        // Remember what Studio just pushed (client-side slot cache).
         const area = dest === 'main' ? 'main' : 'picture';
         const [tw, th] = dest === 'main' ? [proto.MP_W, proto.MP_H] : [proto.WIDTH, proto.HEIGHT];
         const thumbBlob = await thumbFromFrame(frame, tw, th);
         await capturePush({
-          area, name: currentFile.name || 'Picture', kind: 'image',
-          sourceBlob: currentFile, settings: { ...readOpts(), dest }, thumbBlob,
+          area, name: this.currentFile.name || 'Picture', kind: 'image',
+          sourceBlob: this.currentFile, settings: { ...this.readOpts(), dest }, thumbBlob,
         });
       }
     } finally {
-      setTimeout(() => { wrap.hidden = true; }, 800);
+      setTimeout(() => { this.wrap.hidden = true; }, 800);
     }
-  });
+  }
+}
+
+function setupImageTab() {
+  const tab = new ImageTab();
+  tab.setup();
 }
 
 // ---- gif --------------------------------------------------------------------
